@@ -20,6 +20,15 @@ const CHECAGENS = [
   ['#morador.ocorrencias.OC-0042', ['Protocolo OC-0042', 'Ocorrência aberta']],
   ['#morador.documentos', ['Regimento interno', '!Balancete']],
   ['#morador.encomendas', ['Retirada por Ana Souza']],
+  ['#sindico.inicio', ['Reservas pendentes', 'Ocorrências abertas', '20 de 32 unidades com app', 'Precisa da sua atenção', 'Prazo vencido: OC-0042']],
+  ['#sindico.reservas', ['Pendentes de aprovação', 'aprovar-r4', 'Regras das áreas', 'Sem limite']],
+  ['#sindico.comunicados', ['Novo comunicado', '19 de 32 unidades leram']],
+  ['#sindico.comunicados.c1', ['Confirmação de leitura', '19 de 32 unidades leram']],
+  ['#sindico.comunicados.novo', ['Publicar comunicado', 'Trocar o tipo preenche um modelo pronto.']],
+  ['#sindico.ocorrencias', ['OC-0042', 'Anônima', 'Vencido']],
+  ['#sindico.ocorrencias.OC-0039', ['Mover para "Resolvida"', 'Encanador agendado']],
+  ['#sindico.documentos', ['Vencido há 3 dias', 'Vence em 25 dias', 'Só conselho']],
+  ['#sindico.encomendas', ['Reenviar lembrete', 'Retirada por Beatriz Rocha']],
 ];
 
 const CAPTURAS = [
