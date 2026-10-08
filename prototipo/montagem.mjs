@@ -11,9 +11,11 @@ export const ORDEM = [
   'src/datas.js',
   'src/dados.js',
   'src/regras.js',
+  'src/acoes.js',
   'src/casos/afirmar.js',
   'src/casos/dados.js',
   'src/casos/regras.js',
+  'src/casos/acoes.js',
   'src/ui/app.js',
 ];
 
