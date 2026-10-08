@@ -69,6 +69,10 @@ const ICONES = {
   grafico: 'M4 20V10M10 20V4M16 20v-7M3 20h18',
   leitor: 'M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M8 12h8',
   entrega: 'M4 12l5 5L20 6',
+  sacola: 'M5 8h14l-1 12H6zM9 8V6a3 3 0 0 1 6 0v2',
+  loja: 'M4 9l1-5h14l1 5M4 9v11h16V9M4 9h16M9 20v-6h6v6',
+  etiqueta: 'M3 12V4h8l10 10-8 8zM7.5 7.5h.01',
+  pessoa: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
 };
 
 export function Icone({ nome, tamanho = 22 }) {

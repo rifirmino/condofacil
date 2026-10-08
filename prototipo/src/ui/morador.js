@@ -1,5 +1,8 @@
 import { html, useState } from '../vendor.js';
-import { UNIDADE_ANA, CATEGORIAS, TIPOS_COMUNICADO } from '../dados.js';
+import { CATEGORIAS, TIPOS_COMUNICADO } from '../dados.js';
+import { MORADORES_DEMO } from '../vendas/dados.js';
+import { pessoaDaUnidade } from '../vendas/regras.js';
+import { trocarMorador, alternarOfertas } from '../vendas/acoes.js';
 import { areaPorId, statusDia, horariosDaArea, comunicadosDaUnidade, avisoCancelamento, encomendaParada, STATUS_ATIVOS } from '../regras.js';
 import { solicitarReserva, cancelarReserva, marcarLido, reagir, abrirOcorrencia, avaliarOcorrencia, euTambem } from '../acoes.js';
 import { isoDia, somarMes, diferencaDias, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
@@ -30,12 +33,16 @@ function tipoEtiquetaAviso(c) {
 }
 
 export function TelaMorador(props) {
-  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas };
+  const eu = props.estado.moradorAtual;
+  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias };
   const Conteudo = telas[props.rota.tela] || MInicio;
-  const aba = ['documentos', 'encomendas'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
+  const aba = ['documentos', 'encomendas', 'preferencias'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
   return html`<div class="celular">
     <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
-    <div class="cel-conteudo"><${Conteudo} ...${props} /></div>
+    <div class="cel-pessoa" role="group" aria-label="Morador da demonstração">
+      ${MORADORES_DEMO.map(([unidade, nome]) => html`<button type="button" key=${unidade} aria-pressed=${unidade === eu} onClick=${() => props.executar((e) => trocarMorador(e, unidade))}>${nome} · ${unidade}</button>`)}
+    </div>
+    <div class="cel-conteudo"><${Conteudo} ...${props} eu=${eu} /></div>
     <nav class="cel-abas" aria-label="Navegação do morador">
       ${ABAS_MORADOR.map(([id, nome, icone]) => html`<a key=${id} href=${`#morador.${id}`} class=${id === aba ? 'ativa' : ''} aria-current=${id === aba ? 'page' : undefined}><${Icone} nome=${icone} />${nome}</a>`)}
     </nav>
@@ -55,23 +62,23 @@ function MCartaoEncomenda({ encomenda, agora }) {
   </article>`;
 }
 
-function MInicio({ estado, agora }) {
+function MInicio({ estado, agora, eu }) {
   const hoje = isoDia(agora);
-  const pacotes = estado.encomendas.filter((e) => e.unidade === UNIDADE_ANA && e.status === 'aguardando');
-  const fixado = comunicadosDaUnidade(estado, UNIDADE_ANA).find((c) => c.fixado);
+  const pacotes = estado.encomendas.filter((e) => e.unidade === eu && e.status === 'aguardando');
+  const fixado = comunicadosDaUnidade(estado, eu).find((c) => c.fixado);
   const proxima = estado.reservas
-    .filter((r) => r.unidade === UNIDADE_ANA && STATUS_ATIVOS.includes(r.status) && r.data >= hoje)
+    .filter((r) => r.unidade === eu && STATUS_ATIVOS.includes(r.status) && r.data >= hoje)
     .sort((a, b) => a.data.localeCompare(b.data) || a.inicio - b.inicio)[0];
   return html`<section class="m-pagina">
-    <h1 class="m-titulo">Olá, Ana</h1>
-    <p class="m-sub">Apto 302 · Residencial Ipê Amarelo</p>
+    <h1 class="m-titulo">Olá, ${pessoaDaUnidade(estado, eu).nome.split(' ')[0]}</h1>
+    <p class="m-sub">Apto ${eu} · Residencial Ipê Amarelo</p>
     <h2>Encomendas na portaria</h2>
     ${pacotes.length ? pacotes.map((e) => html`<${MCartaoEncomenda} key=${e.id} encomenda=${e} agora=${agora} />`) : html`<${Vazio} texto="Nenhuma encomenda esperando por você." />`}
     ${fixado && html`<h2>Fixado pelo síndico</h2>
       <a class="cartao link" href=${`#morador.avisos.${fixado.id}`}>
         <${Etiqueta} tipo=${tipoEtiquetaAviso(fixado)}>${TIPOS_COMUNICADO[fixado.tipo]}<//>
         <strong>${fixado.titulo}</strong>
-        ${!fixado.leituras.includes(UNIDADE_ANA) && html`<span class="m-nao-lido">Toque para confirmar a leitura</span>`}
+        ${!fixado.leituras.includes(eu) && html`<span class="m-nao-lido">Toque para confirmar a leitura</span>`}
       </a>`}
     <h2>Próxima reserva</h2>
     ${proxima
@@ -84,7 +91,7 @@ function MInicio({ estado, agora }) {
   </section>`;
 }
 
-function MReservas({ estado, executar, agora }) {
+function MReservas({ estado, executar, agora, eu }) {
   const hoje = isoDia(agora);
   const [areaId, setAreaId] = useState(null);
   const [anoMes, setAnoMes] = useState(hoje.slice(0, 7));
@@ -107,7 +114,7 @@ function MReservas({ estado, executar, agora }) {
   }
 
   function solicitar() {
-    const pedido = { areaId, unidade: UNIDADE_ANA, data, inicio: horario.inicio, fim: horario.fim, convidados: lerConvidados(convidados), aceiteTermo: termo };
+    const pedido = { areaId, unidade: eu, data, inicio: horario.inicio, fim: horario.fim, convidados: lerConvidados(convidados), aceiteTermo: termo };
     const r = executar((e) => solicitarReserva(e, pedido, new Date()));
     if (r.erro) {
       setErro(r.erro);
@@ -129,7 +136,7 @@ function MReservas({ estado, executar, agora }) {
         <span>${a.tipo === 'periodo' ? 'Por período' : 'Por hora'} · ${a.taxa ? fmtMoeda(a.taxa) : 'Sem taxa'}</span>
         <small class="sub">${a.aprovacao === 'manual' ? 'Precisa de aprovação do síndico' : 'Confirmação na hora'}</small>
       </button>`)}
-      <${MMinhasReservas} estado=${estado} executar=${executar} agora=${agora} />
+      <${MMinhasReservas} estado=${estado} executar=${executar} agora=${agora} eu=${eu} />
     </section>`;
   }
 
@@ -169,11 +176,11 @@ function MReservas({ estado, executar, agora }) {
   </section>`;
 }
 
-function MMinhasReservas({ estado, executar, agora }) {
+function MMinhasReservas({ estado, executar, agora, eu }) {
   const [cancelando, setCancelando] = useState(null);
   const [aviso, setAviso] = useState(null);
   const hoje = isoDia(agora);
-  const minhas = estado.reservas.filter((r) => r.unidade === UNIDADE_ANA).sort((a, b) => b.data.localeCompare(a.data));
+  const minhas = estado.reservas.filter((r) => r.unidade === eu).sort((a, b) => b.data.localeCompare(a.data));
 
   function confirmar(id) {
     const r = executar((e) => cancelarReserva(e, id, new Date()));
@@ -204,11 +211,11 @@ function MMinhasReservas({ estado, executar, agora }) {
       : html`<${Vazio} texto="Você ainda não fez reservas." />`}`;
 }
 
-function MAvisos({ estado, rota, executar }) {
-  const lista = comunicadosDaUnidade(estado, UNIDADE_ANA);
+function MAvisos({ estado, rota, executar, eu }) {
+  const lista = comunicadosDaUnidade(estado, eu);
   const c = rota.id ? lista.find((x) => x.id === rota.id) : null;
   if (c) {
-    const lido = c.leituras.includes(UNIDADE_ANA);
+    const lido = c.leituras.includes(eu);
     return html`<section class="m-pagina">
       <a class="voltar" href="#morador.avisos">‹ Avisos</a>
       <div><${Etiqueta} tipo=${tipoEtiquetaAviso(c)}>${TIPOS_COMUNICADO[c.tipo]}<//></div>
@@ -218,16 +225,16 @@ function MAvisos({ estado, rota, executar }) {
       ${c.anexo && html`<p class="anexo"><${Icone} nome="clipe" tamanho=${18} />${c.anexo}</p>`}
       ${lido
         ? html`<p class="sucesso">✓ Você confirmou a leitura</p>`
-        : html`<button type="button" class="btn primario bloco" onClick=${() => executar((e) => marcarLido(e, c.id, UNIDADE_ANA))}>Li e estou ciente</button>`}
+        : html`<button type="button" class="btn primario bloco" onClick=${() => executar((e) => marcarLido(e, c.id, eu))}>Li e estou ciente</button>`}
       <div class="reacoes" role="group" aria-label="Reações">
-        ${[['util', 'Útil'], ['duvida', 'Tenho dúvida']].map(([tipo, nome]) => html`<button type="button" key=${tipo} class="btn secundario" aria-pressed=${c.reacoes[tipo].includes(UNIDADE_ANA)} onClick=${() => executar((e) => reagir(e, c.id, UNIDADE_ANA, tipo))}>${nome} · ${c.reacoes[tipo].length}</button>`)}
+        ${[['util', 'Útil'], ['duvida', 'Tenho dúvida']].map(([tipo, nome]) => html`<button type="button" key=${tipo} class="btn secundario" aria-pressed=${c.reacoes[tipo].includes(eu)} onClick=${() => executar((e) => reagir(e, c.id, eu, tipo))}>${nome} · ${c.reacoes[tipo].length}</button>`)}
       </div>
     </section>`;
   }
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Avisos</h1>
     <ul class="m-lista">${lista.map((x) => {
-      const lido = x.leituras.includes(UNIDADE_ANA);
+      const lido = x.leituras.includes(eu);
       return html`<li key=${x.id}><a class=${`cartao link${lido ? '' : ' nao-lido'}`} href=${`#morador.avisos.${x.id}`}>
         <div class="linha-entre"><${Etiqueta} tipo=${tipoEtiquetaAviso(x)}>${TIPOS_COMUNICADO[x.tipo]}<//>${x.fixado && html`<small class="fixado"><${Icone} nome="alfinete" tamanho=${16} />Fixado</small>`}</div>
         <strong>${x.titulo}</strong>
@@ -238,12 +245,12 @@ function MAvisos({ estado, rota, executar }) {
 }
 
 function MOcorrencias(props) {
-  const { estado, rota } = props;
+  const { estado, rota, eu } = props;
   if (rota.id === 'nova') return html`<${MNovaOcorrencia} ...${props} />`;
-  const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id && (o.unidade === UNIDADE_ANA || o.publica)) : null;
-  if (oc) return html`<${MDetalheOcorrencia} executar=${props.executar} oc=${oc} />`;
-  const minhas = estado.ocorrencias.filter((o) => o.unidade === UNIDADE_ANA);
-  const publicas = estado.ocorrencias.filter((o) => o.publica && o.unidade !== UNIDADE_ANA);
+  const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id && (o.unidade === eu || o.publica)) : null;
+  if (oc) return html`<${MDetalheOcorrencia} executar=${props.executar} oc=${oc} eu=${eu} />`;
+  const minhas = estado.ocorrencias.filter((o) => o.unidade === eu);
+  const publicas = estado.ocorrencias.filter((o) => o.publica && o.unidade !== eu);
   const item = (o) => html`<li key=${o.id}><a class="cartao link" href=${`#morador.ocorrencias.${o.id}`}>
     <div class="linha-entre"><strong>${CATEGORIAS[o.categoria].nome}</strong><${EtqOcorrencia} status=${o.status} arquivada=${o.arquivada} /></div>
     <span>${o.descricao}</span>
@@ -259,7 +266,7 @@ function MOcorrencias(props) {
   </section>`;
 }
 
-function MNovaOcorrencia({ executar }) {
+function MNovaOcorrencia({ executar, eu }) {
   const [categoria, setCategoria] = useState('');
   const [local, setLocal] = useState('');
   const [descricao, setDescricao] = useState('');
@@ -269,7 +276,7 @@ function MNovaOcorrencia({ executar }) {
   const [erro, setErro] = useState(null);
 
   function enviar() {
-    const r = executar((e) => abrirOcorrencia(e, { categoria, local, descricao, foto, anonima, publica, unidade: UNIDADE_ANA }, new Date()));
+    const r = executar((e) => abrirOcorrencia(e, { categoria, local, descricao, foto, anonima, publica, unidade: eu }, new Date()));
     if (r.erro) {
       setErro(r.erro);
       return;
@@ -296,10 +303,10 @@ function MNovaOcorrencia({ executar }) {
   </section>`;
 }
 
-function MDetalheOcorrencia({ executar, oc }) {
+function MDetalheOcorrencia({ executar, oc, eu }) {
   const [nota, setNota] = useState(0);
   const [erro, setErro] = useState(null);
-  const minha = oc.unidade === UNIDADE_ANA;
+  const minha = oc.unidade === eu;
   const podeAvaliar = minha && ['resolvida', 'fechada'].includes(oc.status) && !oc.avaliacao;
 
   function avaliar() {
@@ -315,7 +322,7 @@ function MDetalheOcorrencia({ executar, oc }) {
     <p class="m-texto">${oc.descricao}</p>
     ${oc.local && html`<p class="m-sub">Local: ${oc.local}</p>`}
     ${oc.foto && html`<${FotoFalsa} rotulo="Foto enviada" />`}
-    ${oc.publica && html`<button type="button" class="btn secundario" aria-pressed=${oc.eutambem.includes(UNIDADE_ANA)} onClick=${() => executar((e) => euTambem(e, oc.id, UNIDADE_ANA))}>Eu também · ${oc.eutambem.length}</button>`}
+    ${oc.publica && html`<button type="button" class="btn secundario" aria-pressed=${oc.eutambem.includes(eu)} onClick=${() => executar((e) => euTambem(e, oc.id, eu))}>Eu também · ${oc.eutambem.length}</button>`}
     <h2>Andamento</h2>
     <${LinhaTempo} linha=${oc.linha} />
     ${podeAvaliar && html`<div class="cartao">
@@ -333,6 +340,7 @@ function MMais() {
     <h1 class="m-titulo">Mais</h1>
     <a class="cartao link com-icone" href="#morador.encomendas"><${QuadroIcone} nome="pacote" /><span><strong>Encomendas</strong><span class="sub">Na portaria e histórico de retiradas</span></span></a>
     <a class="cartao link com-icone" href="#morador.documentos"><${QuadroIcone} nome="documento" /><span><strong>Documentos</strong><span class="sub">Convenção, regimento, atas e laudos</span></span></a>
+    <a class="cartao link com-icone" href="#morador.preferencias"><${QuadroIcone} nome="pessoa" /><span><strong>Minhas preferências</strong><span class="sub">Avisos de anúncios e situação de vendedor</span></span></a>
   </section>`;
 }
 
@@ -358,8 +366,8 @@ function MDocumentos({ estado }) {
   </section>`;
 }
 
-function MEncomendas({ estado, agora }) {
-  const minhas = estado.encomendas.filter((e) => e.unidade === UNIDADE_ANA);
+function MEncomendas({ estado, agora, eu }) {
+  const minhas = estado.encomendas.filter((e) => e.unidade === eu);
   const aguardando = minhas.filter((e) => e.status === 'aguardando');
   const retiradas = minhas.filter((e) => e.status === 'retirada').sort((a, b) => b.retiradaEm.localeCompare(a.retiradaEm));
   return html`<section class="m-pagina">
@@ -371,5 +379,23 @@ function MEncomendas({ estado, agora }) {
     ${retiradas.length
       ? html`<ul class="m-lista">${retiradas.map((e) => html`<li key=${e.id} class="cartao"><strong>${e.transportadora}</strong><small class="sub">Retirada por ${e.retiradaPor} em ${fmtDataHora(e.retiradaEm)}</small></li>`)}</ul>`
       : html`<${Vazio} texto="Nenhuma retirada ainda." />`}
+  </section>`;
+}
+
+const SITUACAO_VENDEDOR = { nao: 'Você ainda não vende', pendente: 'Pedido para vender aguardando o síndico', aprovado: 'Vendedor aprovado', suspenso: 'Vendas suspensas pelo síndico' };
+
+function MPreferencias({ estado, executar, eu }) {
+  const pessoa = pessoaDaUnidade(estado, eu);
+  return html`<section class="m-pagina">
+    <a class="voltar" href="#morador.mais">‹ Mais</a>
+    <h1 class="m-titulo">Minhas preferências</h1>
+    <label class="check"><input id="pref-ofertas" type="checkbox" role="switch" checked=${pessoa.recebeOfertas} onChange=${() => executar((e) => alternarOfertas(e, eu))} /><span>Receber avisos de novos anúncios</span></label>
+    <small class="m-ajuda">Aviso por push quando um vizinho anunciar algo na vitrine. Você pode desligar quando quiser.</small>
+    <h2>Vendas</h2>
+    <div class="cartao">
+      <strong>${SITUACAO_VENDEDOR[pessoa.vendedor]}</strong>
+      ${pessoa.motivoVendedor && html`<small class="sub">Motivo: ${pessoa.motivoVendedor}</small>`}
+      <a href="#morador.vendas.loja">${pessoa.vendedor === 'aprovado' ? 'Ir para minha loja' : 'Saiba como vender'}</a>
+    </div>
   </section>`;
 }

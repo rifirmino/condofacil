@@ -29,6 +29,7 @@ const CHECAGENS = [
   ['#sindico.ocorrencias.OC-0039', ['Mover para "Resolvida"', 'Encanador agendado']],
   ['#sindico.documentos', ['Vencido há 3 dias', 'Vence em 25 dias', 'Só conselho']],
   ['#sindico.encomendas', ['Reenviar lembrete', 'Retirada por Beatriz Rocha']],
+  ['#morador.preferencias', ['Receber avisos de novos anúncios', 'Você ainda não vende', 'Ana · 302', 'Juliana · 104']],
 ];
 
 // Só larguras de desktop: o Chrome headless impõe janela mínima maior que um celular; a largura de 390 px é medida no e2e.
