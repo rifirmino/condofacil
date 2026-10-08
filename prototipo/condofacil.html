@@ -353,8 +353,8 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 .cel-pessoa button[aria-pressed="true"] { border-color: var(--laranja); background: var(--laranja-tinta); color: var(--laranja-forte); }
 .pilha { display: flex; flex-direction: column; gap: 10px; }
 .pilha > h2 { margin: 14px 0 0; }
-.vendas-nav { display: flex; align-items: stretch; border-bottom: 1px solid var(--borda); overflow-x: auto; }
-.vendas-nav a { display: flex; align-items: center; gap: 6px; padding: 0 10px; min-height: 44px; color: var(--texto); text-decoration: none; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; border-bottom: 3px solid transparent; }
+.vendas-nav { display: flex; align-items: stretch; border-bottom: 1px solid var(--borda); overflow-x: auto; scrollbar-width: none; }
+.vendas-nav a { display: flex; align-items: center; gap: 4px; padding: 0 8px; min-height: 44px; color: var(--texto); text-decoration: none; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; border-bottom: 3px solid transparent; }
 .vendas-nav a.ativa { color: var(--laranja-forte); border-bottom-color: var(--laranja); }
 .vendas-nav a.sacola { margin-left: auto; }
 .anuncios { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -2567,7 +2567,7 @@ function TelaVendas(props) {
   } else {
     conteudo = html`<${VVitrine} ...${props} />`;
   }
-  const links = [['vitrine', 'Vitrine', '#morador.vendas'], ['pedidos', 'Meus pedidos', '#morador.vendas.pedidos'], ['loja', pessoa.vendedor === 'aprovado' ? 'Minha loja' : 'Quero vender', '#morador.vendas.loja']];
+  const links = [['vitrine', 'Vitrine', '#morador.vendas'], ['pedidos', 'Meus pedidos', '#morador.vendas.pedidos'], ['loja', pessoa.vendedor === 'aprovado' ? 'Minha loja' : 'Vender', '#morador.vendas.loja']];
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Vendas</h1>
     <nav class="vendas-nav" aria-label="Vendas">
@@ -3715,7 +3715,7 @@ function SEncomendas({ estado, executar, agora }) {
     <h1>Encomendas</h1>
     <${Sucesso} texto=${mensagem} />
     <div class="tabela-rolagem"><table class="tabela">
-      <thead><tr><th>Unidade</th><th>Morador</th><th>Transportadora</th><th>Chegada</th><th>Situação</th><th><span class="sub">Ação</span></th></tr></thead>
+      <thead><tr><th>Unidade</th><th>Morador</th><th>Transportadora</th><th>Chegada</th><th>Situação</th><th>Ação</th></tr></thead>
       <tbody>${lista.map((e) => {
         const parada = encomendaParada(e, agora);
         let situacao = html`<${Etiqueta} tipo="alerta">Aguardando<//>`;
@@ -3794,7 +3794,7 @@ function SVendas({ estado, executar, agora }) {
       : html`<${Vazio} texto="Nenhuma solicitação aguardando." />`}
     <h2>Vendedores</h2>
     <div class="tabela-rolagem"><table class="tabela">
-      <thead><tr><th>Vendedor</th><th>Situação</th><th>Anúncios ativos</th><th>Pedidos no mês</th><th><span class="sub">Ação</span></th></tr></thead>
+      <thead><tr><th>Vendedor</th><th>Situação</th><th>Anúncios ativos</th><th>Pedidos no mês</th><th>Ação</th></tr></thead>
       <tbody>${vendedores.map((p) => html`<tr key=${p.unidade}>
         <td>${p.nome} · apto ${p.unidade}</td>
         <td>${p.vendedor === 'aprovado' ? html`<${Etiqueta} tipo="ok">Ativo<//>` : html`<${Etiqueta} tipo="perigo">Suspenso<//>`}</td>
@@ -3807,7 +3807,7 @@ function SVendas({ estado, executar, agora }) {
     </table></div>
     <h2>Anúncios</h2>
     <div class="tabela-rolagem"><table class="tabela">
-      <thead><tr><th>Anúncio</th><th>Vendedor</th><th>Preço</th><th>Disponível</th><th>Situação</th><th><span class="sub">Ação</span></th></tr></thead>
+      <thead><tr><th>Anúncio</th><th>Vendedor</th><th>Preço</th><th>Disponível</th><th>Situação</th><th>Ação</th></tr></thead>
       <tbody>${[...estado.anuncios].sort((a, b) => b.criadoEm.localeCompare(a.criadoEm)).map((a) => {
         let situacao = html`<${Etiqueta} tipo="ok">Na vitrine<//>`;
         if (a.oculto) situacao = html`<${Etiqueta} tipo="perigo">Oculto<//>`;

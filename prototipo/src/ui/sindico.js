@@ -377,7 +377,7 @@ function SEncomendas({ estado, executar, agora }) {
     <h1>Encomendas</h1>
     <${Sucesso} texto=${mensagem} />
     <div class="tabela-rolagem"><table class="tabela">
-      <thead><tr><th>Unidade</th><th>Morador</th><th>Transportadora</th><th>Chegada</th><th>Situação</th><th><span class="sub">Ação</span></th></tr></thead>
+      <thead><tr><th>Unidade</th><th>Morador</th><th>Transportadora</th><th>Chegada</th><th>Situação</th><th>Ação</th></tr></thead>
       <tbody>${lista.map((e) => {
         const parada = encomendaParada(e, agora);
         let situacao = html`<${Etiqueta} tipo="alerta">Aguardando<//>`;
@@ -456,7 +456,7 @@ function SVendas({ estado, executar, agora }) {
       : html`<${Vazio} texto="Nenhuma solicitação aguardando." />`}
     <h2>Vendedores</h2>
     <div class="tabela-rolagem"><table class="tabela">
-      <thead><tr><th>Vendedor</th><th>Situação</th><th>Anúncios ativos</th><th>Pedidos no mês</th><th><span class="sub">Ação</span></th></tr></thead>
+      <thead><tr><th>Vendedor</th><th>Situação</th><th>Anúncios ativos</th><th>Pedidos no mês</th><th>Ação</th></tr></thead>
       <tbody>${vendedores.map((p) => html`<tr key=${p.unidade}>
         <td>${p.nome} · apto ${p.unidade}</td>
         <td>${p.vendedor === 'aprovado' ? html`<${Etiqueta} tipo="ok">Ativo<//>` : html`<${Etiqueta} tipo="perigo">Suspenso<//>`}</td>
@@ -469,7 +469,7 @@ function SVendas({ estado, executar, agora }) {
     </table></div>
     <h2>Anúncios</h2>
     <div class="tabela-rolagem"><table class="tabela">
-      <thead><tr><th>Anúncio</th><th>Vendedor</th><th>Preço</th><th>Disponível</th><th>Situação</th><th><span class="sub">Ação</span></th></tr></thead>
+      <thead><tr><th>Anúncio</th><th>Vendedor</th><th>Preço</th><th>Disponível</th><th>Situação</th><th>Ação</th></tr></thead>
       <tbody>${[...estado.anuncios].sort((a, b) => b.criadoEm.localeCompare(a.criadoEm)).map((a) => {
         let situacao = html`<${Etiqueta} tipo="ok">Na vitrine<//>`;
         if (a.oculto) situacao = html`<${Etiqueta} tipo="perigo">Oculto<//>`;

@@ -348,8 +348,8 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 .cel-pessoa button[aria-pressed="true"] { border-color: var(--laranja); background: var(--laranja-tinta); color: var(--laranja-forte); }
 .pilha { display: flex; flex-direction: column; gap: 10px; }
 .pilha > h2 { margin: 14px 0 0; }
-.vendas-nav { display: flex; align-items: stretch; border-bottom: 1px solid var(--borda); overflow-x: auto; }
-.vendas-nav a { display: flex; align-items: center; gap: 6px; padding: 0 10px; min-height: 44px; color: var(--texto); text-decoration: none; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; border-bottom: 3px solid transparent; }
+.vendas-nav { display: flex; align-items: stretch; border-bottom: 1px solid var(--borda); overflow-x: auto; scrollbar-width: none; }
+.vendas-nav a { display: flex; align-items: center; gap: 4px; padding: 0 8px; min-height: 44px; color: var(--texto); text-decoration: none; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; border-bottom: 3px solid transparent; }
 .vendas-nav a.ativa { color: var(--laranja-forte); border-bottom-color: var(--laranja); }
 .vendas-nav a.sacola { margin-left: auto; }
 .anuncios { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }

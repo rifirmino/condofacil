@@ -176,6 +176,66 @@ const ROTEIROS = {
     await esperarTexto('1 de 32 unidades leram');
   },
 
+  async vendaCompra() {
+    await irPara('#morador.vendas.a1');
+    await esperarTexto('Restam 10');
+    await preencher('Quantidade', '2');
+    await clicar('Adicionar à sacola');
+    await esperarTexto('Adicionado à sacola');
+    await irPara('#morador.vendas.a2');
+    await clicar('Adicionar à sacola');
+    await esperarTexto('Adicionado à sacola');
+    await irPara('#morador.vendas.sacola');
+    await esperarTexto('R$ 48,00');
+    await clicar('Fechar pedido');
+    await esperarTexto('Pedido PD-011');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Juliana Costa')`, 'o aviso de pedido para a Juliana');
+    await irPara('#morador.vendas.a1');
+    await esperarTexto('Restam 8');
+  },
+
+  async vendaAtendimento() {
+    await clicar('Juliana · 104');
+    await irPara('#morador.vendas.PD-011');
+    await clicar('Aceitar pedido');
+    await esperarTexto('Pedido aceito pelo vendedor');
+    await preencher('Mensagem', 'Pode passar às 18h');
+    await clicar('Enviar');
+    await esperarTexto('Pode passar às 18h');
+    await clicar('Ana · 302');
+    await irPara('#morador.vendas.PD-011');
+    await esperarTexto('Pode passar às 18h');
+    await clicar('Juliana · 104');
+    await irPara('#morador.vendas.PD-011');
+    await clicar('Marcar como entregue');
+    await clicar('Marcar como pago');
+    await esperarTexto('Pagamento confirmado pelo vendedor');
+    await irPara('#morador.vendas.loja');
+    await clicar('Painel');
+    await esperarTexto('R$ 102,00');
+    await clicar('Ana · 302');
+  },
+
+  async vendaVirarVendedora() {
+    await irPara('#morador.vendas.loja');
+    await preencher('O que você pretende vender?', 'Bolos caseiros por encomenda');
+    await clicar('Pedir para vender');
+    await esperarTexto('Aguardando aprovação do síndico');
+    await irPara('#sindico.vendas');
+    await clicarSeletor('[data-acao="aprovar-vendedor-302"]');
+    await esperar(`!document.querySelector('[data-acao="aprovar-vendedor-302"]')`, 'a solicitação sair da lista');
+    await irPara('#morador.vendas.novo-anuncio');
+    await preencher('Título', 'Bolo de cenoura com chocolate');
+    await preencher('Preço (R$)', '35,00');
+    await preencher('Quantidade', '4');
+    await marcar('Pix');
+    await marcar('Retirar no apto');
+    await clicar('Publicar anúncio');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('9 moradores')`, 'o aviso para quem aceita ofertas');
+    await irPara('#morador.vendas');
+    await esperarTexto('Bolo de cenoura com chocolate');
+  },
+
   async persistencia() {
     await irPara('#sindico.comunicados');
     await esperarTexto('Bazar de Natal');
@@ -190,7 +250,7 @@ const ROTEIROS = {
   async larguraCelular() {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await pausa(300);
-    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#morador.inicio', '#morador.reservas', '#portaria.registrar', '#portaria.entregar']) {
+    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar']) {
       await irPara(hash);
       const largura = await js('document.documentElement.scrollWidth');
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);

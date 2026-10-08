@@ -52,7 +52,7 @@ export function TelaVendas(props) {
   } else {
     conteudo = html`<${VVitrine} ...${props} />`;
   }
-  const links = [['vitrine', 'Vitrine', '#morador.vendas'], ['pedidos', 'Meus pedidos', '#morador.vendas.pedidos'], ['loja', pessoa.vendedor === 'aprovado' ? 'Minha loja' : 'Quero vender', '#morador.vendas.loja']];
+  const links = [['vitrine', 'Vitrine', '#morador.vendas'], ['pedidos', 'Meus pedidos', '#morador.vendas.pedidos'], ['loja', pessoa.vendedor === 'aprovado' ? 'Minha loja' : 'Vender', '#morador.vendas.loja']];
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Vendas</h1>
     <nav class="vendas-nav" aria-label="Vendas">

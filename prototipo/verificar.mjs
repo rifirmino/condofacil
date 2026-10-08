@@ -30,7 +30,7 @@ const CHECAGENS = [
   ['#sindico.documentos', ['Vencido há 3 dias', 'Vence em 25 dias', 'Só conselho']],
   ['#sindico.encomendas', ['Reenviar lembrete', 'Retirada por Beatriz Rocha']],
   ['#morador.preferencias', ['Receber avisos de novos anúncios', 'Você ainda não vende', 'Ana · 302', 'Juliana · 104']],
-  ['#morador.vendas', ['Brigadeiro gourmet (caixa com 6)', 'Juliana Costa · apto 104', 'Restam 10', 'Quero vender']],
+  ['#morador.vendas', ['Brigadeiro gourmet (caixa com 6)', 'Juliana Costa · apto 104', 'Restam 10', 'Vender']],
   ['#morador.vendas.a1', ['Adicionar à sacola', 'Pix, Dinheiro', 'Retirar no apto, Entrega na porta']],
   ['#morador.vendas.sacola', ['Sua sacola está vazia.']],
   ['#morador.vendas.pedidos', ['Você ainda não fez pedidos.']],
