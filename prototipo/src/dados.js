@@ -1,4 +1,5 @@
 import { isoDia, somarDias, momento, fmtDia } from './datas.js';
+import { vendasIniciais, perfilVenda } from './vendas/dados.js';
 
 export const UNIDADES = Array.from({ length: 32 }, (_, i) => `${Math.floor(i / 4) + 1}0${(i % 4) + 1}`);
 export const UNIDADE_ANA = '302';
@@ -64,11 +65,11 @@ export function dadosIniciais(agora = new Date()) {
   const canaisPadrao = ['push', 'email', 'whatsapp'];
 
   return {
-    versao: 1,
+    versao: 2,
     geradoEm: hoje,
     proximoProtocolo: 43,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
-    pessoas: MORADORES.map(([unidade, nome]) => ({ id: `p${unidade}`, nome, unidade })),
+    pessoas: MORADORES.map(([unidade, nome]) => ({ id: `p${unidade}`, nome, unidade, ...perfilVenda(unidade, em) })),
     areas: [
       { id: 'salao', nome: 'Salão de festas', tipo: 'periodo', periodos, taxa: 150, aprovacao: 'manual', antecedenciaMin: 2, antecedenciaMax: 60, limiteMes: 2, vinculadas: ['churrasqueira'], capacidade: 80, itens: '10 mesas, 60 cadeiras, geladeira e fogão', regulamento: 'Som até as 22h. Limpeza por conta do morador. Vistoria na entrada e na saída.' },
       { id: 'churrasqueira', nome: 'Churrasqueira', tipo: 'periodo', periodos, taxa: 50, aprovacao: 'automatica', antecedenciaMin: 1, antecedenciaMax: 60, limiteMes: 2, vinculadas: ['salao'], capacidade: 25, itens: 'Grelha, 4 mesas, 24 cadeiras e pia', regulamento: 'Traga o carvão e deixe a grelha limpa.' },
@@ -137,5 +138,8 @@ export function dadosIniciais(agora = new Date()) {
       { id: 'e6', unidade: '203', transportadora: 'Amazon', codigo: '918266', chegadaEm: em(-3, 11), status: 'retirada', foto: true, retiradaPor: 'Beatriz Rocha', retiradaEm: em(-3, 18), lembretes: 0, registradaPor: 'Seu José' },
       { id: 'e7', unidade: '702', transportadora: 'Mercado Livre', codigo: '557029', chegadaEm: em(-2, 10), status: 'retirada', foto: true, retiradaPor: 'Sônia Araújo', retiradaEm: em(-2, 12), lembretes: 0, registradaPor: 'Seu José' },
     ],
+    moradorAtual: UNIDADE_ANA,
+    sacola: [],
+    ...vendasIniciais(em),
   };
 }
