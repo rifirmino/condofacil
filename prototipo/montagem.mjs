@@ -9,6 +9,9 @@ const raiz = dirname(fileURLToPath(import.meta.url));
 export const ORDEM = [
   'src/vendor.js',
   'src/datas.js',
+  'src/dados.js',
+  'src/casos/afirmar.js',
+  'src/casos/dados.js',
   'src/ui/app.js',
 ];
 
