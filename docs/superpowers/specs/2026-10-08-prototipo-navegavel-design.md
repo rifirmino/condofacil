@@ -158,3 +158,9 @@ Nenhuma marca real é usada.
 
 - `?teste=1` roda um autoteste das funções da seção 4, com casos de sucesso e falha para cada regra. O resultado aparece num painel e no console.
 - Antes de publicar, os 4 roteiros da seção 5 são percorridos em largura desktop e em largura de celular (390 px), incluindo "Reiniciar demonstração".
+
+## Publicação
+
+Protótipo publicado (link privado): https://claude.ai/artifact/U7U8aKxcxM9A1Hbnb9bv9r
+
+Rotas diretas usam o formato `#perfil.tela.id` (ex.: `#morador.reservas`, `#sindico.ocorrencias.OC-0042`), porque o link do Artifact só repassa âncoras simples.
