@@ -53,8 +53,34 @@ export function Vazio({ texto }) {
   return html`<p class="vazio">${texto}</p>`;
 }
 
+// Ícones de linha (24×24, traço), no estilo dos ícones de serviço do modelo de referência.
+const ICONES = {
+  predio: 'M4 21V5l8-3 8 3v16M2 21h20M9 21v-4h6v4M8 8h2M14 8h2M8 12h2M14 12h2',
+  casa: 'M3 11l9-7 9 7M5 10v10h14V10M10 20v-6h4v6',
+  calendario: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
+  megafone: 'M3 10v4h4l7 4V6l-7 4zM17 9a4 4 0 0 1 0 6',
+  prancheta: 'M9 3h6v3H9zM7 5H5v16h14V5h-2M8 11h8M8 15h5',
+  menu: 'M4 7h16M4 12h16M4 17h16',
+  pacote: 'M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10',
+  documento: 'M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6',
+  camera: 'M4 8h3l2-3h6l2 3h3v11H4zM12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z',
+  clipe: 'M16 7l-7 7a2 2 0 0 0 3 3l7-7a4 4 0 0 0-6-6l-7 7a6 6 0 0 0 8 8l5-5',
+  alfinete: 'M9 3h6l-1 6 3 3H7l3-3zM12 12v9',
+  grafico: 'M4 20V10M10 20V4M16 20v-7M3 20h18',
+  leitor: 'M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M8 12h8',
+  entrega: 'M4 12l5 5L20 6',
+};
+
+export function Icone({ nome, tamanho = 22 }) {
+  return html`<svg class="icone" width=${tamanho} height=${tamanho} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d=${ICONES[nome]} /></svg>`;
+}
+
+export function QuadroIcone({ nome, cheio = false }) {
+  return html`<span class=${`quadro-icone${cheio ? ' cheio' : ''}`}><${Icone} nome=${nome} /></span>`;
+}
+
 export function FotoFalsa({ rotulo = 'Foto' }) {
-  return html`<div class="foto-falsa" role="img" aria-label=${rotulo}><span aria-hidden="true">📷</span>${rotulo}</div>`;
+  return html`<div class="foto-falsa" role="img" aria-label=${rotulo}><${Icone} nome="camera" tamanho=${28} />${rotulo}</div>`;
 }
 
 export function Campo({ rotulo, dica, children }) {

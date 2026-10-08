@@ -5,7 +5,7 @@ import { carregarEstado, salvarEstado, limparEstado } from '../armazenamento.js'
 import { CASOS_DADOS } from '../casos/dados.js';
 import { CASOS_REGRAS } from '../casos/regras.js';
 import { CASOS_ACOES } from '../casos/acoes.js';
-import { PERFIS, lerRota, ir, Selo } from './comum.js';
+import { PERFIS, lerRota, ir, Selo, Icone } from './comum.js';
 import { TelaPortaria } from './portaria.js';
 import { TelaMorador } from './morador.js';
 import { TelaSindico } from './sindico.js';
@@ -67,7 +67,7 @@ function App() {
   const Tela = TELAS_PERFIL[rota.perfil];
   return html`
     <header class="barra-demo">
-      <div class="marca"><span class="logo" aria-hidden="true">CF</span><strong>CondoFácil</strong><span class="sub">Residencial Ipê Amarelo · 32 unidades</span></div>
+      <div class="marca"><span class="logo"><${Icone} nome="predio" tamanho=${20} /></span><strong class="marca-nome">CondoFácil</strong><span class="sub">Residencial Ipê Amarelo · 32 unidades</span></div>
       <div class="ver-como" role="group" aria-label="Ver como">
         <span>Ver como</span>
         ${PERFIS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${rota.perfil === p.id} onClick=${() => trocarPerfil(p.id)}>${p.nome}</button>`)}

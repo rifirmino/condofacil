@@ -3,9 +3,9 @@ import { TRANSPORTADORAS, PORTEIRO_DIA } from '../dados.js';
 import { areaPorId, moradoresDaUnidade, encomendaParada } from '../regras.js';
 import { registrarEncomenda, entregarEncomenda } from '../acoes.js';
 import { isoDia, fmtHora, haQuanto } from '../datas.js';
-import { Campo, Erro, Vazio, FotoFalsa, Etiqueta } from './comum.js';
+import { Campo, Erro, Vazio, FotoFalsa, Etiqueta, Icone } from './comum.js';
 
-const ABAS_PORTARIA = [['registrar', 'Registrar'], ['entregar', 'Entregar'], ['hoje', 'Reservas de hoje']];
+const ABAS_PORTARIA = [['registrar', 'Registrar', 'pacote'], ['entregar', 'Entregar', 'entrega'], ['hoje', 'Reservas de hoje', 'calendario']];
 
 export function TelaPortaria(props) {
   const tela = ABAS_PORTARIA.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'registrar';
@@ -14,7 +14,7 @@ export function TelaPortaria(props) {
     <header class="tab-topo">
       <strong>Portaria</strong>
       <nav class="tab-abas" aria-label="Portaria">
-        ${ABAS_PORTARIA.map(([id, nome]) => html`<a key=${id} href=${`#portaria.${id}`} class=${id === tela ? 'ativa' : ''} aria-current=${id === tela ? 'page' : undefined}>${nome}</a>`)}
+        ${ABAS_PORTARIA.map(([id, nome, icone]) => html`<a key=${id} href=${`#portaria.${id}`} class=${id === tela ? 'ativa' : ''} aria-current=${id === tela ? 'page' : undefined}><${Icone} nome=${icone} />${nome}</a>`)}
       </nav>
       <span class="tab-turno">${PORTEIRO_DIA} · turno do dia</span>
     </header>
@@ -56,7 +56,7 @@ function PRegistrar({ estado, executar }) {
 
   return html`<section class="p-grade">
     <div class="p-coluna">
-      <button type="button" class="btn grande destaque" onClick=${lerEtiqueta}><span aria-hidden="true">📷</span> Ler etiqueta</button>
+      <button type="button" class="btn grande destaque" onClick=${lerEtiqueta}><${Icone} nome="leitor" tamanho=${26} />Ler etiqueta</button>
       ${lida && html`<p class="dica-ocr">${lida}</p>`}
       <${Campo} rotulo="Unidade"><input id="portaria-unidade" class="entrada-grande" inputmode="numeric" maxlength="3" value=${unidade} onInput=${(ev) => setUnidade(ev.target.value)} placeholder="Ex.: 302" /><//>
       ${numero.length === 3 && html`<p class="dica-unidade">${moradores.length ? moradores.map((m) => m.nome).join(', ') : 'Unidade sem morador cadastrado'}</p>`}

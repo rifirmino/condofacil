@@ -3,9 +3,9 @@ import { CATEGORIAS, TIPOS_COMUNICADO, MODELOS_COMUNICADO, NOMES_CANAL, NOMES_ST
 import { areaPorId, statusDia, indicadoresSindico, slaVencido, alertasDocumentos, acoesOcorrencia, destinatarios, encomendaParada, moradoresDaUnidade } from '../regras.js';
 import { aprovarReserva, recusarReserva, publicarComunicado, avancarOcorrencia, comentarOcorrencia, arquivarOcorrencia, lembrarEncomenda } from '../acoes.js';
 import { isoDia, somarMes, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
-import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, LinhaTempo, Estrelas, PrevDoc, Campo } from './comum.js';
+import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
-const MENU_SINDICO = [['inicio', 'Início'], ['reservas', 'Reservas'], ['comunicados', 'Comunicados'], ['ocorrencias', 'Ocorrências'], ['documentos', 'Documentos'], ['encomendas', 'Encomendas']];
+const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote']];
 const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
 const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
 
@@ -33,7 +33,7 @@ export function TelaSindico(props) {
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
       <p class="painel-usuario"><strong>Roberto Lima</strong><small>Síndico · apto 801</small></p>
-      ${MENU_SINDICO.map(([id, nome]) => html`<a key=${id} href=${`#sindico.${id}`} class=${id === tela ? 'ativa' : ''} aria-current=${id === tela ? 'page' : undefined}>${nome}</a>`)}
+      ${MENU_SINDICO.map(([id, nome, icone]) => html`<a key=${id} href=${`#sindico.${id}`} class=${id === tela ? 'ativa' : ''} aria-current=${id === tela ? 'page' : undefined}><${Icone} nome=${icone} tamanho=${20} />${nome}</a>`)}
     </nav>
     <div class="painel-conteudo"><${Conteudo} ...${props} /></div>
   </div>`;
@@ -47,16 +47,16 @@ function SInicio({ estado, agora }) {
   const alertas = alertasDocumentos(estado.documentos, isoDia(agora));
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
   const cartoes = [
-    ['Reservas pendentes', ind.pendentes, '#sindico.reservas', ind.pendentes ? 'alerta' : 'ok', 'Aguardando sua aprovação'],
-    ['Ocorrências abertas', ind.abertas, '#sindico.ocorrencias', ind.slaVencidas ? 'perigo' : 'info', ind.slaVencidas ? `${ind.slaVencidas} com prazo vencido` : 'Todas dentro do prazo'],
-    ['Encomendas paradas', ind.paradas, '#sindico.encomendas', ind.paradas ? 'alerta' : 'ok', 'Há mais de 3 dias na portaria'],
-    ['Documentos vencendo', ind.vencendo, '#sindico.documentos', ind.vencendo ? 'perigo' : 'ok', 'Vencidos ou nos próximos 60 dias'],
+    ['Reservas pendentes', ind.pendentes, '#sindico.reservas', ind.pendentes ? 'alerta' : 'ok', 'Aguardando sua aprovação', 'calendario'],
+    ['Ocorrências abertas', ind.abertas, '#sindico.ocorrencias', ind.slaVencidas ? 'perigo' : 'info', ind.slaVencidas ? `${ind.slaVencidas} com prazo vencido` : 'Todas dentro do prazo', 'prancheta'],
+    ['Encomendas paradas', ind.paradas, '#sindico.encomendas', ind.paradas ? 'alerta' : 'ok', 'Há mais de 3 dias na portaria', 'pacote'],
+    ['Documentos vencendo', ind.vencendo, '#sindico.documentos', ind.vencendo ? 'perigo' : 'ok', 'Vencidos ou nos próximos 60 dias', 'documento'],
   ];
   const semPendencias = !pendentes.length && !vencidas.length && !paradas.length && !alertas.length;
   return html`<section>
     <h1>Olá, Roberto</h1>
     <div class="indicadores">
-      ${cartoes.map(([rotulo, valor, href, tipo, detalhe]) => html`<a key=${rotulo} class=${`indicador ind-${tipo}`} href=${href}><span>${rotulo}</span><strong>${valor}</strong><small>${detalhe}</small></a>`)}
+      ${cartoes.map(([rotulo, valor, href, tipo, detalhe, icone]) => html`<a key=${rotulo} class=${`indicador ind-${tipo}`} href=${href}><${QuadroIcone} nome=${icone} cheio=${tipo === 'perigo' || tipo === 'alerta'} /><span class="ind-rotulo">${rotulo}</span><strong>${valor}</strong><small>${detalhe}</small></a>`)}
     </div>
     <div class="cartao adesao">
       <div class="linha-entre"><strong>Adesão dos moradores</strong><span>${ind.adesao.com} de ${ind.adesao.total} unidades com app</span></div>
@@ -168,7 +168,7 @@ function SComunicados(props) {
   return html`<section>
     <div class="linha-entre"><h1>Comunicados</h1><a class="btn primario" href="#sindico.comunicados.novo">Novo comunicado</a></div>
     <ul class="lista-cartoes">${lista.map((x) => html`<li key=${x.id}><a class="cartao link" href=${`#sindico.comunicados.${x.id}`}>
-      <div class="linha-entre"><span><${Etiqueta} tipo=${tipoEtiquetaComunicado(x)}>${TIPOS_COMUNICADO[x.tipo]}<//>${x.fixado ? ' 📌' : ''}</span><small class="sub">${fmtDataHora(x.publicadoEm)}</small></div>
+      <div class="linha-entre"><span class="etq-linha"><${Etiqueta} tipo=${tipoEtiquetaComunicado(x)}>${TIPOS_COMUNICADO[x.tipo]}<//>${x.fixado && html`<small class="fixado"><${Icone} nome="alfinete" tamanho=${16} />Fixado</small>`}</span><small class="sub">${fmtDataHora(x.publicadoEm)}</small></div>
       <strong>${x.titulo}</strong>
       <${BarraLeitura} lidas=${x.leituras.length} total=${destinatarios(estado, x.publico).length} />
     </a></li>`)}</ul>
@@ -183,7 +183,7 @@ function SDetalheComunicado({ estado, c }) {
     <h1>${c.titulo}</h1>
     <p class="sub">Publicado em ${fmtDataHora(c.publicadoEm)} · ${c.canais.map((k) => NOMES_CANAL[k]).join(', ')}</p>
     <p class="texto-longo">${c.texto}</p>
-    ${c.anexo && html`<p class="anexo">📎 ${c.anexo}</p>`}
+    ${c.anexo && html`<p class="anexo"><${Icone} nome="clipe" tamanho=${18} />${c.anexo}</p>`}
     <h2>Confirmação de leitura</h2>
     <${BarraLeitura} lidas=${c.leituras.length} total=${dest.length} />
     <div class="grade-unidades">${dest.map((u) => {
@@ -251,7 +251,7 @@ function SNovoComunicado({ executar }) {
     </fieldset>
     <label class="check"><input id="comunicado-fixar" type="checkbox" checked=${fixado} onChange=${(ev) => setFixado(ev.target.checked)} /><span>Fixar no topo</span></label>
     ${anexo
-      ? html`<p class="anexo">📎 ${anexo} <button type="button" class="btn-link" onClick=${() => setAnexo(null)}>remover</button></p>`
+      ? html`<p class="anexo"><${Icone} nome="clipe" tamanho=${18} />${anexo} <button type="button" class="btn-link" onClick=${() => setAnexo(null)}>remover</button></p>`
       : html`<button type="button" class="btn secundario" onClick=${() => setAnexo('comunicado-anexo.pdf')}>Anexar PDF</button>`}
     <${Erro} texto=${erro} />
     <button type="button" class="btn primario" onClick=${publicar}>Publicar comunicado</button>

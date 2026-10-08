@@ -3,9 +3,9 @@ import { UNIDADE_ANA, CATEGORIAS, TIPOS_COMUNICADO } from '../dados.js';
 import { areaPorId, statusDia, horariosDaArea, comunicadosDaUnidade, avisoCancelamento, encomendaParada, STATUS_ATIVOS } from '../regras.js';
 import { solicitarReserva, cancelarReserva, marcarLido, reagir, abrirOcorrencia, avaliarOcorrencia, euTambem } from '../acoes.js';
 import { isoDia, somarMes, diferencaDias, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
-import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, QrFalso, LinhaTempo, Estrelas, PrevDoc, Campo } from './comum.js';
+import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, QrFalso, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
-const ABAS_MORADOR = [['inicio', 'Início', '⌂'], ['reservas', 'Reservas', '📅'], ['avisos', 'Avisos', '📣'], ['ocorrencias', 'Ocorrências', '📝'], ['mais', 'Mais', '☰']];
+const ABAS_MORADOR = [['inicio', 'Início', 'casa'], ['reservas', 'Reservas', 'calendario'], ['avisos', 'Avisos', 'megafone'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['mais', 'Mais', 'menu']];
 
 function relogio(d) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -37,7 +37,7 @@ export function TelaMorador(props) {
     <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
     <div class="cel-conteudo"><${Conteudo} ...${props} /></div>
     <nav class="cel-abas" aria-label="Navegação do morador">
-      ${ABAS_MORADOR.map(([id, nome, icone]) => html`<a key=${id} href=${`#morador.${id}`} class=${id === aba ? 'ativa' : ''} aria-current=${id === aba ? 'page' : undefined}><span aria-hidden="true">${icone}</span>${nome}</a>`)}
+      ${ABAS_MORADOR.map(([id, nome, icone]) => html`<a key=${id} href=${`#morador.${id}`} class=${id === aba ? 'ativa' : ''} aria-current=${id === aba ? 'page' : undefined}><${Icone} nome=${icone} />${nome}</a>`)}
     </nav>
   </div>`;
 }
@@ -215,7 +215,7 @@ function MAvisos({ estado, rota, executar }) {
       <h1 class="m-titulo">${c.titulo}</h1>
       <p class="m-sub">${fmtDataHora(c.publicadoEm)} · Roberto Lima, síndico</p>
       <p class="m-texto">${c.texto}</p>
-      ${c.anexo && html`<p class="anexo">📎 ${c.anexo}</p>`}
+      ${c.anexo && html`<p class="anexo"><${Icone} nome="clipe" tamanho=${18} />${c.anexo}</p>`}
       ${lido
         ? html`<p class="sucesso">✓ Você confirmou a leitura</p>`
         : html`<button type="button" class="btn primario bloco" onClick=${() => executar((e) => marcarLido(e, c.id, UNIDADE_ANA))}>Li e estou ciente</button>`}
@@ -229,7 +229,7 @@ function MAvisos({ estado, rota, executar }) {
     <ul class="m-lista">${lista.map((x) => {
       const lido = x.leituras.includes(UNIDADE_ANA);
       return html`<li key=${x.id}><a class=${`cartao link${lido ? '' : ' nao-lido'}`} href=${`#morador.avisos.${x.id}`}>
-        <div class="linha-entre"><${Etiqueta} tipo=${tipoEtiquetaAviso(x)}>${TIPOS_COMUNICADO[x.tipo]}<//>${x.fixado && html`<small>📌 Fixado</small>`}</div>
+        <div class="linha-entre"><${Etiqueta} tipo=${tipoEtiquetaAviso(x)}>${TIPOS_COMUNICADO[x.tipo]}<//>${x.fixado && html`<small class="fixado"><${Icone} nome="alfinete" tamanho=${16} />Fixado</small>`}</div>
         <strong>${x.titulo}</strong>
         <small class="sub">${fmtDataHora(x.publicadoEm)}${lido ? '' : ' · não lido'}</small>
       </a></li>`;
@@ -331,8 +331,8 @@ function MDetalheOcorrencia({ executar, oc }) {
 function MMais() {
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Mais</h1>
-    <a class="cartao link" href="#morador.encomendas"><strong>Encomendas</strong><span class="sub">Na portaria e histórico de retiradas</span></a>
-    <a class="cartao link" href="#morador.documentos"><strong>Documentos</strong><span class="sub">Convenção, regimento, atas e laudos</span></a>
+    <a class="cartao link com-icone" href="#morador.encomendas"><${QuadroIcone} nome="pacote" /><span><strong>Encomendas</strong><span class="sub">Na portaria e histórico de retiradas</span></span></a>
+    <a class="cartao link com-icone" href="#morador.documentos"><${QuadroIcone} nome="documento" /><span><strong>Documentos</strong><span class="sub">Convenção, regimento, atas e laudos</span></span></a>
   </section>`;
 }
 

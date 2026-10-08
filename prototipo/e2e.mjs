@@ -94,7 +94,8 @@ async function esperar(condicao, descricao, ms = 5000) {
   throw new Error(`tempo esgotado esperando ${descricao}`);
 }
 
-const esperarTexto = (texto) => esperar(`document.body.innerText.includes(${JSON.stringify(texto)})`, `o texto "${texto}"`);
+// Ignora maiúsculas: o CSS aplica caixa alta em títulos e selos, e o innerText reflete isso.
+const esperarTexto = (texto) => esperar(`document.body.innerText.toLowerCase().includes(${JSON.stringify(texto.toLowerCase())})`, `o texto "${texto}"`);
 const paginaPronta = () => esperar(`document.readyState === 'complete' && !!document.querySelector('.barra-demo')`, 'a página carregar', 20000);
 const clicar = async (texto) => { await js(`__e2e.clicar(${JSON.stringify(texto)})`); await pausa(120); };
 const clicarSeletor = async (seletor) => { await js(`__e2e.clicarSeletor(${JSON.stringify(seletor)})`); await pausa(120); };
