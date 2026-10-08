@@ -123,8 +123,8 @@ strong { color: var(--titulo); font-weight: 600; }
 .celular { width: 390px; height: 800px; border: 12px solid var(--moldura); border-radius: 44px; background: var(--fundo); display: flex; flex-direction: column; overflow: hidden; }
 .cel-status { display: flex; justify-content: space-between; padding: 8px 24px 4px; font-size: 12px; font-weight: 600; background: var(--sup); color: var(--titulo); }
 .cel-conteudo { flex: 1; overflow-y: auto; }
-.cel-abas { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--borda); background: var(--sup); }
-.cel-abas a { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 0 10px; font-size: 10.5px; font-weight: 600; color: var(--suave); text-decoration: none; min-height: 56px; box-shadow: inset 0 2px 0 transparent; }
+.cel-abas { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 1px solid var(--borda); background: var(--sup); }
+.cel-abas a { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 0 10px; font-size: 10px; font-weight: 600; color: var(--suave); text-decoration: none; min-height: 56px; box-shadow: inset 0 2px 0 transparent; }
 .cel-abas a.ativa { color: var(--laranja-forte); box-shadow: inset 0 2px 0 var(--laranja); }
 .m-pagina { padding: 20px 16px; display: flex; flex-direction: column; gap: 10px; }
 .m-pagina > h2 { margin: 14px 0 0; }
@@ -346,3 +346,47 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 .cel-pessoa { display: flex; gap: 6px; padding: 8px 16px; background: var(--sup); border-bottom: 1px solid var(--borda); }
 .cel-pessoa button { flex: 1; min-height: 36px; border: 1px solid var(--borda); border-radius: 2px; background: var(--sup); color: var(--titulo); font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .cel-pessoa button[aria-pressed="true"] { border-color: var(--laranja); background: var(--laranja-tinta); color: var(--laranja-forte); }
+.pilha { display: flex; flex-direction: column; gap: 10px; }
+.pilha > h2 { margin: 14px 0 0; }
+.vendas-nav { display: flex; align-items: stretch; border-bottom: 1px solid var(--borda); overflow-x: auto; }
+.vendas-nav a { display: flex; align-items: center; gap: 6px; padding: 0 10px; min-height: 44px; color: var(--texto); text-decoration: none; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; border-bottom: 3px solid transparent; }
+.vendas-nav a.ativa { color: var(--laranja-forte); border-bottom-color: var(--laranja); }
+.vendas-nav a.sacola { margin-left: auto; }
+.anuncios { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.cartao.anuncio { padding: 10px; gap: 4px; height: 100%; }
+.foto-produto { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; aspect-ratio: 4 / 3; max-width: 100%; border-radius: 2px; background: var(--laranja-tinta); color: var(--laranja-forte); font-size: 12px; font-weight: 600; }
+.preco { margin: 0; font-weight: 700; color: var(--titulo); font-variant-numeric: tabular-nums; }
+.preco.grande { font-size: 1.5rem; font-weight: 300; }
+.anuncio-titulo { margin: 0; font-size: 1.1rem; font-weight: 600; color: var(--titulo); }
+.itens-sacola { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.itens-sacola li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 10px; font-variant-numeric: tabular-nums; }
+.itens-sacola li > span:first-child { flex: 1; min-width: 0; }
+.total { padding-top: 8px; border-top: 1px solid var(--borda); }
+.total strong { font-size: 1.1rem; }
+.cartao.destaque { box-shadow: inset 3px 0 0 var(--laranja); }
+.conversa { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.conversa li { display: flex; flex-direction: column; gap: 2px; max-width: 85%; padding: 8px 12px; border-radius: var(--raio); }
+.conversa li small { color: var(--suave); font-size: 11.5px; }
+.conversa li.minha { align-self: flex-end; background: var(--laranja-tinta); }
+.conversa li.outra { align-self: flex-start; background: var(--sup); border: 1px solid var(--borda); }
+.conversa li.sem-mensagem { max-width: none; padding: 0; color: var(--suave); font-style: italic; }
+.enviar-mensagem { display: flex; align-items: flex-end; gap: 8px; }
+.enviar-mensagem .campo { flex: 1; min-width: 0; }
+.edicao-anuncio { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.convite { display: flex; align-items: flex-start; gap: 14px; padding: 16px; background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); }
+.convite > div { display: flex; flex-direction: column; gap: 4px; }
+.numeros { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.numero { display: flex; flex-direction: column; padding: 12px 14px; background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); }
+.numero span { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--suave); }
+.numero strong { font-size: 1.35rem; font-weight: 300; font-variant-numeric: tabular-nums; }
+.grafico-barras { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; padding-top: 8px; }
+.grafico-barras .coluna { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; min-width: 0; height: 160px; }
+.grafico-barras .valor { visibility: hidden; font-size: 10.5px; font-weight: 600; color: var(--titulo); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.grafico-barras .coluna.maior .valor, .grafico-barras .coluna:hover .valor { visibility: visible; }
+.grafico-barras .barra-v { width: 100%; max-width: 30px; min-height: 0; background: var(--laranja-forte); border-radius: 4px 4px 0 0; }
+.grafico-barras .rotulo-x { width: 100%; padding-top: 4px; border-top: 1px solid var(--borda); font-size: 10px; text-align: center; color: var(--suave); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.so-leitor { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.mais-vendidos { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.mais-vendidos li strong { margin-left: 8px; }
+.situacao-pedidos { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 0; }
+.situacao-pedidos dd { margin: 0; font-weight: 600; color: var(--titulo); text-align: right; font-variant-numeric: tabular-nums; }
