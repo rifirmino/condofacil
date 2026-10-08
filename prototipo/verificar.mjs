@@ -9,6 +9,9 @@ import { acharChrome, urlPagina, raiz } from './navegador.mjs';
 const CHECAGENS = [
   ['?teste=1', ['falhas: 0']],
   ['#sindico.inicio', ['Ver como', 'Reiniciar demonstração', 'Residencial Ipê Amarelo']],
+  ['#portaria.registrar', ['Ler etiqueta', 'Registrar encomenda', 'Mercado Livre', 'Seu José']],
+  ['#portaria.entregar', ['Buscar por código ou unidade', 'Apto 302', 'Parada']],
+  ['#portaria.hoje', ['Churrasqueira', 'João Pereira', 'Apto 603']],
 ];
 
 const CAPTURAS = [
