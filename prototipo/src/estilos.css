@@ -269,3 +269,7 @@ legend { font-weight: 600; padding: 0 4px; }
   .marca .sub, .tab-turno { display: none; }
   .selo { top: auto; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); left: 16px; right: 16px; max-width: none; }
 }
+.cartao > .etq { align-self: flex-start; }
+.painel-conteudo > section { display: flex; flex-direction: column; gap: 10px; }
+.painel-conteudo > section > h1 { margin: 0; }
+.painel-conteudo > section > h2 { margin: 14px 0 0; }

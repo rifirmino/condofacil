@@ -31,6 +31,7 @@ const CHECAGENS = [
   ['#sindico.encomendas', ['Reenviar lembrete', 'Retirada por Beatriz Rocha']],
 ];
 
+// Só larguras de desktop: o Chrome headless impõe janela mínima maior que um celular; a largura de 390 px é medida no e2e.
 const CAPTURAS = [
   ['sindico-inicio', '#sindico.inicio', '1366,900'],
   ['sindico-reservas', '#sindico.reservas', '1366,1100'],
@@ -40,8 +41,6 @@ const CAPTURAS = [
   ['morador-reservas', '#morador.reservas', '1366,900'],
   ['portaria-registrar', '#portaria.registrar', '1366,900'],
   ['portaria-entregar', '#portaria.entregar', '1366,900'],
-  ['celular-morador', '#morador.inicio', '390,844'],
-  ['celular-sindico', '#sindico.inicio', '390,844'],
 ];
 
 const chrome = acharChrome();
