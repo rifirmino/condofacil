@@ -1,15 +1,278 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CondoFácil Protótipo</title>
 <style>
-body { margin: 0; background: #f3f4f1; color: #1c2321; font-family: system-ui, sans-serif; }
+/* Layout: barra de demonstração escura (fora do produto) + palco central com a moldura do perfil escolhido. */
+:root {
+  --bg: #f3f4f1;
+  --sup: #ffffff;
+  --sup-2: #f6f7f5;
+  --texto: #1c2321;
+  --suave: #5a6461;
+  --borda: #d6dbd7;
+  --pri: #1f6b52;
+  --pri-forte: #17543f;
+  --pri-texto: #ffffff;
+  --acento: #e2a400;
+  --acento-texto: #1c1600;
+  --ok: #1d7044; --ok-bg: #e2f3e8;
+  --alerta: #835500; --alerta-bg: #fff1cc;
+  --perigo: #b42318; --perigo-bg: #fde8e6;
+  --info: #24569e; --info-bg: #e4ecf8;
+  --neutro: #4f5754; --neutro-bg: #eceeed;
+  --demo-bg: #202523; --demo-texto: #eef1ef; --demo-suave: #a9b2ae;
+  --moldura: #121514;
+  --papel: #ffffff; --papel-texto: #222222; --papel-suave: #666666; --papel-linha: #e3e3e3;
+  --raio: 10px;
+  --sombra: 0 1px 2px rgb(16 24 20 / 6%), 0 4px 16px rgb(16 24 20 / 8%);
+  --fonte: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121614; --sup: #1b201e; --sup-2: #222826; --texto: #e7ece9; --suave: #a3ada9; --borda: #353d3a;
+    --pri: #3fa57f; --pri-forte: #57b991; --pri-texto: #0d1311;
+    --ok: #6fcf97; --ok-bg: #17301f; --alerta: #f2c14e; --alerta-bg: #3a2e0e;
+    --perigo: #ff8a80; --perigo-bg: #3b1a17; --info: #8db4f0; --info-bg: #18263d;
+    --neutro: #b5bdb9; --neutro-bg: #2a302e; --demo-bg: #0b0d0c; --moldura: #000000;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #121614; --sup: #1b201e; --sup-2: #222826; --texto: #e7ece9; --suave: #a3ada9; --borda: #353d3a;
+  --pri: #3fa57f; --pri-forte: #57b991; --pri-texto: #0d1311;
+  --ok: #6fcf97; --ok-bg: #17301f; --alerta: #f2c14e; --alerta-bg: #3a2e0e;
+  --perigo: #ff8a80; --perigo-bg: #3b1a17; --info: #8db4f0; --info-bg: #18263d;
+  --neutro: #b5bdb9; --neutro-bg: #2a302e; --demo-bg: #0b0d0c; --moldura: #000000;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--texto); font: 15px/1.45 var(--fonte); min-height: 100vh; }
+h1 { font-size: 1.5rem; margin: 0 0 12px; text-wrap: balance; }
+h2 { font-size: 1.05rem; margin: 22px 0 10px; text-wrap: balance; }
+h3 { font-size: 1rem; margin: 0 0 6px; }
+a { color: var(--pri); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--acento); outline-offset: 2px; }
+
+/* Barra da demonstração (fora do produto) */
+.barra-demo { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 10px 16px; background: var(--demo-bg); color: var(--demo-texto); }
+.marca { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.marca .logo { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--acento); color: var(--acento-texto); font-weight: 800; font-size: 13px; }
+.marca .sub { color: var(--demo-suave); font-size: 13px; }
+.ver-como { display: flex; align-items: center; gap: 4px; background: rgb(255 255 255 / 8%); padding: 4px; border-radius: 999px; }
+.ver-como > span { font-size: 12px; color: var(--demo-suave); padding: 0 8px; }
+.ver-como button { border: 0; background: transparent; color: var(--demo-texto); padding: 6px 14px; border-radius: 999px; cursor: pointer; min-height: 36px; }
+.ver-como button[aria-pressed="true"] { background: var(--demo-texto); color: var(--demo-bg); font-weight: 600; }
+.reiniciar { border: 1px solid var(--demo-suave); background: transparent; color: var(--demo-texto); border-radius: 8px; padding: 6px 12px; cursor: pointer; min-height: 36px; }
+
+.palco { display: flex; justify-content: center; padding: 24px 16px 48px; }
+
+/* Moldura do síndico (desktop) */
+.painel { width: 100%; max-width: 1280px; min-height: 760px; display: grid; grid-template-columns: 230px 1fr; background: var(--sup); border: 1px solid var(--borda); border-radius: 14px; box-shadow: var(--sombra); overflow: hidden; }
+.painel-menu { background: var(--sup-2); border-right: 1px solid var(--borda); padding: 16px 10px; display: flex; flex-direction: column; gap: 2px; }
+.painel-usuario { display: flex; flex-direction: column; margin: 0 8px 14px; }
+.painel-usuario small { color: var(--suave); }
+.painel-menu a { padding: 10px 12px; border-radius: 8px; color: var(--texto); text-decoration: none; min-height: 44px; display: flex; align-items: center; }
+.painel-menu a.ativa { background: var(--pri); color: var(--pri-texto); font-weight: 600; }
+.painel-conteudo { padding: 24px 28px; min-width: 0; }
+
+/* Moldura do morador (celular) */
+.celular { width: 390px; height: 800px; border: 12px solid var(--moldura); border-radius: 46px; background: var(--bg); display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--sombra); }
+.cel-status { display: flex; justify-content: space-between; padding: 8px 22px 4px; font-size: 12px; font-weight: 600; background: var(--sup); }
+.cel-conteudo { flex: 1; overflow-y: auto; }
+.cel-abas { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--borda); background: var(--sup); }
+.cel-abas a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 10px; font-size: 11px; color: var(--suave); text-decoration: none; min-height: 52px; }
+.cel-abas a span { font-size: 18px; }
+.cel-abas a.ativa { color: var(--pri); font-weight: 700; }
+.m-pagina { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.m-pagina h2 { margin: 12px 0 0; }
+.m-titulo { font-size: 1.4rem; margin: 0; }
+.m-sub, .sub { color: var(--suave); margin: 0; font-size: 14px; }
+.m-texto, .texto-longo { white-space: pre-line; margin: 0; max-width: 65ch; }
+.m-ajuda { color: var(--suave); margin-top: -6px; }
+.m-lista, .lista-cartoes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.m-codigo b { font-size: 18px; letter-spacing: 2px; font-variant-numeric: tabular-nums; }
+.m-nao-lido { color: var(--pri); font-weight: 700; font-size: 13px; }
+.m-regulamento { margin: 0; font-size: 13px; color: var(--suave); }
+.m-horarios { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+
+/* Moldura da portaria (tablet) */
+.tablet { width: 1100px; max-width: 100%; height: 720px; border: 14px solid var(--moldura); border-radius: 28px; background: var(--bg); display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--sombra); }
+.tab-topo { display: flex; align-items: center; gap: 16px; padding: 10px 18px; background: var(--sup); border-bottom: 1px solid var(--borda); flex-wrap: wrap; }
+.tab-abas { display: flex; gap: 6px; flex: 1; overflow-x: auto; }
+.tab-abas a { display: flex; align-items: center; padding: 0 18px; border-radius: 10px; text-decoration: none; color: var(--texto); font-weight: 600; min-height: 56px; white-space: nowrap; }
+.tab-abas a.ativa { background: var(--pri); color: var(--pri-texto); }
+.tab-turno { color: var(--suave); font-size: 14px; }
+.tab-conteudo { flex: 1; overflow-y: auto; padding: 20px; }
+.p-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.p-coluna { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.opcoes-grandes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.campo input.entrada-grande { font-size: 1.4rem; padding: 12px 14px; min-height: 64px; font-variant-numeric: tabular-nums; }
+.dica-ocr, .dica-unidade { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--info-bg); color: var(--info); font-weight: 600; }
+.lista-encomendas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.item-encomenda { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; text-align: left; padding: 14px 16px; min-height: 64px; border: 1px solid var(--borda); border-radius: var(--raio); background: var(--sup); cursor: pointer; }
+.item-encomenda.sel { border-color: var(--pri); box-shadow: 0 0 0 2px var(--pri); }
+.item-encomenda span { color: var(--suave); }
+.grade-cartoes { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.convidados { margin: 0; padding-left: 18px; }
+
+/* Componentes */
+.cartao { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); min-width: 0; }
+.cartao.link { text-decoration: none; color: inherit; text-align: left; cursor: pointer; width: 100%; font: inherit; }
+.cartao.link:hover { border-color: var(--pri); }
+.cartao.nao-lido { border-left: 4px solid var(--pri); }
+.cartao.confirmacao { border-color: var(--ok); background: var(--ok-bg); }
+.cartao.encomenda { flex-direction: row; justify-content: space-between; align-items: center; gap: 12px; }
+.cartao.encomenda > div { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.cartao.bloqueio { background: var(--neutro-bg); }
+.linha-entre { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sugestoes, .acoes, .reacoes, .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 10px 16px; border-radius: 10px; border: 1px solid transparent; font-weight: 600; cursor: pointer; text-decoration: none; text-align: center; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primario { background: var(--pri); color: var(--pri-texto); }
+.btn.primario:hover:not(:disabled) { background: var(--pri-forte); }
+.btn.secundario, .btn.opcao { background: var(--sup); color: var(--texto); border-color: var(--borda); }
+.btn.perigo { background: var(--perigo); color: var(--sup); }
+.btn.bloco { width: 100%; }
+.btn.grande { min-height: 64px; font-size: 1.1rem; }
+.btn.destaque { background: var(--acento); color: var(--acento-texto); }
+.btn.opcao { flex-direction: column; }
+.btn.opcao small { font-weight: 400; color: var(--suave); }
+.btn.opcao.sel, .btn.secundario[aria-pressed="true"] { border-color: var(--pri); box-shadow: inset 0 0 0 2px var(--pri); }
+.btn-link { background: none; border: 0; padding: 0; color: var(--pri); font-weight: 600; cursor: pointer; text-align: left; text-decoration: underline; min-height: 32px; }
+.btn-icone { width: 44px; height: 44px; border-radius: 8px; border: 1px solid var(--borda); background: var(--sup); cursor: pointer; font-size: 20px; }
+.voltar { align-self: flex-start; background: none; border: 0; padding: 4px 0; color: var(--pri); font-weight: 600; text-decoration: none; cursor: pointer; min-height: 36px; display: inline-flex; align-items: center; }
+.chip { border: 1px solid var(--borda); background: var(--sup); border-radius: 999px; padding: 6px 14px; cursor: pointer; min-height: 40px; }
+.chip[aria-pressed="true"] { background: var(--pri); color: var(--pri-texto); border-color: var(--pri); }
+.etq { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--neutro-bg); color: var(--neutro); white-space: nowrap; }
+.etq-ok { background: var(--ok-bg); color: var(--ok); }
+.etq-alerta { background: var(--alerta-bg); color: var(--alerta); }
+.etq-perigo { background: var(--perigo-bg); color: var(--perigo); }
+.etq-info { background: var(--info-bg); color: var(--info); }
+.erro { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--perigo-bg); color: var(--perigo); font-weight: 600; }
+.sucesso { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--ok-bg); color: var(--ok); font-weight: 600; }
+.vazio { margin: 0; color: var(--suave); font-style: italic; }
+.rotulo { margin: 4px 0 0; font-weight: 600; font-size: 14px; }
+.campo { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 14px; }
+.campo small { font-weight: 400; color: var(--suave); }
+.campo input, .campo select, .campo textarea { font-weight: 400; font-size: 15px; padding: 10px 12px; border: 1px solid var(--borda); border-radius: 8px; background: var(--sup); min-height: 44px; width: 100%; }
+.check { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.check input { width: 20px; height: 20px; accent-color: var(--pri); flex: none; }
+fieldset { border: 1px solid var(--borda); border-radius: var(--raio); padding: 10px 14px; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+legend { font-weight: 600; padding: 0 4px; }
+.formulario { display: flex; flex-direction: column; gap: 12px; max-width: 680px; }
+.resumo { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; padding: 12px 14px; background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); }
+.resumo dt { color: var(--suave); }
+.resumo dd { margin: 0; font-weight: 600; }
+.foto-falsa { display: flex; align-items: center; justify-content: center; gap: 8px; height: 140px; border-radius: var(--raio); background: repeating-linear-gradient(45deg, var(--sup-2), var(--sup-2) 10px, var(--neutro-bg) 10px, var(--neutro-bg) 20px); color: var(--suave); font-weight: 600; border: 1px dashed var(--borda); }
+.qr { flex: none; border-radius: 6px; max-width: 100%; }
+.protocolo { margin: 0; font-family: ui-monospace, Consolas, monospace; color: var(--suave); }
+.anexo { margin: 0; font-weight: 600; }
+
+/* Calendário */
+.calendario { background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); padding: 12px; }
+.cal-topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.cal-grade { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-sem { text-align: center; font-size: 12px; color: var(--suave); font-weight: 700; }
+.cal-dia { min-height: 40px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; font-weight: 600; background: var(--sup-2); font-variant-numeric: tabular-nums; }
+.cal-dia:disabled { cursor: not-allowed; opacity: .4; }
+.st-livre { background: var(--ok-bg); color: var(--ok); }
+.st-pendente { background: var(--alerta-bg); color: var(--alerta); }
+.st-reservado { background: var(--info-bg); color: var(--info); }
+.st-bloqueado { background: var(--neutro-bg); color: var(--neutro); text-decoration: line-through; }
+.st-indisponivel { background: transparent; color: var(--suave); }
+.cal-dia.sel { border-color: var(--texto); box-shadow: inset 0 0 0 2px var(--texto); }
+.cal-legenda { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.leg { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+.agenda { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 20px; align-items: start; }
+
+/* Síndico */
+.indicadores { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.indicador { display: flex; flex-direction: column; gap: 2px; padding: 16px; border-radius: var(--raio); border: 1px solid var(--borda); border-top: 4px solid var(--borda); background: var(--sup); text-decoration: none; color: inherit; }
+.indicador strong { font-size: 2rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.indicador small { color: var(--suave); }
+.ind-ok { border-top-color: var(--ok); }
+.ind-alerta { border-top-color: var(--acento); }
+.ind-perigo { border-top-color: var(--perigo); }
+.ind-info { border-top-color: var(--info); }
+.adesao { margin-top: 16px; }
+.barra { height: 10px; border-radius: 999px; background: var(--neutro-bg); overflow: hidden; }
+.barra span { display: block; height: 100%; background: var(--pri); }
+.leitura { display: flex; flex-direction: column; gap: 4px; }
+.atencao { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.tabela-rolagem { overflow-x: auto; }
+.tabela { width: 100%; border-collapse: collapse; background: var(--sup); font-variant-numeric: tabular-nums; }
+.tabela th, .tabela td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--borda); vertical-align: middle; }
+.tabela th { font-size: 13px; color: var(--suave); }
+.tabela tr.clicavel { cursor: pointer; }
+.tabela tr.clicavel:hover { background: var(--sup-2); }
+.grade-unidades { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 6px; max-width: 560px; }
+.grade-unidades span, .legenda span { text-align: center; padding: 6px 0; border-radius: 6px; font-weight: 600; font-size: 13px; }
+.legenda span { display: inline-block; padding: 2px 8px; }
+.lida { background: var(--ok-bg); color: var(--ok); }
+.nao-lida { background: var(--neutro-bg); color: var(--suave); }
+.alertas { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.alerta-doc { margin: 0; padding: 10px 12px; border-radius: 8px; }
+.faixa-vencido, .faixa-7 { background: var(--perigo-bg); color: var(--perigo); }
+.faixa-30 { background: var(--alerta-bg); color: var(--alerta); }
+.faixa-60 { background: var(--info-bg); color: var(--info); }
+.historico { margin: 0; padding-left: 18px; color: var(--suave); }
+.recusa { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+
+/* Linha do tempo e estrelas */
+.linha-tempo { list-style: none; margin: 0; padding: 0 0 0 16px; border-left: 2px solid var(--borda); display: flex; flex-direction: column; gap: 12px; }
+.linha-tempo li { display: flex; flex-direction: column; position: relative; }
+.linha-tempo li::before { content: ""; position: absolute; left: -23px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--pri); }
+.linha-tempo li.comentario::before { background: var(--borda); }
+.lt-quando { font-size: 12px; color: var(--suave); }
+.estrelas { display: flex; gap: 4px; font-size: 26px; color: var(--borda); }
+.estrelas button { background: none; border: 0; font-size: inherit; color: inherit; cursor: pointer; min-width: 44px; min-height: 44px; }
+.estrelas .cheia { color: var(--acento); }
+
+/* Selo de notificação simulada */
+.selo { position: fixed; top: calc(70px + env(safe-area-inset-top, 0px)); right: 16px; z-index: 30; display: flex; gap: 10px; align-items: flex-start; max-width: 360px; padding: 12px 14px; border-radius: 12px; background: var(--demo-bg); color: var(--demo-texto); box-shadow: 0 8px 24px rgb(0 0 0 / 25%); animation: entrar .25s ease-out; }
+.selo p { margin: 2px 0 0; color: var(--demo-suave); font-size: 14px; }
+.selo-canal { background: var(--acento); color: var(--acento-texto); font-weight: 800; font-size: 12px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+@keyframes entrar { from { transform: translateY(-8px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .selo { animation: none; } }
+
+/* Prévia de documento (papel branco nos dois temas) */
+.prev-doc { display: flex; flex-direction: column; gap: 12px; }
+.prev-topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.prev-pagina { background: var(--papel); color: var(--papel-texto); border: 1px solid var(--borda); border-radius: 6px; padding: 28px 24px; display: flex; flex-direction: column; gap: 10px; max-width: 640px; min-height: 380px; }
+.prev-cabecalho { margin: 0; font-size: 12px; color: var(--papel-suave); }
+.prev-linha { display: block; height: 8px; border-radius: 4px; background: var(--papel-linha); }
+.prev-aviso { margin-top: auto; font-size: 12px; color: var(--papel-suave); }
+
+/* Autoteste */
+.painel-testes { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+.painel-testes ul { list-style: none; padding: 0; }
+.painel-testes li { padding: 6px 0; border-bottom: 1px solid var(--borda); }
+.painel-testes li.falha { color: var(--perigo); }
+
+/* Telas estreitas: sem molduras */
+@media (max-width: 900px) {
+  .palco { padding: 0; }
+  .painel, .celular, .tablet { width: 100%; max-width: none; height: auto; min-height: calc(100vh - 56px); border: 0; border-radius: 0; box-shadow: none; }
+  .painel { grid-template-columns: 1fr; }
+  .painel-menu { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--borda); padding: 8px; }
+  .painel-usuario { display: none; }
+  .painel-menu a { white-space: nowrap; }
+  .painel-conteudo { padding: 16px; }
+  .cel-status { display: none; }
+  .cel-conteudo { overflow: visible; }
+  .cel-abas { position: sticky; bottom: 0; }
+  .tab-conteudo { overflow: visible; padding: 16px; }
+  .p-grade, .agenda { grid-template-columns: 1fr; }
+  .opcoes-grandes { grid-template-columns: repeat(2, 1fr); }
+  .marca .sub, .tab-turno { display: none; }
+  .selo { top: auto; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); left: 16px; right: 16px; max-width: none; }
+}
 
 </style>
-</head>
-<body>
 <div id="app"></div>
 <script type="module">
 // ---- src/vendor.js ----
@@ -97,10 +360,1204 @@ function haQuanto(instante, agora) {
   return dias === 1 ? 'há 1 dia' : `há ${dias} dias`;
 }
 
+// ---- src/dados.js ----
+
+const UNIDADES = Array.from({ length: 32 }, (_, i) => `${Math.floor(i / 4) + 1}0${(i % 4) + 1}`);
+const UNIDADE_ANA = '302';
+const SINDICO = 'Síndico Roberto Lima';
+const PORTEIRO_DIA = 'Seu José';
+
+const CATEGORIAS = {
+  barulho: { nome: 'Barulho', sla: 48 },
+  vazamento: { nome: 'Vazamento', sla: 24 },
+  vaga: { nome: 'Vaga ocupada', sla: 24 },
+  lampada: { nome: 'Lâmpada queimada', sla: 72 },
+  seguranca: { nome: 'Segurança', sla: 24 },
+  limpeza: { nome: 'Limpeza', sla: 72 },
+  sugestao: { nome: 'Sugestão', sla: null },
+  vizinho: { nome: 'Reclamação de vizinho', sla: 72 },
+  pet: { nome: 'Pet', sla: 72 },
+  elogio: { nome: 'Elogio', sla: null },
+};
+
+const FLUXO_OCORRENCIA = ['aberta', 'em_analise', 'em_andamento', 'resolvida', 'fechada'];
+const NOMES_STATUS = { aberta: 'Aberta', em_analise: 'Em análise', em_andamento: 'Em andamento', resolvida: 'Resolvida', fechada: 'Fechada' };
+const NOMES_STATUS_RESERVA = { pendente: 'Pendente', confirmada: 'Confirmada', recusada: 'Recusada', cancelada: 'Cancelada' };
+
+const TIPOS_COMUNICADO = {
+  geral: 'Aviso geral',
+  manutencao: 'Manutenção',
+  evento: 'Festa/evento',
+  urgente: 'Urgente',
+  assembleia: 'Assembleia',
+  obra: 'Obra em unidade',
+  falta: 'Falta de água/energia',
+};
+
+const NOMES_CANAL = { push: 'Push', email: 'E-mail', whatsapp: 'WhatsApp', sms: 'SMS' };
+
+const MODELOS_COMUNICADO = {
+  geral: { titulo: 'Aviso aos moradores', texto: 'Prezados moradores,\n\nInformamos que [descreva o aviso].\n\nAtenciosamente,\nRoberto Lima, síndico' },
+  manutencao: { titulo: 'Manutenção programada', texto: 'Prezados moradores,\n\nNo dia [data], das [hora] às [hora], haverá manutenção em [equipamento ou área]. Durante o serviço, [impacto].\n\nAgradecemos a compreensão.\nRoberto Lima, síndico' },
+  evento: { titulo: 'Convite: [nome do evento]', texto: 'Convidamos todos para [evento], no dia [data], às [hora], no [local].\n\nConfirme sua presença pelo app.\nRoberto Lima, síndico' },
+  urgente: { titulo: 'URGENTE: [assunto]', texto: '[Descreva a situação e o que os moradores devem fazer agora.]\n\nRoberto Lima, síndico' },
+  assembleia: { titulo: 'Convocação: assembleia [ordinária ou extraordinária]', texto: 'Ficam convocados os condôminos para assembleia no dia [data], às [hora] em primeira chamada e às [hora] em segunda, no salão de festas.\n\nPauta: [itens].\nRoberto Lima, síndico' },
+  obra: { titulo: 'Obra na unidade [número]', texto: 'A unidade [número] fará reforma de [data] a [data], de segunda a sexta das 8h às 17h e aos sábados das 8h às 12h, com ART/RRT entregue à administração.' },
+  falta: { titulo: 'Falta de [água ou energia]', texto: 'No dia [data], das [hora] às [hora], haverá interrupção no fornecimento de [água ou energia] por [motivo].\n\nRecomendamos [orientação].' },
+};
+
+const TRANSPORTADORAS = ['Correios', 'Mercado Livre', 'Amazon', 'Shopee', 'Outra'];
+
+const MORADORES = [
+  ['101', 'Carla Mendes'], ['102', 'Paulo Ribeiro'], ['104', 'Juliana Costa'], ['201', 'Fernando Alves'],
+  ['203', 'Beatriz Rocha'], ['204', 'Lucas Martins'], ['301', 'Mariana Teixeira'], ['302', 'Ana Souza'],
+  ['303', 'Rafael Gomes'], ['401', 'Patrícia Nunes'], ['402', 'Eduardo Pires'], ['404', 'Camila Duarte'],
+  ['501', 'Gustavo Freitas'], ['502', 'Larissa Moura'], ['504', 'Thiago Barros'], ['601', 'Renata Cardoso'],
+  ['603', 'Diego Monteiro'], ['702', 'Sônia Araújo'], ['703', 'Marcelo Vieira'], ['801', 'Roberto Lima'],
+];
+
+function dadosIniciais(agora = new Date()) {
+  const hoje = isoDia(agora);
+  const d = (n) => somarDias(hoje, n);
+  const em = (n, hora, minuto = 0) => momento(d(n), hora, minuto).toISOString();
+  const leram = (n) => UNIDADES.slice(0, n);
+  const leramSemAna = (n) => UNIDADES.filter((u) => u !== UNIDADE_ANA).slice(0, n);
+  const periodos = [{ id: 'tarde', nome: 'Tarde', inicio: 13, fim: 18 }, { id: 'noite', nome: 'Noite', inicio: 18, fim: 23 }];
+  const canaisPadrao = ['push', 'email', 'whatsapp'];
+
+  return {
+    versao: 1,
+    geradoEm: hoje,
+    proximoProtocolo: 43,
+    condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
+    pessoas: MORADORES.map(([unidade, nome]) => ({ id: `p${unidade}`, nome, unidade })),
+    areas: [
+      { id: 'salao', nome: 'Salão de festas', tipo: 'periodo', periodos, taxa: 150, aprovacao: 'manual', antecedenciaMin: 2, antecedenciaMax: 60, limiteMes: 2, vinculadas: ['churrasqueira'], capacidade: 80, itens: '10 mesas, 60 cadeiras, geladeira e fogão', regulamento: 'Som até as 22h. Limpeza por conta do morador. Vistoria na entrada e na saída.' },
+      { id: 'churrasqueira', nome: 'Churrasqueira', tipo: 'periodo', periodos, taxa: 50, aprovacao: 'automatica', antecedenciaMin: 1, antecedenciaMax: 60, limiteMes: 2, vinculadas: ['salao'], capacidade: 25, itens: 'Grelha, 4 mesas, 24 cadeiras e pia', regulamento: 'Traga o carvão e deixe a grelha limpa.' },
+      { id: 'quadra', nome: 'Quadra', tipo: 'hora', horaInicio: 8, horaFim: 22, taxa: 0, aprovacao: 'automatica', antecedenciaMin: 0, antecedenciaMax: 15, limiteMes: 4, vinculadas: [], capacidade: 12, itens: 'Rede de vôlei e traves', regulamento: 'Calçado adequado. Uma hora por reserva.' },
+      { id: 'academia', nome: 'Academia', tipo: 'hora', horaInicio: 6, horaFim: 23, taxa: 0, aprovacao: 'automatica', antecedenciaMin: 0, antecedenciaMax: 7, limiteMes: null, vinculadas: [], capacidade: 6, itens: 'Esteiras, bicicleta e pesos livres', regulamento: 'Uso a partir de 14 anos. Higienize os aparelhos.' },
+    ],
+    reservas: [
+      { id: 'r1', areaId: 'salao', unidade: '104', data: d(3), inicio: 18, fim: 23, status: 'confirmada', convidados: [{ nome: 'Marta Lopes', documento: 'RG 22.418.903-1' }], criadaEm: em(-5, 10) },
+      { id: 'r2', areaId: 'quadra', unidade: UNIDADE_ANA, data: d(1), inicio: 9, fim: 10, status: 'confirmada', convidados: [], criadaEm: em(-1, 20) },
+      { id: 'r3', areaId: 'churrasqueira', unidade: '603', data: d(0), inicio: 13, fim: 18, status: 'confirmada', convidados: [{ nome: 'João Pereira', documento: 'RG 12.345.678-9' }, { nome: 'Lia Prado', documento: 'RG 98.765.432-1' }], criadaEm: em(-8, 15) },
+      { id: 'r4', areaId: 'salao', unidade: '504', data: d(10), inicio: 18, fim: 23, status: 'pendente', convidados: [], criadaEm: em(-1, 8) },
+    ],
+    bloqueios: [{ id: 'b1', areaId: 'quadra', data: d(5), inicio: 8, fim: 22, motivo: 'Manutenção da pintura' }],
+    comunicados: [
+      { id: 'c1', tipo: 'manutencao', titulo: 'Falta de água para limpeza da caixa d’água', texto: `Prezados moradores,\n\nNa ${fmtDia(d(4))}, das 9h às 12h, o fornecimento de água será interrompido para a limpeza semestral da caixa d’água.\n\nArmazene água para o período.\nRoberto Lima, síndico`, publico: { tipo: 'todos' }, canais: canaisPadrao, fixado: true, anexo: null, publicadoEm: em(-1, 9), leituras: leramSemAna(19), reacoes: { util: ['101', '204', '603'], duvida: ['702'] } },
+      { id: 'c2', tipo: 'assembleia', titulo: 'Convocação: assembleia ordinária', texto: 'Ficam convocados os condôminos para a assembleia ordinária no dia 30, às 19h30, no salão de festas.\n\nPauta: prestação de contas, previsão orçamentária e troca do portão da garagem.\nRoberto Lima, síndico', publico: { tipo: 'todos' }, canais: canaisPadrao, fixado: false, anexo: 'edital-assembleia.pdf', publicadoEm: em(-6, 18), leituras: leram(24), reacoes: { util: ['101'], duvida: [] } },
+      { id: 'c3', tipo: 'evento', titulo: 'Festa das crianças no salão', texto: 'Domingo, a partir das 15h, festa das crianças no salão de festas com pipoca, algodão-doce e brincadeiras.\n\nConfirme a presença dos pequenos pelo app.', publico: { tipo: 'todos' }, canais: canaisPadrao, fixado: false, anexo: null, publicadoEm: em(-3, 12), leituras: leram(15), reacoes: { util: ['204', '302'], duvida: [] } },
+      { id: 'c4', tipo: 'geral', titulo: 'Troca do interfone', texto: 'A troca dos interfones será feita andar por andar ao longo da próxima semana. A equipe técnica vai bater em cada unidade entre 9h e 16h.', publico: { tipo: 'todos' }, canais: canaisPadrao, fixado: false, anexo: null, publicadoEm: em(-10, 10), leituras: leram(28), reacoes: { util: [], duvida: ['501'] } },
+      { id: 'c5', tipo: 'urgente', titulo: 'Elevador 2 parado', texto: 'O elevador 2 está parado aguardando o técnico. Use o elevador 1 ou a escada. Avisaremos assim que voltar a funcionar.', publico: { tipo: 'todos' }, canais: [...canaisPadrao, 'sms'], fixado: false, anexo: null, publicadoEm: em(-1, 21), leituras: leramSemAna(22), reacoes: { util: ['702', '703'], duvida: [] } },
+    ],
+    ocorrencias: [
+      { id: 'OC-0037', categoria: 'lampada', descricao: 'Lâmpada do hall do 5º andar queimada.', local: '5º andar', unidade: '502', anonima: false, publica: false, foto: false, status: 'resolvida', eutambem: [], linha: [
+        { em: em(-9, 19), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Larissa Moura' },
+        { em: em(-8, 9), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
+        { em: em(-8, 10), status: 'em_andamento', texto: 'Zelador vai trocar hoje à tarde', autor: 'Síndico' },
+        { em: em(-7, 15), status: 'resolvida', texto: 'Lâmpada trocada pelo zelador', autor: 'Síndico' },
+      ], avaliacao: 5, arquivada: false, criadaEm: em(-9, 19) },
+      { id: 'OC-0038', categoria: 'elogio', descricao: 'O Seu José ajudou minha mãe com as compras. Muito atencioso!', local: 'Portaria', unidade: '204', anonima: false, publica: false, foto: false, status: 'fechada', eutambem: [], linha: [
+        { em: em(-6, 11), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Lucas Martins' },
+        { em: em(-6, 14), status: 'fechada', texto: 'Agradecemos o elogio! Repassado ao Seu José.', autor: 'Síndico' },
+      ], avaliacao: null, arquivada: false, criadaEm: em(-6, 11) },
+      { id: 'OC-0039', categoria: 'vazamento', descricao: 'Água pingando do teto da garagem, perto da vaga 12.', local: 'Garagem, vaga 12', unidade: '101', anonima: false, publica: false, foto: true, status: 'em_andamento', eutambem: [], linha: [
+        { em: em(-3, 8), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Carla Mendes' },
+        { em: em(-3, 10), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
+        { em: em(-2, 9), status: 'em_andamento', texto: 'Encanador agendado para avaliar a prumada', autor: 'Síndico' },
+      ], avaliacao: null, arquivada: false, criadaEm: em(-3, 8) },
+      { id: 'OC-0040', categoria: 'seguranca', descricao: 'Elevador 2 parado entre o 3º e o 4º andar.', local: 'Elevador 2', unidade: '702', anonima: false, publica: true, foto: false, status: 'em_andamento', eutambem: ['101', '104', '201', '404', '501', '603', '703'], linha: [
+        { em: em(-1, 20), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Sônia Araújo' },
+        { em: em(-1, 20, 30), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
+        { em: em(-1, 21), status: 'em_andamento', texto: 'Técnico da empresa de elevadores acionado', autor: 'Síndico' },
+      ], avaliacao: null, arquivada: false, criadaEm: em(-1, 20) },
+      { id: 'OC-0041', categoria: 'barulho', descricao: 'Música alta depois das 22h, aparentemente no 4º andar.', local: '4º andar', unidade: '303', anonima: true, publica: false, foto: false, status: 'em_analise', eutambem: [], linha: [
+        { em: em(-1, 23), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Anônimo' },
+        { em: em(0, 0, 5), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
+      ], avaliacao: null, arquivada: false, criadaEm: em(-1, 23) },
+      { id: 'OC-0042', categoria: 'vaga', descricao: 'Carro desconhecido parado na minha vaga (G1-18) desde ontem.', local: 'Garagem G1, vaga 18', unidade: UNIDADE_ANA, anonima: false, publica: false, foto: true, status: 'aberta', eutambem: [], linha: [
+        { em: em(-2, 7), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Ana Souza' },
+      ], avaliacao: null, arquivada: false, criadaEm: em(-2, 7) },
+    ],
+    documentos: [
+      { id: 'd1', pasta: 'Convenção', titulo: 'Convenção do condomínio', versoes: [{ versao: 1, data: '2019-03-10' }], visibilidade: 'todos' },
+      { id: 'd2', pasta: 'Regimento interno', titulo: 'Regimento interno', versoes: [{ versao: 1, data: '2019-03-10' }, { versao: 2, data: '2024-05-20' }], visibilidade: 'todos' },
+      { id: 'd3', pasta: 'Atas', titulo: 'Ata da assembleia ordinária de março/2026', versoes: [{ versao: 1, data: '2026-03-28' }], visibilidade: 'todos' },
+      { id: 'd4', pasta: 'Atas', titulo: 'Ata da assembleia extraordinária de setembro/2026', versoes: [{ versao: 1, data: '2026-09-15' }], visibilidade: 'todos' },
+      { id: 'd5', pasta: 'Balancetes', titulo: 'Balancete de setembro/2026', versoes: [{ versao: 1, data: '2026-10-05' }], visibilidade: 'conselho' },
+      { id: 'd6', pasta: 'AVCB', titulo: 'AVCB (auto de vistoria do Corpo de Bombeiros)', versoes: [{ versao: 1, data: '2021-11-02' }], vencimento: d(25), visibilidade: 'todos' },
+      { id: 'd7', pasta: 'Apólice de seguro', titulo: 'Apólice do seguro predial', versoes: [{ versao: 1, data: '2025-12-05' }], vencimento: d(58), visibilidade: 'todos' },
+      { id: 'd8', pasta: 'Laudos', titulo: 'Certificado de limpeza da caixa d’água', versoes: [{ versao: 1, data: '2026-04-05' }], vencimento: d(-3), visibilidade: 'todos' },
+    ],
+    encomendas: [
+      { id: 'e1', unidade: UNIDADE_ANA, transportadora: 'Mercado Livre', codigo: '481203', chegadaEm: em(-1, 15), status: 'aguardando', foto: true, retiradaPor: null, retiradaEm: null, lembretes: 0, registradaPor: 'Seu José' },
+      { id: 'e2', unidade: UNIDADE_ANA, transportadora: 'Amazon', codigo: '730915', chegadaEm: em(-4, 8), status: 'aguardando', foto: true, retiradaPor: null, retiradaEm: null, lembretes: 0, registradaPor: 'Marcos' },
+      { id: 'e3', unidade: '504', transportadora: 'Correios', codigo: '219884', chegadaEm: em(-1, 9), status: 'aguardando', foto: true, retiradaPor: null, retiradaEm: null, lembretes: 0, registradaPor: 'Seu José' },
+      { id: 'e4', unidade: '101', transportadora: 'Shopee', codigo: '650372', chegadaEm: em(-2, 16), status: 'aguardando', foto: true, retiradaPor: null, retiradaEm: null, lembretes: 0, registradaPor: 'Seu José' },
+      { id: 'e5', unidade: UNIDADE_ANA, transportadora: 'Correios', codigo: '304417', chegadaEm: em(-6, 10), status: 'retirada', foto: true, retiradaPor: 'Ana Souza', retiradaEm: em(-5, 19), lembretes: 0, registradaPor: 'Seu José' },
+      { id: 'e6', unidade: '203', transportadora: 'Amazon', codigo: '918266', chegadaEm: em(-3, 11), status: 'retirada', foto: true, retiradaPor: 'Beatriz Rocha', retiradaEm: em(-3, 18), lembretes: 0, registradaPor: 'Seu José' },
+      { id: 'e7', unidade: '702', transportadora: 'Mercado Livre', codigo: '557029', chegadaEm: em(-2, 10), status: 'retirada', foto: true, retiradaPor: 'Sônia Araújo', retiradaEm: em(-2, 12), lembretes: 0, registradaPor: 'Seu José' },
+    ],
+  };
+}
+
+// ---- src/regras.js ----
+
+const STATUS_ATIVOS = ['pendente', 'confirmada'];
+const REGRA_OK = { ok: true };
+
+function falhaRegra(motivo) {
+  return { ok: false, motivo };
+}
+
+function sobrepoe(a, b) {
+  return a.inicio < b.fim && b.inicio < a.fim;
+}
+
+function plural(n, um, varios) {
+  return n === 1 ? `1 ${um}` : `${n} ${varios}`;
+}
+
+function areaPorId(estado, id) {
+  return estado.areas.find((a) => a.id === id);
+}
+
+function conflito(estado, areaId, data, inicio, fim) {
+  const area = areaPorId(estado, areaId);
+  const ids = [areaId, ...(area.vinculadas || [])];
+  const alvo = { inicio, fim };
+  const bloqueio = estado.bloqueios.find((b) => b.areaId === areaId && b.data === data && sobrepoe(b, alvo));
+  if (bloqueio) return { tipo: 'bloqueio', item: bloqueio };
+  const reserva = estado.reservas.find((r) => ids.includes(r.areaId) && r.data === data && STATUS_ATIVOS.includes(r.status) && sobrepoe(r, alvo));
+  if (reserva) return { tipo: 'reserva', item: reserva };
+  return null;
+}
+
+function podeReservar(estado, pedido, agora) {
+  const area = areaPorId(estado, pedido.areaId);
+  if (!area) return falhaRegra('Área inexistente');
+  const dias = diferencaDias(pedido.data, isoDia(agora));
+  if (dias < 0 || momento(pedido.data, pedido.inicio) <= agora) return falhaRegra('Esse horário já passou');
+  if (dias < area.antecedenciaMin) return falhaRegra(`Reserve com pelo menos ${plural(area.antecedenciaMin, 'dia', 'dias')} de antecedência`);
+  if (dias > area.antecedenciaMax) return falhaRegra(`Reservas abrem com no máximo ${area.antecedenciaMax} dias de antecedência`);
+  const c = conflito(estado, area.id, pedido.data, pedido.inicio, pedido.fim);
+  if (c && c.tipo === 'bloqueio') return falhaRegra(`Área bloqueada: ${c.item.motivo}`);
+  if (c) return falhaRegra('Horário já reservado');
+  if (area.limiteMes) {
+    const mes = pedido.data.slice(0, 7);
+    const usadas = estado.reservas.filter((r) => r.areaId === area.id && r.unidade === pedido.unidade && STATUS_ATIVOS.includes(r.status) && r.data.slice(0, 7) === mes).length;
+    if (usadas >= area.limiteMes) return falhaRegra(`Limite de ${area.limiteMes} reservas/mês atingido para esta área`);
+  }
+  return REGRA_OK;
+}
+
+function avisoCancelamento(reserva, agora) {
+  const horas = Math.floor(horasEntre(agora, momento(reserva.data, reserva.inicio)));
+  const multa = horas < 72;
+  return {
+    multa,
+    horas,
+    texto: multa
+      ? `Faltam ${horas} h para a reserva. Pelo regulamento, cancelamentos com menos de 72 h perdem a taxa.`
+      : `Faltam ${horas} h para a reserva. Cancelamento sem multa.`,
+  };
+}
+
+function podeEntregar(encomenda, codigo, nomeRetirada) {
+  if (encomenda.status !== 'aguardando') return falhaRegra('Encomenda já entregue');
+  if (String(codigo || '').trim() !== encomenda.codigo) return falhaRegra('Código inválido');
+  if (!String(nomeRetirada || '').trim()) return falhaRegra('Informe quem retirou');
+  return REGRA_OK;
+}
+
+function proximoStatus(status) {
+  const i = FLUXO_OCORRENCIA.indexOf(status);
+  return FLUXO_OCORRENCIA[i + 1] || null;
+}
+
+function acoesOcorrencia(oc) {
+  if (oc.arquivada) return [];
+  const acoes = [];
+  const proximo = proximoStatus(oc.status);
+  if (proximo) acoes.push({ id: 'avancar', rotulo: `Mover para "${NOMES_STATUS[proximo]}"` });
+  acoes.push({ id: 'comentar', rotulo: 'Comentar' });
+  if (oc.status === 'fechada') acoes.push({ id: 'arquivar', rotulo: 'Arquivar' });
+  return acoes;
+}
+
+function alertasDocumentos(documentos, hoje) {
+  return documentos
+    .filter((d) => d.vencimento)
+    .map((d) => {
+      const dias = diferencaDias(d.vencimento, hoje);
+      const faixa = dias < 0 ? 'vencido' : dias <= 7 ? '7' : dias <= 30 ? '30' : dias <= 60 ? '60' : null;
+      return { documento: d, dias, faixa };
+    })
+    .filter((a) => a.faixa)
+    .sort((a, b) => a.dias - b.dias);
+}
+
+function slaVencido(oc, agora) {
+  const sla = CATEGORIAS[oc.categoria] && CATEGORIAS[oc.categoria].sla;
+  if (!sla || oc.status !== 'aberta') return false;
+  return horasEntre(new Date(oc.criadaEm), agora) > sla;
+}
+
+function statusDia(estado, areaId, data) {
+  if (estado.bloqueios.some((b) => b.areaId === areaId && b.data === data)) return 'bloqueado';
+  const area = areaPorId(estado, areaId);
+  const ids = [areaId, ...(area.vinculadas || [])];
+  const doDia = estado.reservas.filter((r) => ids.includes(r.areaId) && r.data === data && STATUS_ATIVOS.includes(r.status));
+  if (!doDia.length) return 'livre';
+  return doDia.some((r) => r.status === 'pendente') ? 'pendente' : 'reservado';
+}
+
+function horariosDaArea(estado, areaId, data, agora) {
+  const area = areaPorId(estado, areaId);
+  const base = area.tipo === 'periodo'
+    ? area.periodos.map((p) => ({ inicio: p.inicio, fim: p.fim, rotulo: `${p.nome} (${fmtHora(p.inicio)}–${fmtHora(p.fim)})` }))
+    : Array.from({ length: area.horaFim - area.horaInicio }, (_, i) => {
+        const h = area.horaInicio + i;
+        return { inicio: h, fim: h + 1, rotulo: `${fmtHora(h)}–${fmtHora(h + 1)}` };
+      });
+  return base.map((h) => {
+    const c = conflito(estado, areaId, data, h.inicio, h.fim);
+    const passou = momento(data, h.inicio) <= agora;
+    let motivo = null;
+    if (c) motivo = c.tipo === 'bloqueio' ? 'Bloqueado' : c.item.status === 'pendente' ? 'Pendente' : 'Reservado';
+    else if (passou) motivo = 'Encerrado';
+    return { ...h, livre: !motivo, motivo };
+  });
+}
+
+function destinatarios(estado, publico) {
+  const todas = estado.condominio.unidades;
+  if (publico.tipo === 'andar') return todas.filter((u) => u[0] === String(publico.valor));
+  if (publico.tipo === 'unidades') return todas.filter((u) => publico.valor.includes(u));
+  return [...todas];
+}
+
+function comunicadosDaUnidade(estado, unidade) {
+  return estado.comunicados
+    .filter((c) => destinatarios(estado, c.publico).includes(unidade))
+    .sort((a, b) => Number(b.fixado) - Number(a.fixado) || b.publicadoEm.localeCompare(a.publicadoEm));
+}
+
+function encomendaParada(encomenda, agora) {
+  return encomenda.status === 'aguardando' && horasEntre(new Date(encomenda.chegadaEm), agora) > 72;
+}
+
+function moradoresDaUnidade(estado, unidade) {
+  return estado.pessoas.filter((p) => p.unidade === unidade);
+}
+
+function indicadoresSindico(estado, agora) {
+  return {
+    pendentes: estado.reservas.filter((r) => r.status === 'pendente').length,
+    abertas: estado.ocorrencias.filter((o) => !o.arquivada && !['resolvida', 'fechada'].includes(o.status)).length,
+    slaVencidas: estado.ocorrencias.filter((o) => slaVencido(o, agora)).length,
+    paradas: estado.encomendas.filter((e) => encomendaParada(e, agora)).length,
+    vencendo: alertasDocumentos(estado.documentos, isoDia(agora)).length,
+    adesao: { com: new Set(estado.pessoas.map((p) => p.unidade)).size, total: estado.condominio.unidades.length },
+  };
+}
+
+// ---- src/acoes.js ----
+
+// Cada ação recebe o estado e devolve { estado, notificacao?, erro?, id?, aviso? } sem mutar nada.
+function erroAcao(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function trocarItem(lista, id, mudanca) {
+  return lista.map((x) => (x.id === id ? { ...x, ...mudanca } : x));
+}
+
+function nomesDaUnidade(estado, unidade) {
+  const nomes = estado.pessoas.filter((p) => p.unidade === unidade).map((p) => p.nome);
+  return nomes.length ? nomes.join(', ') : `Apto ${unidade}`;
+}
+
+function gerarCodigo(n) {
+  return String((((n + 1) * 739391) % 900000) + 100000);
+}
+
+function quandoReserva(r) {
+  return `${fmtDia(r.data)}, ${fmtHora(r.inicio)}–${fmtHora(r.fim)}`;
+}
+
+function solicitarReserva(estado, pedido, agora) {
+  const v = podeReservar(estado, pedido, agora);
+  if (!v.ok) return erroAcao(estado, v.motivo);
+  if (!pedido.aceiteTermo) return erroAcao(estado, 'Aceite o termo de responsabilidade');
+  const area = areaPorId(estado, pedido.areaId);
+  const status = area.aprovacao === 'automatica' ? 'confirmada' : 'pendente';
+  const reserva = { id: `r${estado.reservas.length + 1}`, areaId: area.id, unidade: pedido.unidade, data: pedido.data, inicio: pedido.inicio, fim: pedido.fim, status, convidados: pedido.convidados || [], criadaEm: agora.toISOString() };
+  const notificacao = status === 'pendente'
+    ? { canal: 'Push', para: SINDICO, texto: `Nova reserva para aprovar: ${area.nome}, apto ${reserva.unidade}, ${quandoReserva(reserva)}` }
+    : { canal: 'Push', para: nomesDaUnidade(estado, reserva.unidade), texto: `Reserva confirmada: ${area.nome}, ${quandoReserva(reserva)}` };
+  return { estado: { ...estado, reservas: [...estado.reservas, reserva] }, id: reserva.id, notificacao };
+}
+
+function aprovarReserva(estado, id) {
+  const r = estado.reservas.find((x) => x.id === id);
+  if (!r || r.status !== 'pendente') return erroAcao(estado, 'Reserva não está pendente');
+  const area = areaPorId(estado, r.areaId);
+  return {
+    estado: { ...estado, reservas: trocarItem(estado.reservas, id, { status: 'confirmada' }) },
+    notificacao: { canal: 'WhatsApp', para: nomesDaUnidade(estado, r.unidade), texto: `Reserva aprovada: ${area.nome}, ${quandoReserva(r)}. A portaria já recebeu a lista de convidados.` },
+  };
+}
+
+function recusarReserva(estado, id, motivo) {
+  const r = estado.reservas.find((x) => x.id === id);
+  if (!r || r.status !== 'pendente') return erroAcao(estado, 'Reserva não está pendente');
+  const texto = String(motivo || '').trim();
+  if (!texto) return erroAcao(estado, 'Escolha o motivo da recusa');
+  const area = areaPorId(estado, r.areaId);
+  return {
+    estado: { ...estado, reservas: trocarItem(estado.reservas, id, { status: 'recusada', motivo: texto }) },
+    notificacao: { canal: 'WhatsApp', para: nomesDaUnidade(estado, r.unidade), texto: `Reserva recusada: ${area.nome}, ${quandoReserva(r)}. Motivo: ${texto}.` },
+  };
+}
+
+function cancelarReserva(estado, id, agora) {
+  const r = estado.reservas.find((x) => x.id === id);
+  if (!r || !STATUS_ATIVOS.includes(r.status)) return erroAcao(estado, 'Reserva não pode ser cancelada');
+  const aviso = avisoCancelamento(r, agora);
+  const area = areaPorId(estado, r.areaId);
+  return {
+    estado: { ...estado, reservas: trocarItem(estado.reservas, id, { status: 'cancelada' }) },
+    aviso,
+    notificacao: { canal: 'Push', para: SINDICO, texto: `Reserva cancelada: ${area.nome}, apto ${r.unidade}, ${quandoReserva(r)}${aviso.multa ? ' (fora do prazo de 72 h)' : ''}` },
+  };
+}
+
+function registrarEncomenda(estado, dados, agora) {
+  const unidade = String(dados.unidade || '').trim();
+  if (!estado.condominio.unidades.includes(unidade)) return erroAcao(estado, 'Unidade inexistente');
+  if (!dados.transportadora) return erroAcao(estado, 'Escolha a transportadora');
+  const encomenda = { id: `e${estado.encomendas.length + 1}`, unidade, transportadora: dados.transportadora, codigo: gerarCodigo(estado.encomendas.length), chegadaEm: agora.toISOString(), status: 'aguardando', foto: !!dados.foto, retiradaPor: null, retiradaEm: null, lembretes: 0, registradaPor: dados.porteiro || 'Seu José' };
+  return {
+    estado: { ...estado, encomendas: [...estado.encomendas, encomenda] },
+    id: encomenda.id,
+    notificacao: { canal: 'WhatsApp', para: nomesDaUnidade(estado, unidade), texto: `Chegou sua encomenda (${encomenda.transportadora}). Código de retirada: ${encomenda.codigo}` },
+  };
+}
+
+function entregarEncomenda(estado, { id, codigo, nome }, agora) {
+  const e = estado.encomendas.find((x) => x.id === id);
+  if (!e) return erroAcao(estado, 'Encomenda não encontrada');
+  const v = podeEntregar(e, codigo, nome);
+  if (!v.ok) return erroAcao(estado, v.motivo);
+  const quem = nome.trim();
+  return {
+    estado: { ...estado, encomendas: trocarItem(estado.encomendas, id, { status: 'retirada', retiradaPor: quem, retiradaEm: agora.toISOString() }) },
+    notificacao: { canal: 'Push', para: nomesDaUnidade(estado, e.unidade), texto: `Encomenda (${e.transportadora}) retirada por ${quem}.` },
+  };
+}
+
+function lembrarEncomenda(estado, id, agora) {
+  const e = estado.encomendas.find((x) => x.id === id);
+  if (!e || e.status !== 'aguardando') return erroAcao(estado, 'Encomenda já entregue');
+  return {
+    estado: { ...estado, encomendas: trocarItem(estado.encomendas, id, { lembretes: e.lembretes + 1 }) },
+    notificacao: { canal: 'WhatsApp', para: nomesDaUnidade(estado, e.unidade), texto: `Lembrete: sua encomenda (${e.transportadora}) chegou ${haQuanto(e.chegadaEm, agora)} e está na portaria.` },
+  };
+}
+
+function publicarComunicado(estado, dados, agora) {
+  const titulo = String(dados.titulo || '').trim();
+  const texto = String(dados.texto || '').trim();
+  if (!titulo) return erroAcao(estado, 'Informe o título');
+  if (!texto) return erroAcao(estado, 'Escreva o texto do comunicado');
+  const dest = destinatarios(estado, dados.publico);
+  if (!dest.length) return erroAcao(estado, 'Escolha ao menos uma unidade');
+  const canais = [...(dados.canais || [])];
+  if (dados.tipo === 'urgente' && !canais.includes('sms')) canais.push('sms');
+  if (!canais.length) return erroAcao(estado, 'Escolha ao menos um canal');
+  const comunicado = { id: `c${estado.comunicados.length + 1}`, tipo: dados.tipo, titulo, texto, publico: dados.publico, canais, fixado: !!dados.fixado, anexo: dados.anexo || null, publicadoEm: agora.toISOString(), leituras: [], reacoes: { util: [], duvida: [] } };
+  return {
+    estado: { ...estado, comunicados: [...estado.comunicados, comunicado] },
+    id: comunicado.id,
+    notificacao: { canal: canais.map((k) => NOMES_CANAL[k]).join(' + '), para: `${dest.length} unidades`, texto: titulo },
+  };
+}
+
+function marcarLido(estado, id, unidade) {
+  const c = estado.comunicados.find((x) => x.id === id);
+  if (!c) return erroAcao(estado, 'Comunicado não encontrado');
+  if (c.leituras.includes(unidade)) return { estado };
+  return { estado: { ...estado, comunicados: trocarItem(estado.comunicados, id, { leituras: [...c.leituras, unidade] }) } };
+}
+
+function reagir(estado, id, unidade, tipo) {
+  const c = estado.comunicados.find((x) => x.id === id);
+  if (!c) return erroAcao(estado, 'Comunicado não encontrado');
+  const tinha = c.reacoes[tipo].includes(unidade);
+  const reacoes = { util: c.reacoes.util.filter((u) => u !== unidade), duvida: c.reacoes.duvida.filter((u) => u !== unidade) };
+  if (!tinha) reacoes[tipo] = [...reacoes[tipo], unidade];
+  return { estado: { ...estado, comunicados: trocarItem(estado.comunicados, id, { reacoes }) } };
+}
+
+function abrirOcorrencia(estado, dados, agora) {
+  if (!CATEGORIAS[dados.categoria]) return erroAcao(estado, 'Escolha a categoria');
+  const descricao = String(dados.descricao || '').trim();
+  if (!descricao) return erroAcao(estado, 'Descreva a ocorrência');
+  const id = `OC-${String(estado.proximoProtocolo).padStart(4, '0')}`;
+  const em = agora.toISOString();
+  const ocorrencia = { id, categoria: dados.categoria, descricao, local: String(dados.local || '').trim(), unidade: dados.unidade, anonima: !!dados.anonima, publica: !!dados.publica, foto: !!dados.foto, status: 'aberta', eutambem: [], linha: [{ em, status: 'aberta', texto: 'Ocorrência aberta', autor: dados.anonima ? 'Anônimo' : nomesDaUnidade(estado, dados.unidade) }], avaliacao: null, arquivada: false, criadaEm: em };
+  return {
+    estado: { ...estado, ocorrencias: [ocorrencia, ...estado.ocorrencias], proximoProtocolo: estado.proximoProtocolo + 1 },
+    id,
+    notificacao: { canal: 'Push', para: SINDICO, texto: `Nova ocorrência ${id}: ${CATEGORIAS[dados.categoria].nome}` },
+  };
+}
+
+function avancarOcorrencia(estado, id, agora, texto = '') {
+  const oc = estado.ocorrencias.find((x) => x.id === id);
+  if (!oc) return erroAcao(estado, 'Ocorrência não encontrada');
+  if (oc.arquivada) return erroAcao(estado, 'Ocorrência arquivada');
+  const proximo = proximoStatus(oc.status);
+  if (!proximo) return erroAcao(estado, 'Ocorrência já está fechada');
+  const mensagem = String(texto || '').trim();
+  const entrada = { em: agora.toISOString(), status: proximo, texto: mensagem || `Status alterado para ${NOMES_STATUS[proximo]}`, autor: 'Síndico' };
+  return {
+    estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { status: proximo, linha: [...oc.linha, entrada] }) },
+    notificacao: { canal: 'Push', para: nomesDaUnidade(estado, oc.unidade), texto: `${oc.id}: ${NOMES_STATUS[proximo]}${mensagem ? ` — ${mensagem}` : ''}` },
+  };
+}
+
+function comentarOcorrencia(estado, id, texto, agora, autor = 'Síndico') {
+  const oc = estado.ocorrencias.find((x) => x.id === id);
+  if (!oc) return erroAcao(estado, 'Ocorrência não encontrada');
+  const mensagem = String(texto || '').trim();
+  if (!mensagem) return erroAcao(estado, 'Escreva o comentário');
+  const entrada = { em: agora.toISOString(), status: null, texto: mensagem, autor };
+  return {
+    estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { linha: [...oc.linha, entrada] }) },
+    notificacao: { canal: 'Push', para: nomesDaUnidade(estado, oc.unidade), texto: `${oc.id}: novo comentário do síndico` },
+  };
+}
+
+function arquivarOcorrencia(estado, id) {
+  const oc = estado.ocorrencias.find((x) => x.id === id);
+  if (!oc) return erroAcao(estado, 'Ocorrência não encontrada');
+  if (oc.status !== 'fechada') return erroAcao(estado, 'Só ocorrências fechadas podem ser arquivadas');
+  return { estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { arquivada: true }) } };
+}
+
+function avaliarOcorrencia(estado, id, nota) {
+  const oc = estado.ocorrencias.find((x) => x.id === id);
+  if (!oc) return erroAcao(estado, 'Ocorrência não encontrada');
+  if (!['resolvida', 'fechada'].includes(oc.status)) return erroAcao(estado, 'A avaliação abre quando a ocorrência for resolvida');
+  if (!Number.isInteger(nota) || nota < 1 || nota > 5) return erroAcao(estado, 'Escolha de 1 a 5 estrelas');
+  return {
+    estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { avaliacao: nota }) },
+    notificacao: { canal: 'Push', para: SINDICO, texto: `${oc.id} avaliada com ${nota} de 5 estrelas` },
+  };
+}
+
+function euTambem(estado, id, unidade) {
+  const oc = estado.ocorrencias.find((x) => x.id === id);
+  if (!oc) return erroAcao(estado, 'Ocorrência não encontrada');
+  if (!oc.publica) return erroAcao(estado, 'Ocorrência não é pública');
+  const eutambem = oc.eutambem.includes(unidade) ? oc.eutambem.filter((u) => u !== unidade) : [...oc.eutambem, unidade];
+  return { estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { eutambem }) } };
+}
+
+// ---- src/casos/afirmar.js ----
+// Asserções mínimas que rodam tanto no Node quanto no navegador (?teste=1).
+const AGORA_TESTE = new Date(2026, 9, 8, 10, 0);
+
+function igual(obtido, esperado, contexto = '') {
+  const a = JSON.stringify(obtido);
+  const b = JSON.stringify(esperado);
+  if (a !== b) throw new Error(`${contexto ? `${contexto}: ` : ''}esperado ${b}, obtido ${a}`);
+}
+
+// ---- src/casos/dados.js ----
+
+const CASOS_DADOS = [
+  {
+    nome: 'dados: 32 unidades de 101 a 804',
+    rodar() {
+      igual(UNIDADES.length, 32);
+      igual([UNIDADES[0], UNIDADES[9], UNIDADES[31]], ['101', '302', '804']);
+    },
+  },
+  {
+    nome: 'dados: 20 unidades com morador cadastrado',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(new Set(e.pessoas.map((p) => p.unidade)).size, 20);
+      igual(e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome, 'Ana Souza');
+    },
+  },
+  {
+    nome: 'dados: 3 reservas confirmadas, 1 pendente e 1 bloqueio',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(e.reservas.filter((r) => r.status === 'confirmada').length, 3);
+      igual(e.reservas.filter((r) => r.status === 'pendente').length, 1);
+      igual(e.bloqueios.length, 1);
+    },
+  },
+  {
+    nome: 'dados: 4 encomendas aguardando, 2 da Ana',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      const aguardando = e.encomendas.filter((x) => x.status === 'aguardando');
+      igual(aguardando.length, 4);
+      igual(aguardando.filter((x) => x.unidade === UNIDADE_ANA).length, 2);
+      igual(e.encomendas.length, 7);
+    },
+  },
+  {
+    nome: 'dados: 5 comunicados, 6 ocorrências e 8 documentos',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual([e.comunicados.length, e.ocorrencias.length, e.documentos.length], [5, 6, 8]);
+      igual(e.proximoProtocolo, 43);
+    },
+  },
+  {
+    nome: 'dados: datas relativas ao dia de hoje',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(e.geradoEm, '2026-10-08');
+      igual(e.reservas.find((r) => r.id === 'r4').data, '2026-10-18');
+      igual(e.documentos.find((d) => d.id === 'd6').vencimento, '2026-11-02');
+    },
+  },
+  {
+    nome: 'dados: aviso de falta de água lido por 19 unidades, mas não pela Ana',
+    rodar() {
+      const c1 = dadosIniciais(AGORA_TESTE).comunicados.find((c) => c.id === 'c1');
+      igual(c1.leituras.length, 19);
+      igual(c1.leituras.includes(UNIDADE_ANA), false);
+      igual(c1.fixado, true);
+    },
+  },
+];
+
+// ---- src/casos/regras.js ----
+
+function pedidoTeste(areaId, data, inicio, fim, unidade = '302') {
+  return { areaId, unidade, data, inicio, fim };
+}
+
+function reservaExtra(id, data) {
+  return { id, areaId: 'salao', unidade: '302', data, inicio: 13, fim: 18, status: 'confirmada', convidados: [], criadaEm: AGORA_TESTE.toISOString() };
+}
+
+const CASOS_REGRAS = [
+  {
+    nome: 'RN02: horário livre pode ser reservado',
+    rodar() {
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('salao', '2026-10-15', 13, 18), AGORA_TESTE), { ok: true });
+    },
+  },
+  {
+    nome: 'RN02: reserva confirmada bloqueia o horário',
+    rodar() {
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('salao', '2026-10-11', 18, 23), AGORA_TESTE), { ok: false, motivo: 'Horário já reservado' });
+    },
+  },
+  {
+    nome: 'RN02: reserva pendente já trava o horário',
+    rodar() {
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('salao', '2026-10-18', 18, 23), AGORA_TESTE), { ok: false, motivo: 'Horário já reservado' });
+    },
+  },
+  {
+    nome: 'RN02: área vinculada também fica ocupada',
+    rodar() {
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('churrasqueira', '2026-10-11', 18, 23), AGORA_TESTE), { ok: false, motivo: 'Horário já reservado' });
+    },
+  },
+  {
+    nome: 'bloqueio de manutenção impede a reserva',
+    rodar() {
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('quadra', '2026-10-13', 10, 11), AGORA_TESTE), { ok: false, motivo: 'Área bloqueada: Manutenção da pintura' });
+    },
+  },
+  {
+    nome: 'antecedência mínima e máxima',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(podeReservar(e, pedidoTeste('salao', '2026-10-09', 13, 18), AGORA_TESTE).motivo, 'Reserve com pelo menos 2 dias de antecedência');
+      igual(podeReservar(e, pedidoTeste('churrasqueira', '2026-10-08', 13, 18), AGORA_TESTE).motivo, 'Reserve com pelo menos 1 dia de antecedência');
+      igual(podeReservar(e, pedidoTeste('salao', '2026-12-08', 13, 18), AGORA_TESTE).motivo, 'Reservas abrem com no máximo 60 dias de antecedência');
+    },
+  },
+  {
+    nome: 'horário que já passou não pode ser reservado',
+    rodar() {
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('quadra', '2026-10-08', 9, 10), AGORA_TESTE).motivo, 'Esse horário já passou');
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('quadra', '2026-10-07', 9, 10), AGORA_TESTE).motivo, 'Esse horário já passou');
+    },
+  },
+  {
+    nome: 'RN05: limite de reservas por mês por unidade',
+    rodar() {
+      const base = dadosIniciais(AGORA_TESTE);
+      const e = { ...base, reservas: [...base.reservas, reservaExtra('x1', '2026-10-20'), reservaExtra('x2', '2026-10-22')] };
+      igual(podeReservar(e, pedidoTeste('salao', '2026-10-24', 13, 18), AGORA_TESTE).motivo, 'Limite de 2 reservas/mês atingido para esta área');
+      igual(podeReservar(e, pedidoTeste('salao', '2026-11-05', 13, 18), AGORA_TESTE), { ok: true });
+      igual(podeReservar(e, pedidoTeste('salao', '2026-10-24', 13, 18, '303'), AGORA_TESTE), { ok: true });
+    },
+  },
+  {
+    nome: 'RN04: cancelamento com menos de 72 h avisa multa',
+    rodar() {
+      const perto = avisoCancelamento({ data: '2026-10-10', inicio: 18 }, AGORA_TESTE);
+      igual([perto.multa, perto.horas], [true, 56]);
+      const longe = avisoCancelamento({ data: '2026-10-20', inicio: 18 }, AGORA_TESTE);
+      igual(longe.multa, false);
+    },
+  },
+  {
+    nome: 'RN06: entrega exige código válido e nome de quem retirou',
+    rodar() {
+      const enc = dadosIniciais(AGORA_TESTE).encomendas.find((x) => x.id === 'e1');
+      igual(podeEntregar(enc, '000000', 'Ana Souza').motivo, 'Código inválido');
+      igual(podeEntregar(enc, '481203', '  ').motivo, 'Informe quem retirou');
+      igual(podeEntregar(enc, ' 481203 ', 'Ana Souza'), { ok: true });
+      igual(podeEntregar({ ...enc, status: 'retirada' }, '481203', 'Ana Souza').motivo, 'Encomenda já entregue');
+    },
+  },
+  {
+    nome: 'RN07: ocorrência fechada só pode ser arquivada, nunca apagada',
+    rodar() {
+      igual(acoesOcorrencia({ status: 'fechada', arquivada: false }).map((a) => a.id), ['comentar', 'arquivar']);
+      const aberta = acoesOcorrencia({ status: 'aberta', arquivada: false });
+      igual(aberta.map((a) => a.id), ['avancar', 'comentar']);
+      igual(aberta[0].rotulo, 'Mover para "Em análise"');
+      igual(acoesOcorrencia({ status: 'fechada', arquivada: true }), []);
+    },
+  },
+  {
+    nome: 'RN13: alertas de vencimento de documentos',
+    rodar() {
+      const alertas = alertasDocumentos(dadosIniciais(AGORA_TESTE).documentos, '2026-10-08');
+      igual(alertas.map((a) => [a.documento.id, a.faixa, a.dias]), [['d8', 'vencido', -3], ['d6', '30', 25], ['d7', '60', 58]]);
+    },
+  },
+  {
+    nome: 'SLA vencido só para ocorrência aberta além do prazo',
+    rodar() {
+      const oc = (id) => dadosIniciais(AGORA_TESTE).ocorrencias.find((o) => o.id === id);
+      igual([slaVencido(oc('OC-0042'), AGORA_TESTE), slaVencido(oc('OC-0041'), AGORA_TESTE), slaVencido(oc('OC-0038'), AGORA_TESTE)], [true, false, false]);
+    },
+  },
+  {
+    nome: 'status do dia no calendário',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual([statusDia(e, 'salao', '2026-10-11'), statusDia(e, 'salao', '2026-10-18'), statusDia(e, 'quadra', '2026-10-13'), statusDia(e, 'academia', '2026-10-08')], ['reservado', 'pendente', 'bloqueado', 'livre']);
+    },
+  },
+  {
+    nome: 'horários da área marcam ocupados e encerrados',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(horariosDaArea(e, 'salao', '2026-10-11', AGORA_TESTE).map((h) => [h.inicio, h.livre, h.motivo]), [[13, true, null], [18, false, 'Reservado']]);
+      igual(horariosDaArea(e, 'quadra', '2026-10-08', AGORA_TESTE).slice(0, 4).map((h) => [h.inicio, h.livre, h.motivo]), [[8, false, 'Encerrado'], [9, false, 'Encerrado'], [10, false, 'Encerrado'], [11, true, null]]);
+      igual(horariosDaArea(e, 'salao', '2026-10-11', AGORA_TESTE)[0].rotulo, 'Tarde (13h–18h)');
+    },
+  },
+  {
+    nome: 'destinatários de comunicado',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(destinatarios(e, { tipo: 'andar', valor: '5' }), ['501', '502', '503', '504']);
+      igual(destinatarios(e, { tipo: 'unidades', valor: ['302', '999'] }), ['302']);
+      igual(destinatarios(e, { tipo: 'todos' }).length, 32);
+    },
+  },
+  {
+    nome: 'comunicados da unidade: fixado primeiro',
+    rodar() {
+      igual(comunicadosDaUnidade(dadosIniciais(AGORA_TESTE), '302').map((c) => c.id), ['c1', 'c5', 'c3', 'c2', 'c4']);
+    },
+  },
+  {
+    nome: 'indicadores do síndico',
+    rodar() {
+      igual(indicadoresSindico(dadosIniciais(AGORA_TESTE), AGORA_TESTE), { pendentes: 1, abertas: 4, slaVencidas: 1, paradas: 1, vencendo: 3, adesao: { com: 20, total: 32 } });
+    },
+  },
+];
+
+// ---- src/casos/acoes.js ----
+
+const PEDIDO_SALAO = { areaId: 'salao', unidade: '302', data: '2026-10-15', inicio: 13, fim: 18, convidados: [], aceiteTermo: true };
+
+function acharPorId(lista, id) {
+  return lista.find((x) => x.id === id);
+}
+
+const CASOS_ACOES = [
+  {
+    nome: 'roteiro encomenda: portaria registra, morador é avisado e retira com código',
+    rodar() {
+      const r = registrarEncomenda(dadosIniciais(AGORA_TESTE), { unidade: '302', transportadora: 'Mercado Livre', foto: true, porteiro: 'Seu José' }, AGORA_TESTE);
+      igual(r.erro, undefined);
+      const nova = acharPorId(r.estado.encomendas, r.id);
+      igual([r.id, nova.unidade, nova.status, nova.codigo.length], ['e8', '302', 'aguardando', 6]);
+      igual([r.notificacao.canal, r.notificacao.para], ['WhatsApp', 'Ana Souza']);
+      const errado = entregarEncomenda(r.estado, { id: r.id, codigo: '000000', nome: 'Ana Souza' }, AGORA_TESTE);
+      igual(errado.erro, 'Código inválido');
+      igual(errado.estado, r.estado);
+      const ok = entregarEncomenda(r.estado, { id: r.id, codigo: nova.codigo, nome: 'Ana Souza' }, AGORA_TESTE);
+      const entregue = acharPorId(ok.estado.encomendas, r.id);
+      igual([entregue.status, entregue.retiradaPor], ['retirada', 'Ana Souza']);
+    },
+  },
+  {
+    nome: 'encomenda para unidade inexistente ou sem transportadora é recusada',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(registrarEncomenda(e, { unidade: '999', transportadora: 'Correios' }, AGORA_TESTE).erro, 'Unidade inexistente');
+      igual(registrarEncomenda(e, { unidade: '302', transportadora: '' }, AGORA_TESTE).erro, 'Escolha a transportadora');
+    },
+  },
+  {
+    nome: 'lembrete de encomenda parada',
+    rodar() {
+      const r = lembrarEncomenda(dadosIniciais(AGORA_TESTE), 'e2', AGORA_TESTE);
+      igual(acharPorId(r.estado.encomendas, 'e2').lembretes, 1);
+      igual(r.notificacao.texto.includes('há 4 dias'), true);
+    },
+  },
+  {
+    nome: 'roteiro reserva: fica pendente, trava o horário e é aprovada',
+    rodar() {
+      const r = solicitarReserva(dadosIniciais(AGORA_TESTE), PEDIDO_SALAO, AGORA_TESTE);
+      igual([r.id, acharPorId(r.estado.reservas, r.id).status, r.notificacao.para], ['r5', 'pendente', SINDICO]);
+      igual(solicitarReserva(r.estado, { ...PEDIDO_SALAO, unidade: '303' }, AGORA_TESTE).erro, 'Horário já reservado');
+      const ap = aprovarReserva(r.estado, 'r5');
+      igual(acharPorId(ap.estado.reservas, 'r5').status, 'confirmada');
+      igual([ap.notificacao.canal, ap.notificacao.para], ['WhatsApp', 'Ana Souza']);
+    },
+  },
+  {
+    nome: 'recusa exige motivo e libera o horário',
+    rodar() {
+      const r = solicitarReserva(dadosIniciais(AGORA_TESTE), PEDIDO_SALAO, AGORA_TESTE);
+      igual(recusarReserva(r.estado, 'r5', '  ').erro, 'Escolha o motivo da recusa');
+      const rec = recusarReserva(r.estado, 'r5', 'Data reservada para manutenção');
+      igual([acharPorId(rec.estado.reservas, 'r5').status, acharPorId(rec.estado.reservas, 'r5').motivo], ['recusada', 'Data reservada para manutenção']);
+      igual(podeReservar(rec.estado, { ...PEDIDO_SALAO, unidade: '303' }, AGORA_TESTE), { ok: true });
+    },
+  },
+  {
+    nome: 'área com aprovação automática confirma na hora',
+    rodar() {
+      const r = solicitarReserva(dadosIniciais(AGORA_TESTE), { ...PEDIDO_SALAO, areaId: 'quadra', data: '2026-10-09', inicio: 15, fim: 16 }, AGORA_TESTE);
+      igual([acharPorId(r.estado.reservas, r.id).status, r.notificacao.para], ['confirmada', 'Ana Souza']);
+    },
+  },
+  {
+    nome: 'reserva sem aceite do termo é recusada',
+    rodar() {
+      igual(solicitarReserva(dadosIniciais(AGORA_TESTE), { ...PEDIDO_SALAO, aceiteTermo: false }, AGORA_TESTE).erro, 'Aceite o termo de responsabilidade');
+    },
+  },
+  {
+    nome: 'cancelar com menos de 72 h avisa multa',
+    rodar() {
+      const r = cancelarReserva(dadosIniciais(AGORA_TESTE), 'r2', AGORA_TESTE);
+      igual([r.aviso.multa, acharPorId(r.estado.reservas, 'r2').status], [true, 'cancelada']);
+      igual(r.notificacao.para, SINDICO);
+    },
+  },
+  {
+    nome: 'roteiro ocorrência: protocolo, status, avaliação e arquivamento',
+    rodar() {
+      const r = abrirOcorrencia(dadosIniciais(AGORA_TESTE), { categoria: 'vazamento', descricao: 'Infiltração no teto', local: 'Banheiro', unidade: '302' }, AGORA_TESTE);
+      igual([r.id, r.estado.proximoProtocolo, r.notificacao.para], ['OC-0043', 44, SINDICO]);
+      let e = r.estado;
+      for (const status of ['em_analise', 'em_andamento', 'resolvida', 'fechada']) {
+        const passo = avancarOcorrencia(e, 'OC-0043', AGORA_TESTE);
+        igual(acharPorId(passo.estado.ocorrencias, 'OC-0043').status, status);
+        igual(passo.notificacao.para, 'Ana Souza');
+        e = passo.estado;
+      }
+      igual(avancarOcorrencia(e, 'OC-0043', AGORA_TESTE).erro, 'Ocorrência já está fechada');
+      const av = avaliarOcorrencia(e, 'OC-0043', 5);
+      igual(acharPorId(av.estado.ocorrencias, 'OC-0043').avaliacao, 5);
+      const arq = arquivarOcorrencia(av.estado, 'OC-0043');
+      const final = acharPorId(arq.estado.ocorrencias, 'OC-0043');
+      igual([final.arquivada, final.linha.length], [true, 5]);
+    },
+  },
+  {
+    nome: 'RN07: só ocorrência fechada pode ser arquivada',
+    rodar() {
+      igual(arquivarOcorrencia(dadosIniciais(AGORA_TESTE), 'OC-0039').erro, 'Só ocorrências fechadas podem ser arquivadas');
+    },
+  },
+  {
+    nome: 'ocorrência sem categoria ou descrição é recusada',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(abrirOcorrencia(e, { categoria: '', descricao: 'x', unidade: '302' }, AGORA_TESTE).erro, 'Escolha a categoria');
+      igual(abrirOcorrencia(e, { categoria: 'barulho', descricao: '  ', unidade: '302' }, AGORA_TESTE).erro, 'Descreva a ocorrência');
+    },
+  },
+  {
+    nome: 'avaliação só depois de resolvida e com nota de 1 a 5',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(avaliarOcorrencia(e, 'OC-0042', 4).erro, 'A avaliação abre quando a ocorrência for resolvida');
+      igual(avaliarOcorrencia(e, 'OC-0038', 0).erro, 'Escolha de 1 a 5 estrelas');
+    },
+  },
+  {
+    nome: 'comentário exige texto e entra na linha do tempo',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(comentarOcorrencia(e, 'OC-0039', '  ', AGORA_TESTE).erro, 'Escreva o comentário');
+      const r = comentarOcorrencia(e, 'OC-0039', 'Peça encomendada', AGORA_TESTE);
+      const ultima = acharPorId(r.estado.ocorrencias, 'OC-0039').linha.at(-1);
+      igual([ultima.status, ultima.texto, ultima.autor], [null, 'Peça encomendada', 'Síndico']);
+    },
+  },
+  {
+    nome: 'eu também alterna na ocorrência pública',
+    rodar() {
+      const um = euTambem(dadosIniciais(AGORA_TESTE), 'OC-0040', '302');
+      igual(acharPorId(um.estado.ocorrencias, 'OC-0040').eutambem.length, 8);
+      const dois = euTambem(um.estado, 'OC-0040', '302');
+      igual(acharPorId(dois.estado.ocorrencias, 'OC-0040').eutambem.length, 7);
+      igual(euTambem(dois.estado, 'OC-0039', '302').erro, 'Ocorrência não é pública');
+    },
+  },
+  {
+    nome: 'roteiro comunicado: urgente vai também por SMS e a leitura é contada',
+    rodar() {
+      const r = publicarComunicado(dadosIniciais(AGORA_TESTE), { tipo: 'urgente', titulo: 'Vazamento de gás', texto: 'Evacuar o 3º andar', publico: { tipo: 'todos' }, canais: ['push'], fixado: false, anexo: null }, AGORA_TESTE);
+      const c = acharPorId(r.estado.comunicados, r.id);
+      igual([r.id, c.canais, c.leituras, r.notificacao.para], ['c6', ['push', 'sms'], [], '32 unidades']);
+      const l1 = marcarLido(r.estado, 'c6', '302');
+      const l2 = marcarLido(l1.estado, 'c6', '302');
+      igual(acharPorId(l2.estado.comunicados, 'c6').leituras, ['302']);
+    },
+  },
+  {
+    nome: 'comunicado sem título, destinatário ou canal é recusado',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      const ok = { tipo: 'geral', titulo: 'Aviso', texto: 'Texto', publico: { tipo: 'todos' }, canais: ['push'], fixado: false, anexo: null };
+      igual(publicarComunicado(e, { ...ok, titulo: ' ' }, AGORA_TESTE).erro, 'Informe o título');
+      igual(publicarComunicado(e, { ...ok, texto: '' }, AGORA_TESTE).erro, 'Escreva o texto do comunicado');
+      igual(publicarComunicado(e, { ...ok, publico: { tipo: 'unidades', valor: ['999'] } }, AGORA_TESTE).erro, 'Escolha ao menos uma unidade');
+      igual(publicarComunicado(e, { ...ok, canais: [] }, AGORA_TESTE).erro, 'Escolha ao menos um canal');
+    },
+  },
+  {
+    nome: 'reação: uma por unidade, alternando',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      const util = reagir(e, 'c1', '302', 'util');
+      igual(acharPorId(util.estado.comunicados, 'c1').reacoes.util.includes('302'), true);
+      const desfeito = reagir(util.estado, 'c1', '302', 'util');
+      igual(acharPorId(desfeito.estado.comunicados, 'c1').reacoes.util.includes('302'), false);
+      const trocou = reagir(util.estado, 'c1', '302', 'duvida');
+      const c = acharPorId(trocou.estado.comunicados, 'c1');
+      igual([c.reacoes.util.includes('302'), c.reacoes.duvida.includes('302')], [false, true]);
+    },
+  },
+];
+
+// ---- src/armazenamento.js ----
+const CHAVE_ESTADO = 'condofacil-demo-v1';
+
+function carregarEstado() {
+  try {
+    const texto = localStorage.getItem(CHAVE_ESTADO);
+    if (!texto) return null;
+    const estado = JSON.parse(texto);
+    return estado && estado.versao === 1 ? estado : null;
+  } catch {
+    return null;
+  }
+}
+
+function salvarEstado(estado) {
+  try {
+    localStorage.setItem(CHAVE_ESTADO, JSON.stringify(estado));
+  } catch {
+    // Sem armazenamento (aba privada, bloqueio): a demonstração segue só em memória.
+  }
+}
+
+function limparEstado() {
+  try {
+    localStorage.removeItem(CHAVE_ESTADO);
+  } catch {
+    // Idem.
+  }
+}
+
+// ---- src/ui/comum.js ----
+
+const PERFIS = [
+  { id: 'sindico', nome: 'Síndico', inicial: 'inicio' },
+  { id: 'morador', nome: 'Morador', inicial: 'inicio' },
+  { id: 'portaria', nome: 'Portaria', inicial: 'registrar' },
+];
+
+// Rotas no formato #perfil.tela.id: o link compartilhado de um Artifact só repassa âncoras com letras, dígitos, ".", "_", "~" e "-".
+function lerRota() {
+  const [perfil, tela, id] = location.hash.replace(/^#/, '').split('.');
+  const p = PERFIS.find((x) => x.id === perfil);
+  if (!p) return { perfil: PERFIS[0].id, tela: PERFIS[0].inicial, id: null };
+  return { perfil: p.id, tela: tela || p.inicial, id: id ? decodeURIComponent(id) : null };
+}
+
+function ir(perfil, tela, id) {
+  location.hash = `#${perfil}.${tela}${id ? `.${id}` : ''}`;
+}
+
+function fmtMoeda(valor) {
+  return `R$ ${valor.toFixed(2).replace('.', ',')}`;
+}
+
+const ETQ_RESERVA = { pendente: 'alerta', confirmada: 'ok', recusada: 'perigo', cancelada: 'neutro' };
+const ETQ_OCORRENCIA = { aberta: 'info', em_analise: 'alerta', em_andamento: 'alerta', resolvida: 'ok', fechada: 'neutro' };
+const ROTULO_DIA = { livre: 'Livre', pendente: 'Pendente', reservado: 'Reservado', bloqueado: 'Bloqueado', indisponivel: 'Fora do prazo' };
+
+function Etiqueta({ tipo = 'neutro', children }) {
+  return html`<span class=${`etq etq-${tipo}`}>${children}</span>`;
+}
+
+function EtqReserva({ status }) {
+  return html`<${Etiqueta} tipo=${ETQ_RESERVA[status]}>${NOMES_STATUS_RESERVA[status]}<//>`;
+}
+
+function EtqOcorrencia({ status, arquivada }) {
+  if (arquivada) return html`<${Etiqueta}>Arquivada<//>`;
+  return html`<${Etiqueta} tipo=${ETQ_OCORRENCIA[status]}>${NOMES_STATUS[status]}<//>`;
+}
+
+function Erro({ texto }) {
+  return texto ? html`<p class="erro" role="alert">${texto}</p>` : null;
+}
+
+function Sucesso({ texto }) {
+  return texto ? html`<p class="sucesso" role="status">${texto}</p>` : null;
+}
+
+function Vazio({ texto }) {
+  return html`<p class="vazio">${texto}</p>`;
+}
+
+function FotoFalsa({ rotulo = 'Foto' }) {
+  return html`<div class="foto-falsa" role="img" aria-label=${rotulo}><span aria-hidden="true">📷</span>${rotulo}</div>`;
+}
+
+function Campo({ rotulo, dica, children }) {
+  return html`<label class="campo"><span>${rotulo}</span>${children}${dica && html`<small>${dica}</small>`}</label>`;
+}
+
+function Calendario({ anoMes, statusDe, selecionado, aoEscolher, aoMudarMes }) {
+  const dias = diasDoMes(anoMes);
+  const vazios = deIso(dias[0]).getDay();
+  return html`<div class="calendario">
+    <div class="cal-topo">
+      <button type="button" class="btn-icone" aria-label="Mês anterior" onClick=${() => aoMudarMes(-1)}>‹</button>
+      <strong>${nomeMes(anoMes)}</strong>
+      <button type="button" class="btn-icone" aria-label="Próximo mês" onClick=${() => aoMudarMes(1)}>›</button>
+    </div>
+    <div class="cal-grade">
+      ${['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => html`<span class="cal-sem" key=${`s${i}`} aria-hidden="true">${d}</span>`)}
+      ${Array.from({ length: vazios }, (_, i) => html`<span key=${`v${i}`}></span>`)}
+      ${dias.map((iso) => {
+        const st = statusDe(iso);
+        return html`<button type="button" key=${iso} data-dia=${iso} class=${`cal-dia st-${st}${iso === selecionado ? ' sel' : ''}`} disabled=${st === 'indisponivel'} aria-pressed=${iso === selecionado} aria-label=${`${fmtDia(iso)}: ${ROTULO_DIA[st]}`} onClick=${() => aoEscolher(iso)}>${Number(iso.slice(8))}</button>`;
+      })}
+    </div>
+    <div class="cal-legenda">${['livre', 'pendente', 'reservado', 'bloqueado'].map((s) => html`<span key=${s} class=${`leg st-${s}`}>${ROTULO_DIA[s]}</span>`)}</div>
+  </div>`;
+}
+
+function QrFalso({ texto, tamanho = 132 }) {
+  // Desenho determinístico com cara de QR Code; não é um QR legível.
+  let semente = [...texto].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const sortear = () => {
+    semente = (semente * 1103515245 + 12345) >>> 0;
+    return semente / 4294967296;
+  };
+  const quadrados = [];
+  for (let y = 0; y < 21; y++) {
+    for (let x = 0; x < 21; x++) {
+      const zona = (x < 8 || x > 12) && (y < 8 || y > 12) && !(x > 12 && y > 12);
+      let escuro;
+      if (zona) {
+        const lx = x < 8 ? x : 20 - x;
+        const ly = y < 8 ? y : 20 - y;
+        escuro = lx !== 7 && ly !== 7 && (lx === 0 || lx === 6 || ly === 0 || ly === 6 || (lx >= 2 && lx <= 4 && ly >= 2 && ly <= 4));
+      } else {
+        escuro = sortear() < 0.5;
+      }
+      if (escuro) quadrados.push(html`<rect key=${`${x}-${y}`} x=${x} y=${y} width="1" height="1" />`);
+    }
+  }
+  return html`<svg class="qr" viewBox="-2 -2 25 25" width=${tamanho} height=${tamanho} role="img" aria-label=${`QR Code de retirada ${texto}`}>
+    <rect x="-2" y="-2" width="25" height="25" fill="#fff" />
+    <g fill="#111">${quadrados}</g>
+  </svg>`;
+}
+
+function LinhaTempo({ linha }) {
+  return html`<ol class="linha-tempo">${linha.map((p, i) => html`<li key=${i} class=${p.status ? 'marco' : 'comentario'}>
+    <span class="lt-quando">${fmtDataHora(p.em)}</span>
+    <strong>${p.status ? NOMES_STATUS[p.status] : 'Comentário'}</strong>
+    <span>${p.texto}${p.autor ? ` · ${p.autor}` : ''}</span>
+  </li>`)}</ol>`;
+}
+
+function Estrelas({ valor = 0, aoEscolher }) {
+  if (!aoEscolher) {
+    return html`<div class="estrelas" role="img" aria-label=${`${valor} de 5 estrelas`}>${[1, 2, 3, 4, 5].map((n) => html`<span key=${n} class=${n <= valor ? 'cheia' : ''} aria-hidden="true">★</span>`)}</div>`;
+  }
+  return html`<div class="estrelas" role="radiogroup" aria-label="Avaliação">${[1, 2, 3, 4, 5].map((n) => html`<button type="button" key=${n} data-estrela=${n} role="radio" aria-checked=${n === valor} aria-label=${n === 1 ? '1 estrela' : `${n} estrelas`} class=${n <= valor ? 'cheia' : ''} onClick=${() => aoEscolher(n)}>★</button>`)}</div>`;
+}
+
+function Selo({ canal, para, texto }) {
+  return html`<div class="selo" role="status" aria-live="polite">
+    <span class="selo-canal">${canal}</span>
+    <div><strong>→ ${para}</strong><p>${texto}</p></div>
+  </div>`;
+}
+
+function PrevDoc({ documento, aoFechar }) {
+  const atual = documento.versoes[documento.versoes.length - 1];
+  return html`<div class="prev-doc" role="dialog" aria-label=${documento.titulo}>
+    <div class="prev-topo"><strong>${documento.titulo}</strong><button type="button" class="btn secundario" onClick=${aoFechar}>Fechar</button></div>
+    <div class="prev-pagina">
+      <p class="prev-cabecalho">Residencial Ipê Amarelo · ${documento.pasta} · versão ${atual.versao} de ${fmtDataCurta(atual.data)}</p>
+      <h3>${documento.titulo}</h3>
+      ${[1, 2, 3, 4, 5, 6, 7].map((i) => html`<span key=${i} class="prev-linha" style=${`width:${70 + ((i * 37) % 30)}%`}></span>`)}
+      <p class="prev-aviso">Prévia simulada do PDF para o protótipo.</p>
+    </div>
+  </div>`;
+}
+
+// ---- src/ui/portaria.js ----
+
+function TelaPortaria() {
+  return html`<div class="tablet"><div class="tab-conteudo"><h1>Portaria</h1></div></div>`;
+}
+
+// ---- src/ui/morador.js ----
+
+function TelaMorador() {
+  return html`<div class="celular"><div class="cel-conteudo"><h1 class="m-titulo">Morador</h1></div></div>`;
+}
+
+// ---- src/ui/sindico.js ----
+
+function TelaSindico() {
+  return html`<div class="painel"><div class="painel-conteudo"><h1>Síndico</h1></div></div>`;
+}
+
 // ---- src/ui/app.js ----
 
-render(html`<p>CondoFácil · ${fmtDia(isoDia(new Date()))}</p>`, document.getElementById('app'));
+const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria };
+const ultimaRota = {};
+
+function estadoDeHoje() {
+  const salvo = carregarEstado();
+  return salvo && salvo.geradoEm === isoDia(new Date()) ? salvo : dadosIniciais(new Date());
+}
+
+function App() {
+  const [estado, setEstado] = useState(estadoDeHoje);
+  const [rota, setRota] = useState(lerRota);
+  const [selo, setSelo] = useState(null);
+  const [geracao, setGeracao] = useState(0);
+
+  useEffect(() => {
+    const mudou = () => setRota(lerRota());
+    window.addEventListener('hashchange', mudou);
+    return () => window.removeEventListener('hashchange', mudou);
+  }, []);
+
+  useEffect(() => {
+    salvarEstado(estado);
+  }, [estado]);
+
+  useEffect(() => {
+    if (!selo) return undefined;
+    const t = setTimeout(() => setSelo(null), 4500);
+    return () => clearTimeout(t);
+  }, [selo]);
+
+  ultimaRota[rota.perfil] = rota;
+
+  function executar(acao) {
+    const resultado = acao(estado);
+    if (!resultado.erro) {
+      setEstado(resultado.estado);
+      if (resultado.notificacao) setSelo({ ...resultado.notificacao, chave: Date.now() });
+    }
+    return resultado;
+  }
+
+  function trocarPerfil(id) {
+    const anterior = ultimaRota[id];
+    const perfil = PERFIS.find((p) => p.id === id);
+    ir(id, anterior ? anterior.tela : perfil.inicial, anterior ? anterior.id : null);
+  }
+
+  function reiniciar() {
+    limparEstado();
+    setEstado(dadosIniciais(new Date()));
+    setSelo(null);
+    setGeracao(geracao + 1);
+  }
+
+  const Tela = TELAS_PERFIL[rota.perfil];
+  return html`
+    <header class="barra-demo">
+      <div class="marca"><span class="logo" aria-hidden="true">CF</span><strong>CondoFácil</strong><span class="sub">Residencial Ipê Amarelo · 32 unidades</span></div>
+      <div class="ver-como" role="group" aria-label="Ver como">
+        <span>Ver como</span>
+        ${PERFIS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${rota.perfil === p.id} onClick=${() => trocarPerfil(p.id)}>${p.nome}</button>`)}
+      </div>
+      <button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>
+    </header>
+    <main class=${`palco palco-${rota.perfil}`}>
+      <${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />
+    </main>
+    ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
+  `;
+}
+
+function PainelTestes() {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES].map((caso) => {
+    try {
+      caso.rodar();
+      return { nome: caso.nome, ok: true };
+    } catch (e) {
+      return { nome: caso.nome, ok: false, erro: e.message };
+    }
+  });
+  const falhas = resultados.filter((r) => !r.ok);
+  console.log(`Autoteste CondoFácil: ${resultados.length - falhas.length} de ${resultados.length} passaram`, falhas);
+  return html`<main class="painel-testes">
+    <h1>Autoteste das regras</h1>
+    <p><strong>${resultados.length - falhas.length} de ${resultados.length} passaram · falhas: ${falhas.length}</strong></p>
+    <ul>${resultados.map((r) => html`<li key=${r.nome} class=${r.ok ? 'ok' : 'falha'}>${r.ok ? '✓' : '✗'} ${r.nome}${r.erro ? html`<br /><small>${r.erro}</small>` : ''}</li>`)}</ul>
+  </main>`;
+}
+
+const modoTeste = new URLSearchParams(location.search).get('teste') === '1';
+render(modoTeste ? html`<${PainelTestes} />` : html`<${App} />`, document.getElementById('app'));
 
 </script>
-</body>
-</html>
