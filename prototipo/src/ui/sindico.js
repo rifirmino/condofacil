@@ -2,10 +2,12 @@ import { html, useState } from '../vendor.js';
 import { CATEGORIAS, TIPOS_COMUNICADO, MODELOS_COMUNICADO, NOMES_CANAL, NOMES_STATUS, FLUXO_OCORRENCIA } from '../dados.js';
 import { areaPorId, statusDia, indicadoresSindico, slaVencido, alertasDocumentos, acoesOcorrencia, destinatarios, encomendaParada, moradoresDaUnidade } from '../regras.js';
 import { aprovarReserva, recusarReserva, publicarComunicado, avancarOcorrencia, comentarOcorrencia, arquivarOcorrencia, lembrarEncomenda } from '../acoes.js';
+import { aprovarVendedor, recusarVendedor, suspenderVendedor, reativarVendedor, ocultarAnuncio, mostrarAnuncio } from '../vendas/acoes.js';
+import { nomeVizinho, fmtCentavos } from '../vendas/regras.js';
 import { isoDia, somarMes, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
 import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
-const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote']];
+const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
 const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
 const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
 
@@ -29,7 +31,7 @@ function tipoEtiquetaComunicado(c) {
 
 export function TelaSindico(props) {
   const tela = MENU_SINDICO.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'inicio';
-  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas }[tela];
+  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas }[tela];
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
       <p class="painel-usuario"><strong>Roberto Lima</strong><small>Síndico · apto 801</small></p>
@@ -45,6 +47,7 @@ function SInicio({ estado, agora }) {
   const vencidas = estado.ocorrencias.filter((o) => slaVencido(o, agora));
   const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora));
   const alertas = alertasDocumentos(estado.documentos, isoDia(agora));
+  const vendedoresPendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
   const cartoes = [
     ['Reservas pendentes', ind.pendentes, '#sindico.reservas', ind.pendentes ? 'alerta' : 'ok', 'Aguardando sua aprovação', 'calendario'],
@@ -52,7 +55,7 @@ function SInicio({ estado, agora }) {
     ['Encomendas paradas', ind.paradas, '#sindico.encomendas', ind.paradas ? 'alerta' : 'ok', 'Há mais de 3 dias na portaria', 'pacote'],
     ['Documentos vencendo', ind.vencendo, '#sindico.documentos', ind.vencendo ? 'perigo' : 'ok', 'Vencidos ou nos próximos 60 dias', 'documento'],
   ];
-  const semPendencias = !pendentes.length && !vencidas.length && !paradas.length && !alertas.length;
+  const semPendencias = !pendentes.length && !vencidas.length && !paradas.length && !alertas.length && !vendedoresPendentes.length;
   return html`<section>
     <h1>Olá, Roberto</h1>
     <div class="indicadores">
@@ -71,6 +74,7 @@ function SInicio({ estado, agora }) {
           ${vencidas.map((o) => html`<li key=${o.id}><a href=${`#sindico.ocorrencias.${o.id}`}>Prazo vencido: ${o.id} · ${CATEGORIAS[o.categoria].nome}</a></li>`)}
           ${paradas.map((e) => html`<li key=${e.id}><a href="#sindico.encomendas">Encomenda parada: apto ${e.unidade}, chegou ${haQuanto(e.chegadaEm, agora)}</a></li>`)}
           ${alertas.map((a) => html`<li key=${a.documento.id}><a href="#sindico.documentos">${textoAlerta(a)}: ${a.documento.titulo}</a></li>`)}
+          ${vendedoresPendentes.map((p) => html`<li key=${`v${p.unidade}`}><a href="#sindico.vendas">Aprovar vendedor: ${p.nome}, apto ${p.unidade}</a></li>`)}
         </ul>`}
   </section>`;
 }
@@ -386,6 +390,99 @@ function SEncomendas({ estado, executar, agora }) {
           <td>${fmtDataHora(e.chegadaEm)}</td>
           <td>${situacao}${e.lembretes ? html` <small class="sub">${e.lembretes} lembrete(s)</small>` : ''}</td>
           <td>${e.status === 'aguardando' && html`<button type="button" class="btn secundario" onClick=${() => lembrar(e.id)}>Reenviar lembrete</button>`}</td>
+        </tr>`;
+      })}</tbody>
+    </table></div>
+  </section>`;
+}
+
+function SVendas({ estado, executar, agora }) {
+  const [editando, setEditando] = useState(null);
+  const [motivo, setMotivo] = useState('');
+  const [erro, setErro] = useState(null);
+  const mes = isoDia(agora).slice(0, 7);
+  const pendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
+  const vendedores = estado.pessoas.filter((p) => ['aprovado', 'suspenso'].includes(p.vendedor));
+  const pedidosNoMes = (unidade) => estado.pedidos.filter((p) => (!unidade || p.vendedor === unidade) && isoDia(new Date(p.criadoEm)).slice(0, 7) === mes).length;
+
+  function rodar(acao) {
+    const r = executar(acao);
+    if (r.erro) {
+      setErro(r.erro);
+      return;
+    }
+    setErro(null);
+    setEditando(null);
+    setMotivo('');
+  }
+
+  function abrir(tipo, id) {
+    setEditando({ tipo, id });
+    setMotivo('');
+    setErro(null);
+  }
+
+  function confirmar() {
+    const { tipo, id } = editando;
+    if (tipo === 'recusar') rodar((e) => recusarVendedor(e, id, motivo));
+    if (tipo === 'suspender') rodar((e) => suspenderVendedor(e, id, motivo));
+    if (tipo === 'ocultar') rodar((e) => ocultarAnuncio(e, id, motivo));
+  }
+
+  const caixaMotivo = (tipo, id) => editando && editando.tipo === tipo && editando.id === id && html`<div class="recusa">
+    <${Campo} rotulo="Motivo"><input id=${`motivo-${tipo}-${id}`} value=${motivo} onInput=${(ev) => setMotivo(ev.target.value)} /><//>
+    <button type="button" class="btn perigo" onClick=${confirmar}>Confirmar</button>
+    <button type="button" class="btn secundario" onClick=${() => setEditando(null)}>Voltar</button>
+  </div>`;
+
+  return html`<section>
+    <h1>Vendas entre moradores</h1>
+    <div class="indicadores">
+      <div class="indicador"><${QuadroIcone} nome="sacola" /><span class="ind-rotulo">Pedidos no mês</span><strong>${pedidosNoMes()}</strong><small>Entre todos os vendedores</small></div>
+      <div class="indicador"><${QuadroIcone} nome="loja" /><span class="ind-rotulo">Vendedores ativos</span><strong>${vendedores.filter((p) => p.vendedor === 'aprovado').length}</strong><small>${pendentes.length} aguardando aprovação</small></div>
+    </div>
+    <p class="sub">Por privacidade, conversas e detalhes dos pedidos ficam só entre comprador e vendedor.</p>
+    <${Erro} texto=${erro} />
+    <h2>Solicitações para vender</h2>
+    ${pendentes.length
+      ? html`<ul class="lista-cartoes">${pendentes.map((p) => html`<li key=${p.unidade} class="cartao">
+          <div class="linha-entre"><strong>${p.nome} · apto ${p.unidade}</strong><small class="sub">${fmtDataHora(p.pedidoVenda.em)}</small></div>
+          <span>${p.pedidoVenda.texto}</span>
+          ${caixaMotivo('recusar', p.unidade) || html`<div class="acoes">
+            <button type="button" class="btn primario" data-acao=${`aprovar-vendedor-${p.unidade}`} onClick=${() => rodar((e) => aprovarVendedor(e, p.unidade))}>Aprovar</button>
+            <button type="button" class="btn secundario" onClick=${() => abrir('recusar', p.unidade)}>Recusar</button>
+          </div>`}
+        </li>`)}</ul>`
+      : html`<${Vazio} texto="Nenhuma solicitação aguardando." />`}
+    <h2>Vendedores</h2>
+    <div class="tabela-rolagem"><table class="tabela">
+      <thead><tr><th>Vendedor</th><th>Situação</th><th>Anúncios ativos</th><th>Pedidos no mês</th><th><span class="sub">Ação</span></th></tr></thead>
+      <tbody>${vendedores.map((p) => html`<tr key=${p.unidade}>
+        <td>${p.nome} · apto ${p.unidade}</td>
+        <td>${p.vendedor === 'aprovado' ? html`<${Etiqueta} tipo="ok">Ativo<//>` : html`<${Etiqueta} tipo="perigo">Suspenso<//>`}</td>
+        <td>${estado.anuncios.filter((a) => a.vendedor === p.unidade && a.ativo && !a.oculto).length}</td>
+        <td>${pedidosNoMes(p.unidade)}</td>
+        <td>${p.vendedor === 'aprovado'
+          ? caixaMotivo('suspender', p.unidade) || html`<button type="button" class="btn secundario" onClick=${() => abrir('suspender', p.unidade)}>Suspender</button>`
+          : html`<button type="button" class="btn secundario" onClick=${() => rodar((e) => reativarVendedor(e, p.unidade))}>Reativar</button>`}</td>
+      </tr>`)}</tbody>
+    </table></div>
+    <h2>Anúncios</h2>
+    <div class="tabela-rolagem"><table class="tabela">
+      <thead><tr><th>Anúncio</th><th>Vendedor</th><th>Preço</th><th>Disponível</th><th>Situação</th><th><span class="sub">Ação</span></th></tr></thead>
+      <tbody>${[...estado.anuncios].sort((a, b) => b.criadoEm.localeCompare(a.criadoEm)).map((a) => {
+        let situacao = html`<${Etiqueta} tipo="ok">Na vitrine<//>`;
+        if (a.oculto) situacao = html`<${Etiqueta} tipo="perigo">Oculto<//>`;
+        else if (!a.ativo) situacao = html`<${Etiqueta}>Pausado<//>`;
+        return html`<tr key=${a.id}>
+          <td>${a.titulo}${a.oculto ? html`<br /><small class="sub">Motivo: ${a.motivoOculto}</small>` : ''}</td>
+          <td>${nomeVizinho(estado, a.vendedor)} · apto ${a.vendedor}</td>
+          <td>${fmtCentavos(a.preco)}</td>
+          <td>${a.quantidade}</td>
+          <td>${situacao}</td>
+          <td>${a.oculto
+            ? html`<button type="button" class="btn secundario" onClick=${() => rodar((e) => mostrarAnuncio(e, a.id))}>Mostrar</button>`
+            : caixaMotivo('ocultar', a.id) || html`<button type="button" class="btn secundario" onClick=${() => abrir('ocultar', a.id)}>Ocultar</button>`}</td>
         </tr>`;
       })}</tbody>
     </table></div>

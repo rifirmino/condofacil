@@ -35,6 +35,9 @@ const CHECAGENS = [
   ['#morador.vendas.sacola', ['Sua sacola está vazia.']],
   ['#morador.vendas.pedidos', ['Você ainda não fez pedidos.']],
   ['#morador.vendas.loja', ['Quer vender para os vizinhos?', 'Pedir para vender']],
+  ['#morador.inicio', ['Novidades na vitrine', 'Bicicleta infantil aro 16']],
+  ['#sindico.inicio', ['Aprovar vendedor: Paulo Ribeiro, apto 102']],
+  ['#sindico.vendas', ['Salgados assados para festas', 'aprovar-vendedor-102', 'Juliana Costa · apto 104', 'Bicicleta infantil aro 16', 'Pedidos no mês']],
 ];
 
 // Só larguras de desktop: o Chrome headless impõe janela mínima maior que um celular; a largura de 390 px é medida no e2e.

@@ -1,9 +1,9 @@
 import { html, useState } from '../vendor.js';
 import { CATEGORIAS, TIPOS_COMUNICADO } from '../dados.js';
 import { MORADORES_DEMO } from '../vendas/dados.js';
-import { pessoaDaUnidade } from '../vendas/regras.js';
+import { pessoaDaUnidade, anunciosVisiveis } from '../vendas/regras.js';
 import { trocarMorador, alternarOfertas } from '../vendas/acoes.js';
-import { TelaVendas } from './vendas.js';
+import { TelaVendas, CartaoAnuncio } from './vendas.js';
 import { areaPorId, statusDia, horariosDaArea, comunicadosDaUnidade, avisoCancelamento, encomendaParada, STATUS_ATIVOS } from '../regras.js';
 import { solicitarReserva, cancelarReserva, marcarLido, reagir, abrirOcorrencia, avaliarOcorrencia, euTambem } from '../acoes.js';
 import { isoDia, somarMes, diferencaDias, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
@@ -67,6 +67,7 @@ function MInicio({ estado, agora, eu }) {
   const hoje = isoDia(agora);
   const pacotes = estado.encomendas.filter((e) => e.unidade === eu && e.status === 'aguardando');
   const fixado = comunicadosDaUnidade(estado, eu).find((c) => c.fixado);
+  const novidades = anunciosVisiveis(estado).filter((a) => a.vendedor !== eu).slice(0, 2);
   const proxima = estado.reservas
     .filter((r) => r.unidade === eu && STATUS_ATIVOS.includes(r.status) && r.data >= hoje)
     .sort((a, b) => a.data.localeCompare(b.data) || a.inicio - b.inicio)[0];
@@ -88,6 +89,11 @@ function MInicio({ estado, agora, eu }) {
           <span>${fmtDia(proxima.data)} · ${fmtHora(proxima.inicio)}–${fmtHora(proxima.fim)}</span>
         </a>`
       : html`<${Vazio} texto="Você não tem reservas futuras." />`}
+    <h2>Novidades na vitrine</h2>
+    ${novidades.length
+      ? html`<ul class="anuncios">${novidades.map((a) => html`<li key=${a.id}><${CartaoAnuncio} estado=${estado} anuncio=${a} eu=${eu} /></li>`)}</ul>`
+      : html`<${Vazio} texto="Nenhum anúncio na vitrine." />`}
+    <a class="voltar" href="#morador.vendas">Ver a vitrine</a>
     <a class="btn primario bloco" href="#morador.ocorrencias.nova">Abrir ocorrência</a>
   </section>`;
 }
