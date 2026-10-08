@@ -1,0 +1,11 @@
+{
+  "name": "condofacil-prototipo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "montar": "node montar.mjs",
+    "verificar": "node verificar.mjs",
+    "e2e": "node e2e.mjs"
+  }
+}

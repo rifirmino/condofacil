@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CondoFácil Protótipo</title>
+<style>
+body { margin: 0; background: #f3f4f1; color: #1c2321; font-family: system-ui, sans-serif; }
+
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+// ---- src/vendor.js ----
+import { html, render, useState, useEffect } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
+
+// ---- src/datas.js ----
+// Datas como texto 'AAAA-MM-DD' no fuso local; instantes como Date ou ISO completo.
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const MESES_LONGOS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const DIAS_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+function doisDigitos(n) {
+  return String(n).padStart(2, '0');
+}
+
+function isoDia(d) {
+  return `${d.getFullYear()}-${doisDigitos(d.getMonth() + 1)}-${doisDigitos(d.getDate())}`;
+}
+
+function deIso(iso) {
+  const [a, m, d] = iso.split('-').map(Number);
+  return new Date(a, m - 1, d);
+}
+
+function somarDias(iso, n) {
+  const d = deIso(iso);
+  d.setDate(d.getDate() + n);
+  return isoDia(d);
+}
+
+function somarMes(anoMes, n) {
+  const [a, m] = anoMes.split('-').map(Number);
+  return isoDia(new Date(a, m - 1 + n, 1)).slice(0, 7);
+}
+
+function diferencaDias(isoA, isoB) {
+  return Math.round((deIso(isoA) - deIso(isoB)) / 86400000);
+}
+
+function momento(iso, hora, minuto = 0) {
+  const d = deIso(iso);
+  d.setHours(hora, minuto, 0, 0);
+  return d;
+}
+
+function horasEntre(a, b) {
+  return (b - a) / 3600000;
+}
+
+function diasDoMes(anoMes) {
+  const [a, m] = anoMes.split('-').map(Number);
+  const total = new Date(a, m, 0).getDate();
+  return Array.from({ length: total }, (_, i) => `${anoMes}-${doisDigitos(i + 1)}`);
+}
+
+function fmtDia(iso) {
+  const d = deIso(iso);
+  return `${DIAS_SEMANA[d.getDay()]}, ${d.getDate()} ${MESES_CURTOS[d.getMonth()]}`;
+}
+
+function fmtDataCurta(iso) {
+  const [a, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}/${a}`;
+}
+
+function fmtDataHora(instante) {
+  const d = new Date(instante);
+  return `${doisDigitos(d.getDate())}/${doisDigitos(d.getMonth() + 1)} ${doisDigitos(d.getHours())}:${doisDigitos(d.getMinutes())}`;
+}
+
+function fmtHora(h) {
+  return `${doisDigitos(h)}h`;
+}
+
+function nomeMes(anoMes) {
+  const [a, m] = anoMes.split('-').map(Number);
+  return `${MESES_LONGOS[m - 1]} de ${a}`;
+}
+
+function haQuanto(instante, agora) {
+  const horas = horasEntre(new Date(instante), agora);
+  if (horas < 1) return 'agora há pouco';
+  if (horas < 24) return `há ${Math.floor(horas)} h`;
+  const dias = Math.floor(horas / 24);
+  return dias === 1 ? 'há 1 dia' : `há ${dias} dias`;
+}
+
+// ---- src/ui/app.js ----
+
+render(html`<p>CondoFácil · ${fmtDia(isoDia(new Date()))}</p>`, document.getElementById('app'));
+
+</script>
+</body>
+</html>
