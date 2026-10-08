@@ -12,6 +12,14 @@ const CHECAGENS = [
   ['#portaria.registrar', ['Ler etiqueta', 'Registrar encomenda', 'Mercado Livre', 'Seu José']],
   ['#portaria.entregar', ['Buscar por código ou unidade', 'Apto 302', 'Parada']],
   ['#portaria.hoje', ['Churrasqueira', 'João Pereira', 'Apto 603']],
+  ['#morador.inicio', ['Olá, Ana', '481203', '730915', 'Retire em breve', 'Fixado pelo síndico', 'Quadra']],
+  ['#morador.reservas', ['Salão de festas', 'Academia', 'Minhas reservas']],
+  ['#morador.avisos', ['Falta de água', 'não lido']],
+  ['#morador.avisos.c1', ['Li e estou ciente', 'Útil · 3']],
+  ['#morador.ocorrencias', ['Vaga ocupada', 'Públicas do condomínio', 'eu também']],
+  ['#morador.ocorrencias.OC-0042', ['Protocolo OC-0042', 'Ocorrência aberta']],
+  ['#morador.documentos', ['Regimento interno', '!Balancete']],
+  ['#morador.encomendas', ['Retirada por Ana Souza']],
 ];
 
 const CAPTURAS = [
