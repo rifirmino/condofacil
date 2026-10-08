@@ -1011,6 +1011,164 @@ function euTambem(estado, id, unidade) {
   return { estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { eutambem }) } };
 }
 
+// ---- src/vendas/regras.js ----
+
+const VENDA_OK = { ok: true };
+
+function falhaVenda(motivo) {
+  return { ok: false, motivo };
+}
+
+function restam(n) {
+  return n === 1 ? 'Só resta 1 unidade' : `Só restam ${n} unidades`;
+}
+
+function fmtCentavos(centavos) {
+  return `R$ ${(centavos / 100).toFixed(2).replace('.', ',')}`;
+}
+
+function lerPreco(texto) {
+  const limpo = String(texto || '').replace(/R\$|\s/g, '').replace(/\./g, '').replace(',', '.');
+  if (!limpo) return NaN;
+  const valor = Number(limpo);
+  return Number.isFinite(valor) ? Math.round(valor * 100) : NaN;
+}
+
+function pessoaDaUnidade(estado, unidade) {
+  return estado.pessoas.find((p) => p.unidade === unidade);
+}
+
+function nomeVizinho(estado, unidade) {
+  const p = pessoaDaUnidade(estado, unidade);
+  return p ? p.nome : `Apto ${unidade}`;
+}
+
+function anuncioPorId(estado, id) {
+  return estado.anuncios.find((a) => a.id === id);
+}
+
+function podePublicar(estado, unidade) {
+  const p = pessoaDaUnidade(estado, unidade);
+  return p && p.vendedor === 'aprovado' ? VENDA_OK : falhaVenda('Só vendedores aprovados pelo síndico podem anunciar');
+}
+
+function anuncioVisivel(estado, anuncio) {
+  const p = pessoaDaUnidade(estado, anuncio.vendedor);
+  return anuncio.ativo && !anuncio.oculto && !!p && p.vendedor === 'aprovado';
+}
+
+function anunciosVisiveis(estado) {
+  return estado.anuncios.filter((a) => anuncioVisivel(estado, a)).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+}
+
+function quantidadeNaSacola(estado, anuncioId) {
+  const item = estado.sacola.find((i) => i.anuncioId === anuncioId);
+  return item ? item.quantidade : 0;
+}
+
+function podeAdicionar(estado, unidade, anuncioId, quantidade) {
+  const a = anuncioPorId(estado, anuncioId);
+  if (!a || !anuncioVisivel(estado, a)) return falhaVenda('Anúncio indisponível');
+  if (a.vendedor === unidade) return falhaVenda('Você não pode comprar o próprio anúncio');
+  if (!Number.isInteger(quantidade) || quantidade < 1) return falhaVenda('Escolha ao menos 1 unidade');
+  if (a.quantidade === 0) return falhaVenda('Produto esgotado');
+  if (quantidadeNaSacola(estado, anuncioId) + quantidade > a.quantidade) return falhaVenda(restam(a.quantidade));
+  return VENDA_OK;
+}
+
+function intersecao(listas) {
+  return listas.reduce((acc, lista) => acc.filter((x) => lista.includes(x)));
+}
+
+function sacolaPorVendedor(estado) {
+  const grupos = [];
+  for (const item of estado.sacola) {
+    const anuncio = anuncioPorId(estado, item.anuncioId);
+    if (!anuncio) continue;
+    let grupo = grupos.find((g) => g.vendedor === anuncio.vendedor);
+    if (!grupo) {
+      grupo = { vendedor: anuncio.vendedor, nome: nomeVizinho(estado, anuncio.vendedor), itens: [], subtotal: 0 };
+      grupos.push(grupo);
+    }
+    grupo.itens.push({ anuncio, quantidade: item.quantidade, subtotal: anuncio.preco * item.quantidade });
+    grupo.subtotal += anuncio.preco * item.quantidade;
+  }
+  return grupos.map((g) => ({ ...g, pagamentos: intersecao(g.itens.map((i) => i.anuncio.pagamentos)), entregas: intersecao(g.itens.map((i) => i.anuncio.entregas)) }));
+}
+
+function validarAnuncio(dados) {
+  const titulo = String(dados.titulo || '').trim();
+  if (!titulo || !Number.isFinite(dados.preco) || !Number.isFinite(dados.quantidade)) return falhaVenda('Preencha título, preço e quantidade');
+  if (dados.preco <= 0) return falhaVenda('Preço precisa ser maior que zero');
+  if (!Number.isInteger(dados.quantidade) || dados.quantidade < 0) return falhaVenda('Quantidade precisa ser um número inteiro');
+  if (!dados.pagamentos || !dados.pagamentos.length) return falhaVenda('Escolha ao menos uma forma de pagamento');
+  if (!dados.entregas || !dados.entregas.length) return falhaVenda('Escolha ao menos uma forma de entrega');
+  return VENDA_OK;
+}
+
+function acoesPedido(pedido, unidade) {
+  const acoes = [];
+  const encerrado = ['recusado', 'cancelado'].includes(pedido.status);
+  if (unidade === pedido.vendedor) {
+    if (pedido.status === 'novo') acoes.push('aceitar', 'recusar');
+    if (pedido.status === 'aceito') acoes.push('entregar');
+    if (!pedido.pago && !encerrado) acoes.push('pago');
+  }
+  if (unidade === pedido.comprador && pedido.status === 'novo') acoes.push('cancelar');
+  if ((unidade === pedido.vendedor || unidade === pedido.comprador) && !encerrado) acoes.push('conversar');
+  return acoes;
+}
+
+function totalPedido(pedido) {
+  return pedido.itens.reduce((soma, i) => soma + i.preco * i.quantidade, 0);
+}
+
+function destinatariosOfertas(estado, vendedor) {
+  return [...new Set(estado.pessoas.filter((p) => p.recebeOfertas && p.unidade !== vendedor).map((p) => p.unidade))];
+}
+
+function inicioPeriodo(periodo, hoje) {
+  if (periodo === '7d') return somarDias(hoje, -6);
+  if (periodo === '30d') return somarDias(hoje, -29);
+  return `${hoje.slice(0, 7)}-01`;
+}
+
+function painelVendas(estado, vendedor, periodo, agora) {
+  const hoje = isoDia(agora);
+  const inicio = inicioPeriodo(periodo, hoje);
+  const diaDe = (instante) => isoDia(new Date(instante));
+  const doVendedor = estado.pedidos.filter((p) => p.vendedor === vendedor);
+  const criados = doVendedor.filter((p) => diaDe(p.criadoEm) >= inicio && diaDe(p.criadoEm) <= hoje);
+  const entregues = doVendedor.filter((p) => p.status === 'entregue' && p.entregueEm && diaDe(p.entregueEm) >= inicio && diaDe(p.entregueEm) <= hoje);
+  const faturamento = entregues.reduce((soma, p) => soma + totalPedido(p), 0);
+  const itens = entregues.reduce((soma, p) => soma + p.itens.reduce((t, i) => t + i.quantidade, 0), 0);
+  const passo = periodo === '7d' ? 1 : 7;
+  const barras = [];
+  for (let dia = inicio; dia <= hoje; dia = somarDias(dia, passo)) {
+    const fim = somarDias(dia, passo - 1);
+    const valor = entregues.filter((p) => diaDe(p.entregueEm) >= dia && diaDe(p.entregueEm) <= fim).reduce((soma, p) => soma + totalPedido(p), 0);
+    barras.push({ rotulo: dia, valor });
+  }
+  const porProduto = {};
+  for (const p of entregues) for (const i of p.itens) porProduto[i.titulo] = (porProduto[i.titulo] || 0) + i.quantidade;
+  const maisVendidos = Object.entries(porProduto).map(([titulo, quantidade]) => ({ titulo, quantidade })).sort((a, b) => b.quantidade - a.quantidade).slice(0, 3);
+  return {
+    pedidos: criados.length,
+    faturamento,
+    entregues: entregues.length,
+    ticket: entregues.length ? Math.round(faturamento / entregues.length) : 0,
+    itens,
+    barras,
+    maisVendidos,
+    situacao: {
+      entregues: criados.filter((p) => p.status === 'entregue').length,
+      andamento: criados.filter((p) => ['novo', 'aceito'].includes(p.status)).length,
+      recusados: criados.filter((p) => p.status === 'recusado').length,
+      cancelados: criados.filter((p) => p.status === 'cancelado').length,
+    },
+  };
+}
+
 // ---- src/casos/afirmar.js ----
 // Asserções mínimas que rodam tanto no Node quanto no navegador (?teste=1).
 const AGORA_TESTE = new Date(2026, 9, 8, 10, 0);
@@ -1413,6 +1571,139 @@ const CASOS_ACOES = [
       const trocou = reagir(util.estado, 'c1', '302', 'duvida');
       const c = acharPorId(trocou.estado.comunicados, 'c1');
       igual([c.reacoes.util.includes('302'), c.reacoes.duvida.includes('302')], [false, true]);
+    },
+  },
+];
+
+// ---- src/casos/vendas.js ----
+
+const ANUNCIO_BOLO = { titulo: 'Bolo de cenoura com chocolate', descricao: 'Inteiro, 20 cm', categoria: 'doces', preco: 3500, quantidade: 4, pagamentos: ['pix'], entregas: ['retirar'] };
+
+function comSacola(itens) {
+  return { ...dadosIniciais(AGORA_TESTE), sacola: itens.map(([anuncioId, quantidade]) => ({ anuncioId, quantidade })) };
+}
+
+const CASOS_VENDAS = [
+  {
+    nome: 'vendas: dados iniciais',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual([e.anuncios.length, e.pedidos.length, e.proximoPedido, e.moradorAtual, e.sacola], [3, 10, 11, '302', []]);
+      const situacao = (u) => e.pessoas.find((p) => p.unidade === u).vendedor;
+      igual([situacao('104'), situacao('201'), situacao('102'), situacao('302')], ['aprovado', 'aprovado', 'pendente', 'nao']);
+      igual(e.pessoas.filter((p) => p.recebeOfertas).length, 9);
+    },
+  },
+  {
+    nome: 'vendas: preço em centavos',
+    rodar() {
+      igual([lerPreco('18,00'), lerPreco('18'), lerPreco('1.234,56'), lerPreco('R$ 35,5')], [1800, 1800, 123456, 3550]);
+      igual([Number.isNaN(lerPreco('')), Number.isNaN(lerPreco('abc'))], [true, true]);
+      igual([fmtCentavos(1800), fmtCentavos(15000)], ['R$ 18,00', 'R$ 150,00']);
+    },
+  },
+  {
+    nome: 'vendas: só vendedor aprovado publica',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(podePublicar(e, '104'), { ok: true });
+      igual(podePublicar(e, '302').motivo, 'Só vendedores aprovados pelo síndico podem anunciar');
+      igual(podePublicar(e, '102').ok, false);
+    },
+  },
+  {
+    nome: 'vendas: vitrine mostra só anúncios ativos de vendedor aprovado',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(anunciosVisiveis(e).map((a) => a.id), ['a3', 'a2', 'a1']);
+      const suspenso = { ...e, pessoas: e.pessoas.map((p) => (p.unidade === '201' ? { ...p, vendedor: 'suspenso' } : p)) };
+      igual(anunciosVisiveis(suspenso).map((a) => a.id), ['a2', 'a1']);
+      const pausado = { ...e, anuncios: e.anuncios.map((a) => (a.id === 'a2' ? { ...a, ativo: false } : a)) };
+      igual(anunciosVisiveis(pausado).map((a) => a.id), ['a3', 'a1']);
+    },
+  },
+  {
+    nome: 'vendas: limites ao pôr na sacola',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(podeAdicionar(e, '302', 'a1', 2), { ok: true });
+      igual(podeAdicionar(e, '104', 'a1', 1).motivo, 'Você não pode comprar o próprio anúncio');
+      igual(podeAdicionar(e, '302', 'a3', 2).motivo, 'Só resta 1 unidade');
+      igual(podeAdicionar(e, '302', 'a1', 0).motivo, 'Escolha ao menos 1 unidade');
+      igual(podeAdicionar(comSacola([['a1', 9]]), '302', 'a1', 2).motivo, 'Só restam 10 unidades');
+    },
+  },
+  {
+    nome: 'vendas: sacola agrupada por vendedor com opções em comum',
+    rodar() {
+      const grupos = sacolaPorVendedor(comSacola([['a1', 2], ['a2', 1], ['a3', 1]]));
+      igual(grupos.map((g) => [g.vendedor, g.subtotal, g.pagamentos, g.entregas]), [
+        ['104', 4800, ['pix'], ['retirar']],
+        ['201', 15000, ['pix', 'dinheiro', 'cartao'], ['retirar']],
+      ]);
+    },
+  },
+  {
+    nome: 'vendas: validação do anúncio',
+    rodar() {
+      igual(validarAnuncio(ANUNCIO_BOLO), { ok: true });
+      igual(validarAnuncio({ ...ANUNCIO_BOLO, titulo: ' ' }).motivo, 'Preencha título, preço e quantidade');
+      igual(validarAnuncio({ ...ANUNCIO_BOLO, preco: NaN }).motivo, 'Preencha título, preço e quantidade');
+      igual(validarAnuncio({ ...ANUNCIO_BOLO, preco: -5 }).motivo, 'Preço precisa ser maior que zero');
+      igual(validarAnuncio({ ...ANUNCIO_BOLO, quantidade: 1.5 }).motivo, 'Quantidade precisa ser um número inteiro');
+      igual(validarAnuncio({ ...ANUNCIO_BOLO, pagamentos: [] }).motivo, 'Escolha ao menos uma forma de pagamento');
+      igual(validarAnuncio({ ...ANUNCIO_BOLO, entregas: [] }).motivo, 'Escolha ao menos uma forma de entrega');
+    },
+  },
+  {
+    nome: 'vendas: ações possíveis em cada situação do pedido',
+    rodar() {
+      const p = (status, pago = false) => ({ vendedor: '104', comprador: '302', status, pago });
+      igual(acoesPedido(p('novo'), '104'), ['aceitar', 'recusar', 'pago', 'conversar']);
+      igual(acoesPedido(p('novo'), '302'), ['cancelar', 'conversar']);
+      igual(acoesPedido(p('aceito'), '104'), ['entregar', 'pago', 'conversar']);
+      igual(acoesPedido(p('entregue', true), '104'), ['conversar']);
+      igual(acoesPedido(p('recusado'), '104'), []);
+      igual(acoesPedido(p('novo'), '501'), []);
+    },
+  },
+  {
+    nome: 'vendas: painel dos últimos 7 dias',
+    rodar() {
+      igual(painelVendas(dadosIniciais(AGORA_TESTE), '104', '7d', AGORA_TESTE), {
+        pedidos: 3,
+        faturamento: 5400,
+        entregues: 2,
+        ticket: 2700,
+        itens: 4,
+        barras: [
+          { rotulo: '2026-10-02', valor: 0 }, { rotulo: '2026-10-03', valor: 0 }, { rotulo: '2026-10-04', valor: 0 },
+          { rotulo: '2026-10-05', valor: 3000 }, { rotulo: '2026-10-06', valor: 0 }, { rotulo: '2026-10-07', valor: 2400 },
+          { rotulo: '2026-10-08', valor: 0 },
+        ],
+        maisVendidos: [{ titulo: 'Bolo de pote de ninho com morango', quantidade: 3 }, { titulo: 'Brigadeiro gourmet (caixa com 6)', quantidade: 1 }],
+        situacao: { entregues: 2, andamento: 0, recusados: 0, cancelados: 1 },
+      });
+    },
+  },
+  {
+    nome: 'vendas: painel dos últimos 30 dias e do mês',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      const trinta = painelVendas(e, '104', '30d', AGORA_TESTE);
+      igual([trinta.pedidos, trinta.faturamento, trinta.ticket, trinta.itens], [7, 15600, 3120, 11]);
+      igual(trinta.barras.map((b) => b.valor), [4200, 0, 6000, 3000, 2400]);
+      igual(trinta.barras[0].rotulo, '2026-09-09');
+      igual(trinta.situacao, { entregues: 5, andamento: 0, recusados: 1, cancelados: 1 });
+      const mes = painelVendas(e, '104', 'mes', AGORA_TESTE);
+      igual([mes.pedidos, mes.barras.map((b) => b.valor)], [3, [5400, 0]]);
+    },
+  },
+  {
+    nome: 'vendas: aviso de anúncio só para quem aceita ofertas',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual([destinatariosOfertas(e, '104').length, destinatariosOfertas(e, '101').length], [9, 8]);
     },
   },
 ];
@@ -2607,7 +2898,7 @@ function App() {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

@@ -5,6 +5,7 @@ import { carregarEstado, salvarEstado, limparEstado } from '../armazenamento.js'
 import { CASOS_DADOS } from '../casos/dados.js';
 import { CASOS_REGRAS } from '../casos/regras.js';
 import { CASOS_ACOES } from '../casos/acoes.js';
+import { CASOS_VENDAS } from '../casos/vendas.js';
 import { PERFIS, lerRota, ir, Selo, Icone } from './comum.js';
 import { TelaPortaria } from './portaria.js';
 import { TelaMorador } from './morador.js';
@@ -82,7 +83,7 @@ function App() {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };
