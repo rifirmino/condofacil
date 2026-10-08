@@ -14,6 +14,7 @@ export const ORDEM = [
   'src/regras.js',
   'src/acoes.js',
   'src/vendas/regras.js',
+  'src/vendas/acoes.js',
   'src/casos/afirmar.js',
   'src/casos/dados.js',
   'src/casos/regras.js',

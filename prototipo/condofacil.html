@@ -1169,6 +1169,262 @@ function painelVendas(estado, vendedor, periodo, agora) {
   };
 }
 
+// ---- src/vendas/acoes.js ----
+
+// Cada ação devolve { estado, notificacao?, erro?, id? } sem mutar nada.
+function erroVenda(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function mudarPessoa(estado, unidade, mudanca) {
+  return { ...estado, pessoas: estado.pessoas.map((p) => (p.unidade === unidade ? { ...p, ...mudanca } : p)) };
+}
+
+function mudarAnuncio(estado, id, mudanca) {
+  return { ...estado, anuncios: estado.anuncios.map((a) => (a.id === id ? { ...a, ...mudanca } : a)) };
+}
+
+function mudarPedido(estado, id, mudanca) {
+  return { ...estado, pedidos: estado.pedidos.map((p) => (p.id === id ? { ...p, ...mudanca } : p)) };
+}
+
+function moverEstoque(anuncios, itens, sinal) {
+  return anuncios.map((a) => {
+    const quantidade = itens.filter((i) => i.anuncioId === a.id).reduce((soma, i) => soma + i.quantidade, 0);
+    return quantidade ? { ...a, quantidade: a.quantidade + sinal * quantidade } : a;
+  });
+}
+
+function textoLimpo(texto) {
+  return String(texto || '').trim();
+}
+
+function trocarMorador(estado, unidade) {
+  if (!MORADORES_DEMO.some(([u]) => u === unidade)) return erroVenda(estado, 'Morador indisponível na demonstração');
+  return { estado: { ...estado, moradorAtual: unidade, sacola: [] } };
+}
+
+function alternarOfertas(estado, unidade) {
+  const p = pessoaDaUnidade(estado, unidade);
+  if (!p) return erroVenda(estado, 'Morador não encontrado');
+  return { estado: mudarPessoa(estado, unidade, { recebeOfertas: !p.recebeOfertas }) };
+}
+
+function pedirParaVender(estado, unidade, texto, agora) {
+  const p = pessoaDaUnidade(estado, unidade);
+  if (!p || p.vendedor !== 'nao') return erroVenda(estado, 'Já existe um pedido para vender');
+  const descricao = textoLimpo(texto);
+  if (!descricao) return erroVenda(estado, 'Conte o que você pretende vender');
+  return {
+    estado: mudarPessoa(estado, unidade, { vendedor: 'pendente', pedidoVenda: { texto: descricao, em: agora.toISOString() }, motivoVendedor: null }),
+    notificacao: { canal: 'Push', para: SINDICO, texto: `${p.nome} (apto ${unidade}) pediu para vender: ${descricao}` },
+  };
+}
+
+function aprovarVendedor(estado, unidade) {
+  const p = pessoaDaUnidade(estado, unidade);
+  if (!p || p.vendedor !== 'pendente') return erroVenda(estado, 'Solicitação não está pendente');
+  return {
+    estado: mudarPessoa(estado, unidade, { vendedor: 'aprovado', motivoVendedor: null }),
+    notificacao: { canal: 'WhatsApp', para: p.nome, texto: 'Seu pedido para vender foi aprovado pelo síndico. Você já pode anunciar.' },
+  };
+}
+
+function recusarVendedor(estado, unidade, motivo) {
+  const p = pessoaDaUnidade(estado, unidade);
+  if (!p || p.vendedor !== 'pendente') return erroVenda(estado, 'Solicitação não está pendente');
+  const texto = textoLimpo(motivo);
+  if (!texto) return erroVenda(estado, 'Informe o motivo da recusa');
+  return {
+    estado: mudarPessoa(estado, unidade, { vendedor: 'nao', motivoVendedor: texto }),
+    notificacao: { canal: 'WhatsApp', para: p.nome, texto: `Seu pedido para vender foi recusado: ${texto}` },
+  };
+}
+
+function suspenderVendedor(estado, unidade, motivo) {
+  const p = pessoaDaUnidade(estado, unidade);
+  if (!p || p.vendedor !== 'aprovado') return erroVenda(estado, 'Vendedor não está ativo');
+  const texto = textoLimpo(motivo);
+  if (!texto) return erroVenda(estado, 'Informe o motivo da suspensão');
+  return {
+    estado: mudarPessoa(estado, unidade, { vendedor: 'suspenso', motivoVendedor: texto }),
+    notificacao: { canal: 'WhatsApp', para: p.nome, texto: `Suas vendas foram suspensas pelo síndico: ${texto}` },
+  };
+}
+
+function reativarVendedor(estado, unidade) {
+  const p = pessoaDaUnidade(estado, unidade);
+  if (!p || p.vendedor !== 'suspenso') return erroVenda(estado, 'Vendedor não está suspenso');
+  return {
+    estado: mudarPessoa(estado, unidade, { vendedor: 'aprovado', motivoVendedor: null }),
+    notificacao: { canal: 'WhatsApp', para: p.nome, texto: 'Suas vendas foram reativadas pelo síndico.' },
+  };
+}
+
+function publicarAnuncio(estado, unidade, dados, agora) {
+  const pode = podePublicar(estado, unidade);
+  if (!pode.ok) return erroVenda(estado, pode.motivo);
+  const v = validarAnuncio(dados);
+  if (!v.ok) return erroVenda(estado, v.motivo);
+  const anuncio = { id: `a${estado.anuncios.length + 1}`, vendedor: unidade, titulo: textoLimpo(dados.titulo), descricao: textoLimpo(dados.descricao), categoria: dados.categoria || 'desapego', preco: dados.preco, quantidade: dados.quantidade, pagamentos: [...dados.pagamentos], entregas: [...dados.entregas], ativo: true, oculto: false, motivoOculto: null, criadoEm: agora.toISOString() };
+  const destinatarios = destinatariosOfertas(estado, unidade);
+  return {
+    estado: { ...estado, anuncios: [...estado.anuncios, anuncio] },
+    id: anuncio.id,
+    notificacao: destinatarios.length ? { canal: 'Push', para: `${destinatarios.length} moradores que aceitam ofertas`, texto: `Novo na vitrine: ${anuncio.titulo}` } : undefined,
+  };
+}
+
+function editarAnuncio(estado, unidade, id, mudanca) {
+  const a = anuncioPorId(estado, id);
+  if (!a) return erroVenda(estado, 'Anúncio não encontrado');
+  if (a.vendedor !== unidade) return erroVenda(estado, 'Só o vendedor pode editar o anúncio');
+  const v = validarAnuncio({ ...a, ...mudanca });
+  if (!v.ok) return erroVenda(estado, v.motivo);
+  return { estado: mudarAnuncio(estado, id, mudanca) };
+}
+
+function ocultarAnuncio(estado, id, motivo) {
+  const a = anuncioPorId(estado, id);
+  if (!a) return erroVenda(estado, 'Anúncio não encontrado');
+  const texto = textoLimpo(motivo);
+  if (!texto) return erroVenda(estado, 'Informe o motivo');
+  return {
+    estado: mudarAnuncio(estado, id, { oculto: true, motivoOculto: texto }),
+    notificacao: { canal: 'WhatsApp', para: nomeVizinho(estado, a.vendedor), texto: `Seu anúncio "${a.titulo}" foi ocultado pelo síndico: ${texto}` },
+  };
+}
+
+function mostrarAnuncio(estado, id) {
+  if (!anuncioPorId(estado, id)) return erroVenda(estado, 'Anúncio não encontrado');
+  return { estado: mudarAnuncio(estado, id, { oculto: false, motivoOculto: null }) };
+}
+
+function adicionarASacola(estado, anuncioId, quantidade) {
+  const v = podeAdicionar(estado, estado.moradorAtual, anuncioId, quantidade);
+  if (!v.ok) return erroVenda(estado, v.motivo);
+  const existe = estado.sacola.some((i) => i.anuncioId === anuncioId);
+  const sacola = existe
+    ? estado.sacola.map((i) => (i.anuncioId === anuncioId ? { ...i, quantidade: i.quantidade + quantidade } : i))
+    : [...estado.sacola, { anuncioId, quantidade }];
+  return { estado: { ...estado, sacola } };
+}
+
+function removerDaSacola(estado, anuncioId) {
+  return { estado: { ...estado, sacola: estado.sacola.filter((i) => i.anuncioId !== anuncioId) } };
+}
+
+function fecharPedido(estado, escolhas, agora) {
+  const grupos = sacolaPorVendedor(estado);
+  if (!grupos.length) return erroVenda(estado, 'Sua sacola está vazia');
+  const comprador = estado.moradorAtual;
+  for (const g of grupos) {
+    const escolha = escolhas[g.vendedor] || {};
+    if (!g.pagamentos.includes(escolha.pagamento)) return erroVenda(estado, 'Escolha a forma de pagamento');
+    if (!g.entregas.includes(escolha.entrega)) return erroVenda(estado, 'Escolha a forma de entrega');
+    for (const item of g.itens) {
+      const v = podeAdicionar({ ...estado, sacola: [] }, comprador, item.anuncio.id, item.quantidade);
+      if (!v.ok) return erroVenda(estado, `${item.anuncio.titulo}: ${v.motivo}`);
+    }
+  }
+  const em = agora.toISOString();
+  const novos = grupos.map((g, n) => ({
+    id: `PD-${String(estado.proximoPedido + n).padStart(3, '0')}`,
+    comprador,
+    vendedor: g.vendedor,
+    itens: g.itens.map((i) => ({ anuncioId: i.anuncio.id, titulo: i.anuncio.titulo, quantidade: i.quantidade, preco: i.anuncio.preco })),
+    pagamento: escolhas[g.vendedor].pagamento,
+    entrega: escolhas[g.vendedor].entrega,
+    status: 'novo',
+    pago: false,
+    motivo: null,
+    linha: [{ em, status: 'novo', texto: 'Pedido enviado' }],
+    mensagens: [],
+    criadoEm: em,
+    entregueEm: null,
+  }));
+  const extras = novos.length - 1;
+  const complemento = extras ? ` (e mais ${extras} pedido${extras > 1 ? 's' : ''} para outros vendedores)` : '';
+  return {
+    estado: { ...estado, anuncios: moverEstoque(estado.anuncios, novos.flatMap((p) => p.itens), -1), pedidos: [...estado.pedidos, ...novos], sacola: [], proximoPedido: estado.proximoPedido + novos.length },
+    id: novos[0].id,
+    ids: novos.map((p) => p.id),
+    notificacao: { canal: 'WhatsApp', para: nomeVizinho(estado, novos[0].vendedor), texto: `Novo pedido ${novos[0].id} de ${nomeVizinho(estado, comprador)} (apto ${comprador})${complemento}` },
+  };
+}
+
+function pedidoPermitido(estado, id, unidade, acao) {
+  const pedido = estado.pedidos.find((p) => p.id === id);
+  if (!pedido) return { erro: 'Pedido não encontrado' };
+  if (!acoesPedido(pedido, unidade).includes(acao)) return { erro: 'Ação não permitida para este pedido' };
+  return { pedido };
+}
+
+function comLinha(pedido, agora, status, texto) {
+  return [...pedido.linha, { em: agora.toISOString(), status, texto }];
+}
+
+function aceitarPedido(estado, id, unidade, agora) {
+  const { pedido, erro } = pedidoPermitido(estado, id, unidade, 'aceitar');
+  if (erro) return erroVenda(estado, erro);
+  return {
+    estado: mudarPedido(estado, id, { status: 'aceito', linha: comLinha(pedido, agora, 'aceito', 'Pedido aceito pelo vendedor') }),
+    notificacao: { canal: 'Push', para: nomeVizinho(estado, pedido.comprador), texto: `Pedido ${id} aceito por ${nomeVizinho(estado, pedido.vendedor)}` },
+  };
+}
+
+function recusarPedido(estado, id, unidade, motivo, agora) {
+  const { pedido, erro } = pedidoPermitido(estado, id, unidade, 'recusar');
+  if (erro) return erroVenda(estado, erro);
+  const texto = textoLimpo(motivo);
+  if (!texto) return erroVenda(estado, 'Informe o motivo da recusa');
+  const atualizado = mudarPedido(estado, id, { status: 'recusado', motivo: texto, linha: comLinha(pedido, agora, 'recusado', `Recusado: ${texto}`) });
+  return {
+    estado: { ...atualizado, anuncios: moverEstoque(estado.anuncios, pedido.itens, 1) },
+    notificacao: { canal: 'Push', para: nomeVizinho(estado, pedido.comprador), texto: `Pedido ${id} recusado: ${texto}` },
+  };
+}
+
+function marcarEntregue(estado, id, unidade, agora) {
+  const { pedido, erro } = pedidoPermitido(estado, id, unidade, 'entregar');
+  if (erro) return erroVenda(estado, erro);
+  return {
+    estado: mudarPedido(estado, id, { status: 'entregue', entregueEm: agora.toISOString(), linha: comLinha(pedido, agora, 'entregue', 'Pedido entregue') }),
+    notificacao: { canal: 'Push', para: nomeVizinho(estado, pedido.comprador), texto: `Pedido ${id} marcado como entregue` },
+  };
+}
+
+function marcarPago(estado, id, unidade, agora) {
+  const { pedido, erro } = pedidoPermitido(estado, id, unidade, 'pago');
+  if (erro) return erroVenda(estado, erro);
+  return {
+    estado: mudarPedido(estado, id, { pago: true, linha: comLinha(pedido, agora, null, 'Pagamento confirmado pelo vendedor') }),
+    notificacao: { canal: 'Push', para: nomeVizinho(estado, pedido.comprador), texto: `Pagamento do pedido ${id} confirmado` },
+  };
+}
+
+function cancelarPedido(estado, id, unidade, agora) {
+  const { pedido, erro } = pedidoPermitido(estado, id, unidade, 'cancelar');
+  if (erro) return erroVenda(estado, erro);
+  const atualizado = mudarPedido(estado, id, { status: 'cancelado', linha: comLinha(pedido, agora, 'cancelado', 'Cancelado pelo comprador') });
+  return {
+    estado: { ...atualizado, anuncios: moverEstoque(estado.anuncios, pedido.itens, 1) },
+    notificacao: { canal: 'Push', para: nomeVizinho(estado, pedido.vendedor), texto: `Pedido ${id} cancelado pelo comprador` },
+  };
+}
+
+function enviarMensagem(estado, id, unidade, texto, agora) {
+  const { pedido, erro } = pedidoPermitido(estado, id, unidade, 'conversar');
+  if (erro) return erroVenda(estado, erro);
+  const mensagem = textoLimpo(texto);
+  if (!mensagem) return erroVenda(estado, 'Escreva a mensagem');
+  const outro = unidade === pedido.vendedor ? pedido.comprador : pedido.vendedor;
+  return {
+    estado: mudarPedido(estado, id, { mensagens: [...pedido.mensagens, { autor: unidade, texto: mensagem, em: agora.toISOString() }] }),
+    notificacao: { canal: 'Push', para: nomeVizinho(estado, outro), texto: `${nomeVizinho(estado, unidade)}: ${mensagem}` },
+  };
+}
+
 // ---- src/casos/afirmar.js ----
 // Asserções mínimas que rodam tanto no Node quanto no navegador (?teste=1).
 const AGORA_TESTE = new Date(2026, 9, 8, 10, 0);
@@ -1583,6 +1839,27 @@ function comSacola(itens) {
   return { ...dadosIniciais(AGORA_TESTE), sacola: itens.map(([anuncioId, quantidade]) => ({ anuncioId, quantidade })) };
 }
 
+const RETIRAR_PIX = { pagamento: 'pix', entrega: 'retirar' };
+
+function compraDaAna() {
+  let e = dadosIniciais(AGORA_TESTE);
+  e = adicionarASacola(e, 'a1', 2).estado;
+  e = adicionarASacola(e, 'a2', 1).estado;
+  return fecharPedido(e, { 104: RETIRAR_PIX }, AGORA_TESTE);
+}
+
+function pedidoDe(estado, id) {
+  return estado.pedidos.find((p) => p.id === id);
+}
+
+function anuncioDe(estado, id) {
+  return estado.anuncios.find((a) => a.id === id);
+}
+
+function pessoaDe(estado, unidade) {
+  return estado.pessoas.find((p) => p.unidade === unidade);
+}
+
 const CASOS_VENDAS = [
   {
     nome: 'vendas: dados iniciais',
@@ -1704,6 +1981,130 @@ const CASOS_VENDAS = [
     rodar() {
       const e = dadosIniciais(AGORA_TESTE);
       igual([destinatariosOfertas(e, '104').length, destinatariosOfertas(e, '101').length], [9, 8]);
+    },
+  },
+  {
+    nome: 'vendas: roteiro compra cria pedido, desconta estoque e avisa o vendedor',
+    rodar() {
+      const r = compraDaAna();
+      igual(r.erro, undefined);
+      igual([r.id, anuncioDe(r.estado, 'a1').quantidade, anuncioDe(r.estado, 'a2').quantidade, r.estado.sacola, r.estado.proximoPedido], ['PD-011', 8, 5, [], 12]);
+      const p = pedidoDe(r.estado, 'PD-011');
+      igual([p.comprador, p.vendedor, p.status, p.pagamento, p.entrega], ['302', '104', 'novo', 'pix', 'retirar']);
+      igual([r.notificacao.canal, r.notificacao.para], ['WhatsApp', 'Juliana Costa']);
+    },
+  },
+  {
+    nome: 'vendas: fechar pedido exige sacola, pagamento e entrega válidos',
+    rodar() {
+      igual(fecharPedido(dadosIniciais(AGORA_TESTE), {}, AGORA_TESTE).erro, 'Sua sacola está vazia');
+      const e = comSacola([['a1', 1], ['a2', 1]]);
+      igual(fecharPedido(e, {}, AGORA_TESTE).erro, 'Escolha a forma de pagamento');
+      igual(fecharPedido(e, { 104: { pagamento: 'pix', entrega: 'porta' } }, AGORA_TESTE).erro, 'Escolha a forma de entrega');
+    },
+  },
+  {
+    nome: 'vendas: sacola com dois vendedores gera dois pedidos',
+    rodar() {
+      const r = fecharPedido(comSacola([['a1', 1], ['a3', 1]]), { 104: RETIRAR_PIX, 201: RETIRAR_PIX }, AGORA_TESTE);
+      igual([r.ids, anuncioDe(r.estado, 'a3').quantidade], [['PD-011', 'PD-012'], 0]);
+      igual(r.notificacao.texto.includes('e mais 1 pedido'), true);
+    },
+  },
+  {
+    nome: 'vendas: roteiro atendimento até entrar no painel',
+    rodar() {
+      let e = compraDaAna().estado;
+      igual(aceitarPedido(e, 'PD-011', '302', AGORA_TESTE).erro, 'Ação não permitida para este pedido');
+      const aceito = aceitarPedido(e, 'PD-011', '104', AGORA_TESTE);
+      igual([pedidoDe(aceito.estado, 'PD-011').status, aceito.notificacao.para], ['aceito', 'Ana Souza']);
+      e = aceito.estado;
+      igual(enviarMensagem(e, 'PD-011', '104', '  ', AGORA_TESTE).erro, 'Escreva a mensagem');
+      igual(enviarMensagem(e, 'PD-011', '501', 'Oi', AGORA_TESTE).erro, 'Ação não permitida para este pedido');
+      const msg = enviarMensagem(e, 'PD-011', '104', 'Pode passar às 18h', AGORA_TESTE);
+      igual([pedidoDe(msg.estado, 'PD-011').mensagens.map((m) => [m.autor, m.texto]), msg.notificacao.para], [[['104', 'Pode passar às 18h']], 'Ana Souza']);
+      e = marcarEntregue(msg.estado, 'PD-011', '104', AGORA_TESTE).estado;
+      e = marcarPago(e, 'PD-011', '104', AGORA_TESTE).estado;
+      const p = pedidoDe(e, 'PD-011');
+      igual([p.status, p.pago], ['entregue', true]);
+      igual(painelVendas(e, '104', '7d', AGORA_TESTE).faturamento, 10200);
+    },
+  },
+  {
+    nome: 'vendas: recusar exige motivo e devolve o estoque',
+    rodar() {
+      const e = compraDaAna().estado;
+      igual(recusarPedido(e, 'PD-011', '104', ' ', AGORA_TESTE).erro, 'Informe o motivo da recusa');
+      const r = recusarPedido(e, 'PD-011', '104', 'Sem ingredientes hoje', AGORA_TESTE);
+      igual([pedidoDe(r.estado, 'PD-011').status, anuncioDe(r.estado, 'a1').quantidade, anuncioDe(r.estado, 'a2').quantidade], ['recusado', 10, 6]);
+    },
+  },
+  {
+    nome: 'vendas: só o comprador cancela e o estoque volta',
+    rodar() {
+      const e = compraDaAna().estado;
+      igual(cancelarPedido(e, 'PD-011', '104', AGORA_TESTE).erro, 'Ação não permitida para este pedido');
+      const r = cancelarPedido(e, 'PD-011', '302', AGORA_TESTE);
+      igual([pedidoDe(r.estado, 'PD-011').status, anuncioDe(r.estado, 'a1').quantidade, r.notificacao.para], ['cancelado', 10, 'Juliana Costa']);
+    },
+  },
+  {
+    nome: 'vendas: roteiro virar vendedora e publicar',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(publicarAnuncio(e, '302', ANUNCIO_BOLO, AGORA_TESTE).erro, 'Só vendedores aprovados pelo síndico podem anunciar');
+      igual(pedirParaVender(e, '302', ' ', AGORA_TESTE).erro, 'Conte o que você pretende vender');
+      const pedido = pedirParaVender(e, '302', 'Bolos caseiros por encomenda', AGORA_TESTE);
+      igual([pessoaDe(pedido.estado, '302').vendedor, pedido.notificacao.para], ['pendente', SINDICO]);
+      igual(pedirParaVender(pedido.estado, '302', 'De novo', AGORA_TESTE).erro, 'Já existe um pedido para vender');
+      const aprovado = aprovarVendedor(pedido.estado, '302');
+      igual([pessoaDe(aprovado.estado, '302').vendedor, aprovado.notificacao.para], ['aprovado', 'Ana Souza']);
+      igual(publicarAnuncio(aprovado.estado, '302', { ...ANUNCIO_BOLO, preco: 0 }, AGORA_TESTE).erro, 'Preço precisa ser maior que zero');
+      const r = publicarAnuncio(aprovado.estado, '302', ANUNCIO_BOLO, AGORA_TESTE);
+      igual([r.id, r.notificacao.para, anunciosVisiveis(r.estado)[0].id], ['a4', '9 moradores que aceitam ofertas', 'a4']);
+    },
+  },
+  {
+    nome: 'vendas: recusa, suspensão e reativação de vendedor',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(recusarVendedor(e, '102', '').erro, 'Informe o motivo da recusa');
+      const recusado = recusarVendedor(e, '102', 'Falta o alvará da vigilância sanitária');
+      igual([pessoaDe(recusado.estado, '102').vendedor, pessoaDe(recusado.estado, '102').motivoVendedor], ['nao', 'Falta o alvará da vigilância sanitária']);
+      igual(suspenderVendedor(e, '201', '').erro, 'Informe o motivo da suspensão');
+      const suspenso = suspenderVendedor(e, '201', 'Reclamações de vizinhos');
+      igual([pessoaDe(suspenso.estado, '201').vendedor, anunciosVisiveis(suspenso.estado).some((a) => a.id === 'a3')], ['suspenso', false]);
+      igual(pessoaDe(reativarVendedor(suspenso.estado, '201').estado, '201').vendedor, 'aprovado');
+    },
+  },
+  {
+    nome: 'vendas: síndico oculta e mostra anúncio',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(ocultarAnuncio(e, 'a3', ' ').erro, 'Informe o motivo');
+      const r = ocultarAnuncio(e, 'a3', 'Venda de bebida alcoólica não é permitida');
+      igual([anuncioDe(r.estado, 'a3').oculto, anuncioDe(r.estado, 'a3').motivoOculto, r.notificacao.para], [true, 'Venda de bebida alcoólica não é permitida', 'Fernando Alves']);
+      igual(anunciosVisiveis(r.estado).some((a) => a.id === 'a3'), false);
+      igual(anunciosVisiveis(mostrarAnuncio(r.estado, 'a3').estado).some((a) => a.id === 'a3'), true);
+    },
+  },
+  {
+    nome: 'vendas: só o dono edita o anúncio',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(editarAnuncio(e, '201', 'a1', { preco: 2000 }).erro, 'Só o vendedor pode editar o anúncio');
+      igual(editarAnuncio(e, '104', 'a1', { preco: 0 }).erro, 'Preço precisa ser maior que zero');
+      igual(anuncioDe(editarAnuncio(e, '104', 'a1', { quantidade: 20 }).estado, 'a1').quantidade, 20);
+    },
+  },
+  {
+    nome: 'vendas: troca de morador e preferência de ofertas',
+    rodar() {
+      const e = comSacola([['a1', 1]]);
+      const r = trocarMorador(e, '104');
+      igual([r.estado.moradorAtual, r.estado.sacola], ['104', []]);
+      igual(trocarMorador(e, '999').erro, 'Morador indisponível na demonstração');
+      igual(pessoaDe(alternarOfertas(e, '302').estado, '302').recebeOfertas, true);
     },
   },
 ];
