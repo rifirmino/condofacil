@@ -107,7 +107,7 @@ Ficam isoladas das telas e retornam `{ ok: true }` ou `{ ok: false, motivo }`:
 
 | Função | Regra |
 |---|---|
-| `podeReservar(estado, pedido)` | RN02: sem sobreposição com reserva confirmada ou pendente, nem com bloqueio, incluindo áreas vinculadas; antecedência mínima e máxima da área; RN05: limite mensal por unidade e área |
+| `podeReservar(estado, pedido, agora)` | RN02: sem sobreposição com reserva confirmada ou pendente, nem com bloqueio, incluindo áreas vinculadas; antecedência mínima e máxima da área; RN05: limite mensal por unidade e área |
 | `avisoCancelamento(reserva, agora)` | RN04: menos de 72 h para o início gera aviso de multa/retenção da taxa |
 | `podeEntregar(encomenda, codigo, nomeRetirada)` | RN06: o código precisa bater; o nome de quem retirou é obrigatório |
 | `acoesOcorrencia(ocorrencia)` | RN07: fechada só oferece "Arquivar"; nunca existe "apagar" |

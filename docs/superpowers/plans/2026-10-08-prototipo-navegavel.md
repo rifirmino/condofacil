@@ -1,0 +1,3731 @@
+# CondoFácil — Protótipo navegável · Plano de implementação
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Gerar `prototipo/condofacil.html`, um protótipo clicável do MVP do CondoFácil com 3 perfis (Síndico, Morador, Portaria) e 5 módulos, publicado como link privado do claude.ai.
+
+**Architecture:** Código-fonte em módulos ES pequenos em `prototipo/src/`. Um montador sem dependências (`montagem.mjs`) concatena tudo num único HTML. Regras de negócio e ações são funções puras, testadas com `node --test`; as mesmas baterias rodam no navegador com `?teste=1`. A interface usa Preact + htm via CDN, com um único objeto de estado salvo no `localStorage`. As telas são verificadas com Chrome headless: `verificar.mjs` confere o DOM de cada rota e `e2e.mjs` percorre os 4 roteiros via DevTools Protocol.
+
+**Tech Stack:** Preact 10 + htm 3.1.1 (bundle standalone do unpkg), JavaScript ES2022, Node 24 (`node:test`, `fetch`, `WebSocket` nativos), Chrome/Edge headless.
+
+**Spec:** `docs/superpowers/specs/2026-10-08-prototipo-navegavel-design.md`
+
+## Global Constraints
+
+- Todo texto de interface em português do Brasil.
+- Entregável único: `prototipo/condofacil.html`, sempre gerado por `npm run montar` (nunca editar à mão).
+- Único recurso externo: `https://unpkg.com/htm@3.1.1/preact/standalone.module.js`.
+- Sem dependências npm. Ferramentas só com módulos nativos do Node.
+- Regras do montador:
+  - todo `import` local (`'./x.js'` ou `'../x.js'`) cabe numa linha;
+  - `export` só aparece em declarações de nível superior ou num `export { ... };` de uma linha;
+  - nomes de nível superior (`const`, `let`, `function`, `class` na coluna 0) são únicos entre todos os arquivos de `src/`;
+  - código aninhado é sempre indentado.
+- Nenhuma marca, pessoa ou empresa real. Transportadoras aparecem só como texto.
+- Usuários fixos: Roberto Lima (síndico, 801), Ana Souza (morador, 302) e Seu José (portaria).
+- `localStorage`:
+  - chave `condofacil-demo-v1`;
+  - toda leitura e escrita dentro de try/catch;
+  - dados salvos em outro dia são descartados.
+- Alvos de toque com pelo menos 44 px (na portaria, 64 px).
+- Tokens de cor em `:root`, com modo escuro via `prefers-color-scheme` e `data-theme`. `body` tem fundo explícito. Página sem rolagem horizontal em 390 px.
+- Comandos rodam a partir de `prototipo/`, salvo indicação.
+- Commits terminam com a linha `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+
+## Estrutura de arquivos
+
+```
+prototipo/
+  package.json            scripts: test, montar, verificar, e2e
+  montagem.mjs            transformar() / montar() / extrairScript() / ORDEM
+  montar.mjs              CLI: grava condofacil.html
+  navegador.mjs           acharChrome(), urlPagina, raiz
+  verificar.mjs           Chrome headless: checa textos por rota; --capturas gera PNGs
+  e2e.mjs                 4 roteiros via DevTools Protocol + persistência + largura 390 px
+  condofacil.html         GERADO
+  src/
+    base.html             esqueleto com /*CSS*/ e /*JS*/
+    estilos.css           tokens, molduras e componentes
+    vendor.js             import do Preact/htm (CDN)
+    datas.js              datas ISO locais e formatação
+    dados.js              constantes e dadosIniciais(agora)
+    regras.js             regras de negócio puras
+    acoes.js              transições de estado puras
+    armazenamento.js      localStorage
+    casos/afirmar.js      igual(), AGORA_TESTE
+    casos/dados.js        CASOS_DADOS
+    casos/regras.js       CASOS_REGRAS
+    casos/acoes.js        CASOS_ACOES
+    ui/comum.js           rota, componentes compartilhados
+    ui/portaria.js        TelaPortaria
+    ui/morador.js         TelaMorador
+    ui/sindico.js         TelaSindico
+    ui/app.js             App, barra de demonstração, autoteste, render
+  testes/
+    datas.test.mjs
+    montagem.test.mjs
+    casos.test.mjs
+```
+
+---
+
+### Task 1: Estrutura, datas e montador
+
+**Files:**
+- Create: `.gitignore`, `prototipo/package.json`, `prototipo/montagem.mjs`, `prototipo/montar.mjs`, `prototipo/src/base.html`, `prototipo/src/estilos.css`, `prototipo/src/vendor.js`, `prototipo/src/datas.js`, `prototipo/src/ui/app.js`
+- Test: `prototipo/testes/datas.test.mjs`, `prototipo/testes/montagem.test.mjs`
+
+**Interfaces:**
+- Produces:
+  - `datas.js`: `isoDia(Date)→'AAAA-MM-DD'`, `deIso(iso)→Date`, `somarDias(iso,n)→iso`, `somarMes('AAAA-MM',n)→'AAAA-MM'`, `diferencaDias(isoA,isoB)→number` (A−B), `momento(iso,hora,minuto=0)→Date`, `horasEntre(a,b)→number` (b−a), `diasDoMes('AAAA-MM')→iso[]`, `fmtDia(iso)→'qui, 8 out'`, `fmtDataCurta(iso)→'20/05/2024'`, `fmtDataHora(Date|string)→'08/10 09:05'`, `fmtHora(h)→'09h'`, `nomeMes('AAAA-MM')→'outubro de 2026'`, `haQuanto(instante, agora)→'há 3 h'`.
+  - `montagem.mjs`: `ORDEM: string[]`, `transformar(codigo)→string`, `montar()→string`, `extrairScript(pagina)→string`.
+  - `vendor.js`: `html, render, useState, useEffect`.
+
+- [ ] **Step 1: Criar `.gitignore` (raiz do projeto) e `prototipo/package.json`**
+
+`.gitignore`:
+```
+node_modules/
+prototipo/capturas/
+```
+
+`prototipo/package.json`:
+```json
+{
+  "name": "condofacil-prototipo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "montar": "node montar.mjs",
+    "verificar": "node verificar.mjs",
+    "e2e": "node e2e.mjs"
+  }
+}
+```
+
+- [ ] **Step 2: Escrever os testes que falham**
+
+`prototipo/testes/datas.test.mjs`:
+```js
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { isoDia, somarDias, somarMes, diferencaDias, diasDoMes, fmtDia, fmtDataHora, fmtDataCurta, haQuanto, nomeMes, fmtHora } from '../src/datas.js';
+
+test('isoDia usa o fuso local', () => {
+  assert.equal(isoDia(new Date(2026, 9, 8, 23, 30)), '2026-10-08');
+});
+
+test('somarDias atravessa o mês', () => {
+  assert.equal(somarDias('2026-10-30', 3), '2026-11-02');
+  assert.equal(somarDias('2026-10-08', -3), '2026-10-05');
+});
+
+test('somarMes atravessa o ano', () => {
+  assert.equal(somarMes('2026-12', 1), '2027-01');
+  assert.equal(somarMes('2026-01', -1), '2025-12');
+});
+
+test('diferencaDias', () => {
+  assert.equal(diferencaDias('2026-10-11', '2026-10-08'), 3);
+  assert.equal(diferencaDias('2026-10-05', '2026-10-08'), -3);
+});
+
+test('diasDoMes', () => {
+  const dias = diasDoMes('2026-02');
+  assert.equal(dias.length, 28);
+  assert.equal(dias[0], '2026-02-01');
+  assert.equal(dias[27], '2026-02-28');
+});
+
+test('formatos', () => {
+  assert.equal(fmtDia('2026-10-08'), 'qui, 8 out');
+  assert.equal(nomeMes('2026-10'), 'outubro de 2026');
+  assert.equal(fmtDataCurta('2024-05-20'), '20/05/2024');
+  assert.equal(fmtDataHora(new Date(2026, 9, 8, 9, 5)), '08/10 09:05');
+  assert.equal(fmtHora(9), '09h');
+});
+
+test('haQuanto', () => {
+  const agora = new Date(2026, 9, 8, 12);
+  assert.equal(haQuanto(new Date(2026, 9, 8, 11, 30), agora), 'agora há pouco');
+  assert.equal(haQuanto(new Date(2026, 9, 8, 9), agora), 'há 3 h');
+  assert.equal(haQuanto(new Date(2026, 9, 7, 11), agora), 'há 1 dia');
+  assert.equal(haQuanto(new Date(2026, 9, 4, 12), agora), 'há 4 dias');
+});
+```
+
+`prototipo/testes/montagem.test.mjs`:
+```js
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { writeFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { transformar, montar, extrairScript } from '../montagem.mjs';
+
+test('transformar remove imports locais e a palavra export', () => {
+  const entrada = [
+    "import { a } from './a.js';",
+    "import { b } from '../b.js';",
+    "import { h } from 'https://x/y.js';",
+    'export { h };',
+    'export function f() {}',
+    'export const B = 1;',
+    '  const c = 2;',
+  ].join('\n');
+  assert.equal(transformar(entrada), ["import { h } from 'https://x/y.js';", 'function f() {}', 'const B = 1;', '  const c = 2;'].join('\n'));
+});
+
+test('montar gera um HTML único', () => {
+  const pagina = montar();
+  assert.equal((pagina.match(/<\/script>/g) || []).length, 1);
+  assert.doesNotMatch(pagina, /from '\.\.?\//);
+  assert.equal((pagina.match(/unpkg\.com\/htm@3\.1\.1\/preact\/standalone\.module\.js/g) || []).length, 1);
+  assert.match(pagina, /<title>CondoFácil Protótipo<\/title>/);
+});
+
+test('nenhum nome de nível superior se repete entre arquivos', () => {
+  const js = extrairScript(montar());
+  const nomes = [...js.matchAll(/^(?:async )?(?:const|let|function|class) (\w+)/gm)].map((m) => m[1]);
+  const repetidos = nomes.filter((n, i) => nomes.indexOf(n) !== i);
+  assert.deepEqual(repetidos, []);
+});
+
+test('o script montado tem sintaxe válida', () => {
+  const pasta = mkdtempSync(join(tmpdir(), 'condofacil-'));
+  const arquivo = join(pasta, 'script.mjs');
+  writeFileSync(arquivo, extrairScript(montar()));
+  const r = spawnSync(process.execPath, ['--check', arquivo], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+});
+```
+
+- [ ] **Step 3: Rodar e ver falhar**
+
+Run: `cd prototipo && npm test`
+Expected: FAIL. Os módulos `../src/datas.js` e `../montagem.mjs` não existem.
+
+- [ ] **Step 4: Implementar `src/datas.js`**
+
+```js
+// Datas como texto 'AAAA-MM-DD' no fuso local; instantes como Date ou ISO completo.
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const MESES_LONGOS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const DIAS_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+function doisDigitos(n) {
+  return String(n).padStart(2, '0');
+}
+
+export function isoDia(d) {
+  return `${d.getFullYear()}-${doisDigitos(d.getMonth() + 1)}-${doisDigitos(d.getDate())}`;
+}
+
+export function deIso(iso) {
+  const [a, m, d] = iso.split('-').map(Number);
+  return new Date(a, m - 1, d);
+}
+
+export function somarDias(iso, n) {
+  const d = deIso(iso);
+  d.setDate(d.getDate() + n);
+  return isoDia(d);
+}
+
+export function somarMes(anoMes, n) {
+  const [a, m] = anoMes.split('-').map(Number);
+  return isoDia(new Date(a, m - 1 + n, 1)).slice(0, 7);
+}
+
+export function diferencaDias(isoA, isoB) {
+  return Math.round((deIso(isoA) - deIso(isoB)) / 86400000);
+}
+
+export function momento(iso, hora, minuto = 0) {
+  const d = deIso(iso);
+  d.setHours(hora, minuto, 0, 0);
+  return d;
+}
+
+export function horasEntre(a, b) {
+  return (b - a) / 3600000;
+}
+
+export function diasDoMes(anoMes) {
+  const [a, m] = anoMes.split('-').map(Number);
+  const total = new Date(a, m, 0).getDate();
+  return Array.from({ length: total }, (_, i) => `${anoMes}-${doisDigitos(i + 1)}`);
+}
+
+export function fmtDia(iso) {
+  const d = deIso(iso);
+  return `${DIAS_SEMANA[d.getDay()]}, ${d.getDate()} ${MESES_CURTOS[d.getMonth()]}`;
+}
+
+export function fmtDataCurta(iso) {
+  const [a, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}/${a}`;
+}
+
+export function fmtDataHora(instante) {
+  const d = new Date(instante);
+  return `${doisDigitos(d.getDate())}/${doisDigitos(d.getMonth() + 1)} ${doisDigitos(d.getHours())}:${doisDigitos(d.getMinutes())}`;
+}
+
+export function fmtHora(h) {
+  return `${doisDigitos(h)}h`;
+}
+
+export function nomeMes(anoMes) {
+  const [a, m] = anoMes.split('-').map(Number);
+  return `${MESES_LONGOS[m - 1]} de ${a}`;
+}
+
+export function haQuanto(instante, agora) {
+  const horas = horasEntre(new Date(instante), agora);
+  if (horas < 1) return 'agora há pouco';
+  if (horas < 24) return `há ${Math.floor(horas)} h`;
+  const dias = Math.floor(horas / 24);
+  return dias === 1 ? 'há 1 dia' : `há ${dias} dias`;
+}
+```
+
+- [ ] **Step 5: Implementar o montador e o esqueleto**
+
+`prototipo/montagem.mjs`:
+```js
+// Junta os módulos de src/ num único HTML, sem dependências.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const raiz = dirname(fileURLToPath(import.meta.url));
+
+// Ordem de dependência: cada arquivo usa apenas nomes dos anteriores.
+export const ORDEM = [
+  'src/vendor.js',
+  'src/datas.js',
+  'src/ui/app.js',
+];
+
+export function transformar(codigo) {
+  return codigo
+    .split(/\r?\n/)
+    .filter((linha) => !/^import .* from '\.\.?\//.test(linha))
+    .filter((linha) => !/^export \{.*\};?\s*$/.test(linha))
+    .map((linha) => linha.replace(/^export (async function|function|const|let|class) /, '$1 '))
+    .join('\n');
+}
+
+export function montar() {
+  const js = ORDEM.map((arquivo) => `// ---- ${arquivo} ----\n${transformar(readFileSync(join(raiz, arquivo), 'utf8'))}`).join('\n');
+  const css = readFileSync(join(raiz, 'src/estilos.css'), 'utf8');
+  const base = readFileSync(join(raiz, 'src/base.html'), 'utf8');
+  return base.replace('/*CSS*/', () => css).replace('/*JS*/', () => js);
+}
+
+export function extrairScript(pagina) {
+  const inicio = pagina.indexOf('<script type="module">') + '<script type="module">'.length;
+  return pagina.slice(inicio, pagina.indexOf('</script>', inicio));
+}
+```
+
+`prototipo/montar.mjs`:
+```js
+import { writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { montar } from './montagem.mjs';
+
+const raiz = dirname(fileURLToPath(import.meta.url));
+writeFileSync(join(raiz, 'condofacil.html'), montar());
+console.log('prototipo/condofacil.html gerado');
+```
+
+`prototipo/src/base.html`:
+```html
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CondoFácil Protótipo</title>
+<style>
+/*CSS*/
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+/*JS*/
+</script>
+</body>
+</html>
+```
+
+`prototipo/src/estilos.css` (provisório; a Task 5 substitui):
+```css
+body { margin: 0; background: #f3f4f1; color: #1c2321; font-family: system-ui, sans-serif; }
+```
+
+`prototipo/src/vendor.js`:
+```js
+import { html, render, useState, useEffect } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
+export { html, render, useState, useEffect };
+```
+
+`prototipo/src/ui/app.js` (provisório; a Task 5 substitui):
+```js
+import { html, render } from '../vendor.js';
+import { fmtDia, isoDia } from '../datas.js';
+
+render(html`<p>CondoFácil · ${fmtDia(isoDia(new Date()))}</p>`, document.getElementById('app'));
+```
+
+- [ ] **Step 6: Rodar e ver passar**
+
+Run: `cd prototipo && npm test && npm run montar`
+Expected: todos os testes PASS; imprime `prototipo/condofacil.html gerado`.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add .gitignore prototipo
+git commit -m "feat(prototipo): estrutura, utilitários de data e montador do HTML único
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 2: Dados fictícios
+
+**Files:**
+- Create: `prototipo/src/dados.js`, `prototipo/src/casos/afirmar.js`, `prototipo/src/casos/dados.js`, `prototipo/testes/casos.test.mjs`
+- Modify: `prototipo/montagem.mjs` (ORDEM)
+
+**Interfaces:**
+- Consumes: `datas.js` (Task 1).
+- Produces:
+  - Constantes de `dados.js`: `UNIDADES: string[32]`, `UNIDADE_ANA = '302'`, `SINDICO = 'Síndico Roberto Lima'`, `PORTEIRO_DIA = 'Seu José'`.
+  - `CATEGORIAS: {id: {nome, sla|null}}`.
+  - `FLUXO_OCORRENCIA`, `NOMES_STATUS`, `NOMES_STATUS_RESERVA`, `TIPOS_COMUNICADO`, `NOMES_CANAL`, `MODELOS_COMUNICADO: {tipo: {titulo, texto}}`, `TRANSPORTADORAS`.
+  - `dadosIniciais(agora: Date) → Estado`.
+  - `casos/afirmar.js`: `AGORA_TESTE` (8/out/2026 10:00 local) e `igual(obtido, esperado, contexto?)`, que lança erro se os valores forem diferentes (compara via JSON).
+  - `CASOS_DADOS: {nome, rodar()}[]`.
+- Formato do `Estado` (usado por todas as tasks seguintes):
+```
+{ versao: 1, geradoEm: 'AAAA-MM-DD', proximoProtocolo: number,
+  condominio: { nome, unidades: string[] },
+  pessoas: [{ id, nome, unidade }],
+  areas: [{ id, nome, tipo: 'periodo'|'hora', periodos?: [{id,nome,inicio,fim}], horaInicio?, horaFim?,
+            taxa, aprovacao: 'manual'|'automatica', antecedenciaMin, antecedenciaMax, limiteMes|null,
+            vinculadas: string[], capacidade, itens, regulamento }],
+  reservas: [{ id, areaId, unidade, data, inicio, fim, status: 'pendente'|'confirmada'|'recusada'|'cancelada',
+               motivo?, convidados: [{nome, documento}], criadaEm: ISO }],
+  bloqueios: [{ id, areaId, data, inicio, fim, motivo }],
+  comunicados: [{ id, tipo, titulo, texto, publico: {tipo:'todos'}|{tipo:'andar',valor:'5'}|{tipo:'unidades',valor:string[]},
+                  canais: string[], fixado, anexo|null, publicadoEm: ISO, leituras: string[], reacoes: {util: string[], duvida: string[]} }],
+  ocorrencias: [{ id: 'OC-0037', categoria, descricao, local, unidade, anonima, publica, foto, status, eutambem: string[],
+                  linha: [{ em: ISO, status|null, texto, autor }], avaliacao|null, arquivada, criadaEm: ISO }],
+  documentos: [{ id, pasta, titulo, versoes: [{versao, data}], vencimento?: 'AAAA-MM-DD', visibilidade: 'todos'|'conselho' }],
+  encomendas: [{ id, unidade, transportadora, codigo: '6 dígitos', chegadaEm: ISO, status: 'aguardando'|'retirada',
+                 foto, retiradaPor|null, retiradaEm|null, lembretes, registradaPor }] }
+```
+
+- [ ] **Step 1: Escrever os testes que falham**
+
+`prototipo/src/casos/afirmar.js`:
+```js
+// Asserções mínimas que rodam tanto no Node quanto no navegador (?teste=1).
+export const AGORA_TESTE = new Date(2026, 9, 8, 10, 0);
+
+export function igual(obtido, esperado, contexto = '') {
+  const a = JSON.stringify(obtido);
+  const b = JSON.stringify(esperado);
+  if (a !== b) throw new Error(`${contexto ? `${contexto}: ` : ''}esperado ${b}, obtido ${a}`);
+}
+```
+
+`prototipo/src/casos/dados.js`:
+```js
+import { dadosIniciais, UNIDADES, UNIDADE_ANA } from '../dados.js';
+import { igual, AGORA_TESTE } from './afirmar.js';
+
+export const CASOS_DADOS = [
+  {
+    nome: 'dados: 32 unidades de 101 a 804',
+    rodar() {
+      igual(UNIDADES.length, 32);
+      igual([UNIDADES[0], UNIDADES[9], UNIDADES[31]], ['101', '302', '804']);
+    },
+  },
+  {
+    nome: 'dados: 20 unidades com morador cadastrado',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(new Set(e.pessoas.map((p) => p.unidade)).size, 20);
+      igual(e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome, 'Ana Souza');
+    },
+  },
+  {
+    nome: 'dados: 3 reservas confirmadas, 1 pendente e 1 bloqueio',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(e.reservas.filter((r) => r.status === 'confirmada').length, 3);
+      igual(e.reservas.filter((r) => r.status === 'pendente').length, 1);
+      igual(e.bloqueios.length, 1);
+    },
+  },
+  {
+    nome: 'dados: 4 encomendas aguardando, 2 da Ana',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      const aguardando = e.encomendas.filter((x) => x.status === 'aguardando');
+      igual(aguardando.length, 4);
+      igual(aguardando.filter((x) => x.unidade === UNIDADE_ANA).length, 2);
+      igual(e.encomendas.length, 7);
+    },
+  },
+  {
+    nome: 'dados: 5 comunicados, 6 ocorrências e 8 documentos',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual([e.comunicados.length, e.ocorrencias.length, e.documentos.length], [5, 6, 8]);
+      igual(e.proximoProtocolo, 43);
+    },
+  },
+  {
+    nome: 'dados: datas relativas ao dia de hoje',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(e.geradoEm, '2026-10-08');
+      igual(e.reservas.find((r) => r.id === 'r4').data, '2026-10-18');
+      igual(e.documentos.find((d) => d.id === 'd6').vencimento, '2026-11-02');
+    },
+  },
+  {
+    nome: 'dados: aviso de falta de água lido por 19 unidades, mas não pela Ana',
+    rodar() {
+      const c1 = dadosIniciais(AGORA_TESTE).comunicados.find((c) => c.id === 'c1');
+      igual(c1.leituras.length, 19);
+      igual(c1.leituras.includes(UNIDADE_ANA), false);
+      igual(c1.fixado, true);
+    },
+  },
+];
+```
+
+`prototipo/testes/casos.test.mjs`:
+```js
+import { test } from 'node:test';
+import { CASOS_DADOS } from '../src/casos/dados.js';
+
+for (const caso of [...CASOS_DADOS]) test(caso.nome, () => caso.rodar());
+```
+
+- [ ] **Step 2: Rodar e ver falhar**
+
+Run: `cd prototipo && npm test`
+Expected: FAIL. `../dados.js` não existe.
+
+- [ ] **Step 3: Implementar `src/dados.js`**
+
+```js
+import { isoDia, somarDias, momento, fmtDia } from './datas.js';
+
+export const UNIDADES = Array.from({ length: 32 }, (_, i) => `${Math.floor(i / 4) + 1}0${(i % 4) + 1}`);
+export const UNIDADE_ANA = '302';
+export const SINDICO = 'Síndico Roberto Lima';
+export const PORTEIRO_DIA = 'Seu José';
+
+export const CATEGORIAS = {
+  barulho: { nome: 'Barulho', sla: 48 },
+  vazamento: { nome: 'Vazamento', sla: 24 },
+  vaga: { nome: 'Vaga ocupada', sla: 24 },
+  lampada: { nome: 'Lâmpada queimada', sla: 72 },
+  seguranca: { nome: 'Segurança', sla: 24 },
+  limpeza: { nome: 'Limpeza', sla: 72 },
+  sugestao: { nome: 'Sugestão', sla: null },
+  vizinho: { nome: 'Reclamação de vizinho', sla: 72 },
+  pet: { nome: 'Pet', sla: 72 },
+  elogio: { nome: 'Elogio', sla: null },
+};
+
+export const FLUXO_OCORRENCIA = ['aberta', 'em_analise', 'em_andamento', 'resolvida', 'fechada'];
+export const NOMES_STATUS = { aberta: 'Aberta', em_analise: 'Em análise', em_andamento: 'Em andamento', resolvida: 'Resolvida', fechada: 'Fechada' };
+export const NOMES_STATUS_RESERVA = { pendente: 'Pendente', confirmada: 'Confirmada', recusada: 'Recusada', cancelada: 'Cancelada' };
+
+export const TIPOS_COMUNICADO = {
+  geral: 'Aviso geral',
+  manutencao: 'Manutenção',
+  evento: 'Festa/evento',
+  urgente: 'Urgente',
+  assembleia: 'Assembleia',
+  obra: 'Obra em unidade',
+  falta: 'Falta de água/energia',
+};
+
+export const NOMES_CANAL = { push: 'Push', email: 'E-mail', whatsapp: 'WhatsApp', sms: 'SMS' };
+
+export const MODELOS_COMUNICADO = {
+  geral: { titulo: 'Aviso aos moradores', texto: 'Prezados moradores,\n\nInformamos que [descreva o aviso].\n\nAtenciosamente,\nRoberto Lima, síndico' },
+  manutencao: { titulo: 'Manutenção programada', texto: 'Prezados moradores,\n\nNo dia [data], das [hora] às [hora], haverá manutenção em [equipamento ou área]. Durante o serviço, [impacto].\n\nAgradecemos a compreensão.\nRoberto Lima, síndico' },
+  evento: { titulo: 'Convite: [nome do evento]', texto: 'Convidamos todos para [evento], no dia [data], às [hora], no [local].\n\nConfirme sua presença pelo app.\nRoberto Lima, síndico' },
+  urgente: { titulo: 'URGENTE: [assunto]', texto: '[Descreva a situação e o que os moradores devem fazer agora.]\n\nRoberto Lima, síndico' },
+  assembleia: { titulo: 'Convocação: assembleia [ordinária ou extraordinária]', texto: 'Ficam convocados os condôminos para assembleia no dia [data], às [hora] em primeira chamada e às [hora] em segunda, no salão de festas.\n\nPauta: [itens].\nRoberto Lima, síndico' },
+  obra: { titulo: 'Obra na unidade [número]', texto: 'A unidade [número] fará reforma de [data] a [data], de segunda a sexta das 8h às 17h e aos sábados das 8h às 12h, com ART/RRT entregue à administração.' },
+  falta: { titulo: 'Falta de [água ou energia]', texto: 'No dia [data], das [hora] às [hora], haverá interrupção no fornecimento de [água ou energia] por [motivo].\n\nRecomendamos [orientação].' },
+};
+
+export const TRANSPORTADORAS = ['Correios', 'Mercado Livre', 'Amazon', 'Shopee', 'Outra'];
+
+const MORADORES = [
+  ['101', 'Carla Mendes'], ['102', 'Paulo Ribeiro'], ['104', 'Juliana Costa'], ['201', 'Fernando Alves'],
+  ['203', 'Beatriz Rocha'], ['204', 'Lucas Martins'], ['301', 'Mariana Teixeira'], ['302', 'Ana Souza'],
+  ['303', 'Rafael Gomes'], ['401', 'Patrícia Nunes'], ['402', 'Eduardo Pires'], ['404', 'Camila Duarte'],
+  ['501', 'Gustavo Freitas'], ['502', 'Larissa Moura'], ['504', 'Thiago Barros'], ['601', 'Renata Cardoso'],
+  ['603', 'Diego Monteiro'], ['702', 'Sônia Araújo'], ['703', 'Marcelo Vieira'], ['801', 'Roberto Lima'],
+];
+
+export function dadosIniciais(agora = new Date()) {
+  const hoje = isoDia(agora);
+  const d = (n) => somarDias(hoje, n);
+  const em = (n, hora, minuto = 0) => momento(d(n), hora, minuto).toISOString();
+  const leram = (n) => UNIDADES.slice(0, n);
+  const leramSemAna = (n) => UNIDADES.filter((u) => u !== UNIDADE_ANA).slice(0, n);
+  const periodos = [{ id: 'tarde', nome: 'Tarde', inicio: 13, fim: 18 }, { id: 'noite', nome: 'Noite', inicio: 18, fim: 23 }];
+  const canaisPadrao = ['push', 'email', 'whatsapp'];
+
+  return {
+    versao: 1,
+    geradoEm: hoje,
+    proximoProtocolo: 43,
+    condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
+    pessoas: MORADORES.map(([unidade, nome]) => ({ id: `p${unidade}`, nome, unidade })),
+    areas: [
+      { id: 'salao', nome: 'Salão de festas', tipo: 'periodo', periodos, taxa: 150, aprovacao: 'manual', antecedenciaMin: 2, antecedenciaMax: 60, limiteMes: 2, vinculadas: ['churrasqueira'], capacidade: 80, itens: '10 mesas, 60 cadeiras, geladeira e fogão', regulamento: 'Som até as 22h. Limpeza por conta do morador. Vistoria na entrada e na saída.' },
+      { id: 'churrasqueira', nome: 'Churrasqueira', tipo: 'periodo', periodos, taxa: 50, aprovacao: 'automatica', antecedenciaMin: 1, antecedenciaMax: 60, limiteMes: 2, vinculadas: ['salao'], capacidade: 25, itens: 'Grelha, 4 mesas, 24 cadeiras e pia', regulamento: 'Traga o carvão e deixe a grelha limpa.' },
+      { id: 'quadra', nome: 'Quadra', tipo: 'hora', horaInicio: 8, horaFim: 22, taxa: 0, aprovacao: 'automatica', antecedenciaMin: 0, antecedenciaMax: 15, limiteMes: 4, vinculadas: [], capacidade: 12, itens: 'Rede de vôlei e traves', regulamento: 'Calçado adequado. Uma hora por reserva.' },
+      { id: 'academia', nome: 'Academia', tipo: 'hora', horaInicio: 6, horaFim: 23, taxa: 0, aprovacao: 'automatica', antecedenciaMin: 0, antecedenciaMax: 7, limiteMes: null, vinculadas: [], capacidade: 6, itens: 'Esteiras, bicicleta e pesos livres', regulamento: 'Uso a partir de 14 anos. Higienize os aparelhos.' },
+    ],
+    reservas: [
+      { id: 'r1', areaId: 'salao', unidade: '104', data: d(3), inicio: 18, fim: 23, status: 'confirmada', convidados: [{ nome: 'Marta Lopes', documento: 'RG 22.418.903-1' }], criadaEm: em(-5, 10) },
+      { id: 'r2', areaId: 'quadra', unidade: UNIDADE_ANA, data: d(1), inicio: 9, fim: 10, status: 'confirmada', convidados: [], criadaEm: em(-1, 20) },
+      { id: 'r3', areaId: 'churrasqueira', unidade: '603', data: d(0), inicio: 13, fim: 18, status: 'confirmada', convidados: [{ nome: 'João Pereira', documento: 'RG 12.345.678-9' }, { nome: 'Lia Prado', documento: 'RG 98.765.432-1' }], criadaEm: em(-8, 15) },
+      { id: 'r4', areaId: 'salao', unidade: '504', data: d(10), inicio: 18, fim: 23, status: 'pendente', convidados: [], criadaEm: em(-1, 8) },
+    ],
+    bloqueios: [{ id: 'b1', areaId: 'quadra', data: d(5), inicio: 8, fim: 22, motivo: 'Manutenção da pintura' }],
+    comunicados: [
+      { id: 'c1', tipo: 'manutencao', titulo: 'Falta de água para limpeza da caixa d’água', texto: `Prezados moradores,\n\nNa ${fmtDia(d(4))}, das 9h às 12h, o fornecimento de água será interrompido para a limpeza semestral da caixa d’água.\n\nArmazene água para o período.\nRoberto Lima, síndico`, publico: { tipo: 'todos' }, canais: canaisPadrao, fixado: true, anexo: null, publicadoEm: em(-1, 9), leituras: leramSemAna(19), reacoes: { util: ['101', '204', '603'], duvida: ['702'] } },
+      { id: 'c2', tipo: 'assembleia', titulo: 'Convocação: assembleia ordinária', texto: 'Ficam convocados os condôminos para a assembleia ordinária no dia 30, às 19h30, no salão de festas.\n\nPauta: prestação de contas, previsão orçamentária e troca do portão da garagem.\nRoberto Lima, síndico', publico: { tipo: 'todos' }, canais: canaisPadrao, fixado: false, anexo: 'edital-assembleia.pdf', publicadoEm: em(-6, 18), leituras: leram(24), reacoes: { util: ['101'], duvida: [] } },
+      { id: 'c3', tipo: 'evento', titulo: 'Festa das crianças no salão', texto: 'Domingo, a partir das 15h, festa das crianças no salão de festas com pipoca, algodão-doce e brincadeiras.\n\nConfirme a presença dos pequenos pelo app.', publico: { tipo: 'todos' }, canais: canaisPadrao, fixado: false, anexo: null, publicadoEm: em(-3, 12), leituras: leram(15), reacoes: { util: ['204', '302'], duvida: [] } },
+      { id: 'c4', tipo: 'geral', titulo: 'Troca do interfone', texto: 'A troca dos interfones será feita andar por andar ao longo da próxima semana. A equipe técnica vai bater em cada unidade entre 9h e 16h.', publico: { tipo: 'todos' }, canais: canaisPadrao, fixado: false, anexo: null, publicadoEm: em(-10, 10), leituras: leram(28), reacoes: { util: [], duvida: ['501'] } },
+      { id: 'c5', tipo: 'urgente', titulo: 'Elevador 2 parado', texto: 'O elevador 2 está parado aguardando o técnico. Use o elevador 1 ou a escada. Avisaremos assim que voltar a funcionar.', publico: { tipo: 'todos' }, canais: [...canaisPadrao, 'sms'], fixado: false, anexo: null, publicadoEm: em(-1, 21), leituras: leramSemAna(22), reacoes: { util: ['702', '703'], duvida: [] } },
+    ],
+    ocorrencias: [
+      { id: 'OC-0037', categoria: 'lampada', descricao: 'Lâmpada do hall do 5º andar queimada.', local: '5º andar', unidade: '502', anonima: false, publica: false, foto: false, status: 'resolvida', eutambem: [], linha: [
+        { em: em(-9, 19), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Larissa Moura' },
+        { em: em(-8, 9), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
+        { em: em(-8, 10), status: 'em_andamento', texto: 'Zelador vai trocar hoje à tarde', autor: 'Síndico' },
+        { em: em(-7, 15), status: 'resolvida', texto: 'Lâmpada trocada pelo zelador', autor: 'Síndico' },
+      ], avaliacao: 5, arquivada: false, criadaEm: em(-9, 19) },
+      { id: 'OC-0038', categoria: 'elogio', descricao: 'O Seu José ajudou minha mãe com as compras. Muito atencioso!', local: 'Portaria', unidade: '204', anonima: false, publica: false, foto: false, status: 'fechada', eutambem: [], linha: [
+        { em: em(-6, 11), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Lucas Martins' },
+        { em: em(-6, 14), status: 'fechada', texto: 'Agradecemos o elogio! Repassado ao Seu José.', autor: 'Síndico' },
+      ], avaliacao: null, arquivada: false, criadaEm: em(-6, 11) },
+      { id: 'OC-0039', categoria: 'vazamento', descricao: 'Água pingando do teto da garagem, perto da vaga 12.', local: 'Garagem, vaga 12', unidade: '101', anonima: false, publica: false, foto: true, status: 'em_andamento', eutambem: [], linha: [
+        { em: em(-3, 8), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Carla Mendes' },
+        { em: em(-3, 10), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
+        { em: em(-2, 9), status: 'em_andamento', texto: 'Encanador agendado para avaliar a prumada', autor: 'Síndico' },
+      ], avaliacao: null, arquivada: false, criadaEm: em(-3, 8) },
+      { id: 'OC-0040', categoria: 'seguranca', descricao: 'Elevador 2 parado entre o 3º e o 4º andar.', local: 'Elevador 2', unidade: '702', anonima: false, publica: true, foto: false, status: 'em_andamento', eutambem: ['101', '104', '201', '404', '501', '603', '703'], linha: [
+        { em: em(-1, 20), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Sônia Araújo' },
+        { em: em(-1, 20, 30), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
+        { em: em(-1, 21), status: 'em_andamento', texto: 'Técnico da empresa de elevadores acionado', autor: 'Síndico' },
+      ], avaliacao: null, arquivada: false, criadaEm: em(-1, 20) },
+      { id: 'OC-0041', categoria: 'barulho', descricao: 'Música alta depois das 22h, aparentemente no 4º andar.', local: '4º andar', unidade: '303', anonima: true, publica: false, foto: false, status: 'em_analise', eutambem: [], linha: [
+        { em: em(-1, 23), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Anônimo' },
+        { em: em(0, 0, 5), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
+      ], avaliacao: null, arquivada: false, criadaEm: em(-1, 23) },
+      { id: 'OC-0042', categoria: 'vaga', descricao: 'Carro desconhecido parado na minha vaga (G1-18) desde ontem.', local: 'Garagem G1, vaga 18', unidade: UNIDADE_ANA, anonima: false, publica: false, foto: true, status: 'aberta', eutambem: [], linha: [
+        { em: em(-2, 7), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Ana Souza' },
+      ], avaliacao: null, arquivada: false, criadaEm: em(-2, 7) },
+    ],
+    documentos: [
+      { id: 'd1', pasta: 'Convenção', titulo: 'Convenção do condomínio', versoes: [{ versao: 1, data: '2019-03-10' }], visibilidade: 'todos' },
+      { id: 'd2', pasta: 'Regimento interno', titulo: 'Regimento interno', versoes: [{ versao: 1, data: '2019-03-10' }, { versao: 2, data: '2024-05-20' }], visibilidade: 'todos' },
+      { id: 'd3', pasta: 'Atas', titulo: 'Ata da assembleia ordinária de março/2026', versoes: [{ versao: 1, data: '2026-03-28' }], visibilidade: 'todos' },
+      { id: 'd4', pasta: 'Atas', titulo: 'Ata da assembleia extraordinária de setembro/2026', versoes: [{ versao: 1, data: '2026-09-15' }], visibilidade: 'todos' },
+      { id: 'd5', pasta: 'Balancetes', titulo: 'Balancete de setembro/2026', versoes: [{ versao: 1, data: '2026-10-05' }], visibilidade: 'conselho' },
+      { id: 'd6', pasta: 'AVCB', titulo: 'AVCB (auto de vistoria do Corpo de Bombeiros)', versoes: [{ versao: 1, data: '2021-11-02' }], vencimento: d(25), visibilidade: 'todos' },
+      { id: 'd7', pasta: 'Apólice de seguro', titulo: 'Apólice do seguro predial', versoes: [{ versao: 1, data: '2025-12-05' }], vencimento: d(58), visibilidade: 'todos' },
+      { id: 'd8', pasta: 'Laudos', titulo: 'Certificado de limpeza da caixa d’água', versoes: [{ versao: 1, data: '2026-04-05' }], vencimento: d(-3), visibilidade: 'todos' },
+    ],
+    encomendas: [
+      { id: 'e1', unidade: UNIDADE_ANA, transportadora: 'Mercado Livre', codigo: '481203', chegadaEm: em(-1, 15), status: 'aguardando', foto: true, retiradaPor: null, retiradaEm: null, lembretes: 0, registradaPor: 'Seu José' },
+      { id: 'e2', unidade: UNIDADE_ANA, transportadora: 'Amazon', codigo: '730915', chegadaEm: em(-4, 8), status: 'aguardando', foto: true, retiradaPor: null, retiradaEm: null, lembretes: 0, registradaPor: 'Marcos' },
+      { id: 'e3', unidade: '504', transportadora: 'Correios', codigo: '219884', chegadaEm: em(-1, 9), status: 'aguardando', foto: true, retiradaPor: null, retiradaEm: null, lembretes: 0, registradaPor: 'Seu José' },
+      { id: 'e4', unidade: '101', transportadora: 'Shopee', codigo: '650372', chegadaEm: em(-2, 16), status: 'aguardando', foto: true, retiradaPor: null, retiradaEm: null, lembretes: 0, registradaPor: 'Seu José' },
+      { id: 'e5', unidade: UNIDADE_ANA, transportadora: 'Correios', codigo: '304417', chegadaEm: em(-6, 10), status: 'retirada', foto: true, retiradaPor: 'Ana Souza', retiradaEm: em(-5, 19), lembretes: 0, registradaPor: 'Seu José' },
+      { id: 'e6', unidade: '203', transportadora: 'Amazon', codigo: '918266', chegadaEm: em(-3, 11), status: 'retirada', foto: true, retiradaPor: 'Beatriz Rocha', retiradaEm: em(-3, 18), lembretes: 0, registradaPor: 'Seu José' },
+      { id: 'e7', unidade: '702', transportadora: 'Mercado Livre', codigo: '557029', chegadaEm: em(-2, 10), status: 'retirada', foto: true, retiradaPor: 'Sônia Araújo', retiradaEm: em(-2, 12), lembretes: 0, registradaPor: 'Seu José' },
+    ],
+  };
+}
+```
+
+- [ ] **Step 4: Incluir os novos arquivos na ORDEM do montador**
+
+Em `prototipo/montagem.mjs`, troque o array `ORDEM` por:
+```js
+export const ORDEM = [
+  'src/vendor.js',
+  'src/datas.js',
+  'src/dados.js',
+  'src/casos/afirmar.js',
+  'src/casos/dados.js',
+  'src/ui/app.js',
+];
+```
+
+- [ ] **Step 5: Rodar e ver passar**
+
+Run: `cd prototipo && npm test`
+Expected: todos PASS, incluindo os 7 casos `dados:` e os 4 de montagem.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add prototipo
+git commit -m "feat(prototipo): dados fictícios do Residencial Ipê Amarelo
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 3: Regras de negócio
+
+**Files:**
+- Create: `prototipo/src/regras.js`, `prototipo/src/casos/regras.js`
+- Modify: `prototipo/testes/casos.test.mjs`, `prototipo/montagem.mjs` (ORDEM)
+
+**Interfaces:**
+- Consumes: `dados.js` (`CATEGORIAS`, `FLUXO_OCORRENCIA`, `NOMES_STATUS`) e `datas.js`.
+- Produces (todas puras):
+  - `STATUS_ATIVOS = ['pendente','confirmada']`
+  - `areaPorId(estado, id) → area|undefined`
+  - `conflito(estado, areaId, data, inicio, fim) → null | {tipo:'bloqueio'|'reserva', item}`
+  - `podeReservar(estado, pedido{areaId,unidade,data,inicio,fim}, agora) → {ok:true} | {ok:false, motivo}`
+  - `avisoCancelamento(reserva, agora) → {multa:boolean, horas:number, texto}`
+  - `podeEntregar(encomenda, codigo, nomeRetirada) → {ok} | {ok:false, motivo}`
+  - `proximoStatus(status) → status|null`
+  - `acoesOcorrencia(oc) → [{id:'avancar'|'comentar'|'arquivar', rotulo}]`
+  - `alertasDocumentos(documentos, hojeIso) → [{documento, dias, faixa:'vencido'|'7'|'30'|'60'}]`, ordenado por dias
+  - `slaVencido(oc, agora) → boolean`
+  - `statusDia(estado, areaId, data) → 'livre'|'pendente'|'reservado'|'bloqueado'`
+  - `horariosDaArea(estado, areaId, data, agora) → [{inicio, fim, rotulo, livre, motivo|null}]`
+  - `destinatarios(estado, publico) → string[]`
+  - `comunicadosDaUnidade(estado, unidade) → comunicado[]` (fixados primeiro, depois do mais recente ao mais antigo)
+  - `encomendaParada(encomenda, agora) → boolean` (aguardando há mais de 72 h)
+  - `moradoresDaUnidade(estado, unidade) → pessoa[]`
+  - `indicadoresSindico(estado, agora) → {pendentes, abertas, slaVencidas, paradas, vencendo, adesao:{com,total}}`
+
+- [ ] **Step 1: Escrever os casos que falham**
+
+`prototipo/src/casos/regras.js`:
+```js
+import { dadosIniciais } from '../dados.js';
+import { podeReservar, avisoCancelamento, podeEntregar, acoesOcorrencia, alertasDocumentos, slaVencido, statusDia, horariosDaArea, destinatarios, comunicadosDaUnidade, indicadoresSindico } from '../regras.js';
+import { igual, AGORA_TESTE } from './afirmar.js';
+
+function pedidoTeste(areaId, data, inicio, fim, unidade = '302') {
+  return { areaId, unidade, data, inicio, fim };
+}
+
+function reservaExtra(id, data) {
+  return { id, areaId: 'salao', unidade: '302', data, inicio: 13, fim: 18, status: 'confirmada', convidados: [], criadaEm: AGORA_TESTE.toISOString() };
+}
+
+export const CASOS_REGRAS = [
+  {
+    nome: 'RN02: horário livre pode ser reservado',
+    rodar() {
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('salao', '2026-10-15', 13, 18), AGORA_TESTE), { ok: true });
+    },
+  },
+  {
+    nome: 'RN02: reserva confirmada bloqueia o horário',
+    rodar() {
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('salao', '2026-10-11', 18, 23), AGORA_TESTE), { ok: false, motivo: 'Horário já reservado' });
+    },
+  },
+  {
+    nome: 'RN02: reserva pendente já trava o horário',
+    rodar() {
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('salao', '2026-10-18', 18, 23), AGORA_TESTE), { ok: false, motivo: 'Horário já reservado' });
+    },
+  },
+  {
+    nome: 'RN02: área vinculada também fica ocupada',
+    rodar() {
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('churrasqueira', '2026-10-11', 18, 23), AGORA_TESTE), { ok: false, motivo: 'Horário já reservado' });
+    },
+  },
+  {
+    nome: 'bloqueio de manutenção impede a reserva',
+    rodar() {
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('quadra', '2026-10-13', 10, 11), AGORA_TESTE), { ok: false, motivo: 'Área bloqueada: Manutenção da pintura' });
+    },
+  },
+  {
+    nome: 'antecedência mínima e máxima',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(podeReservar(e, pedidoTeste('salao', '2026-10-09', 13, 18), AGORA_TESTE).motivo, 'Reserve com pelo menos 2 dias de antecedência');
+      igual(podeReservar(e, pedidoTeste('churrasqueira', '2026-10-08', 13, 18), AGORA_TESTE).motivo, 'Reserve com pelo menos 1 dia de antecedência');
+      igual(podeReservar(e, pedidoTeste('salao', '2026-12-08', 13, 18), AGORA_TESTE).motivo, 'Reservas abrem com no máximo 60 dias de antecedência');
+    },
+  },
+  {
+    nome: 'horário que já passou não pode ser reservado',
+    rodar() {
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('quadra', '2026-10-08', 9, 10), AGORA_TESTE).motivo, 'Esse horário já passou');
+      igual(podeReservar(dadosIniciais(AGORA_TESTE), pedidoTeste('quadra', '2026-10-07', 9, 10), AGORA_TESTE).motivo, 'Esse horário já passou');
+    },
+  },
+  {
+    nome: 'RN05: limite de reservas por mês por unidade',
+    rodar() {
+      const base = dadosIniciais(AGORA_TESTE);
+      const e = { ...base, reservas: [...base.reservas, reservaExtra('x1', '2026-10-20'), reservaExtra('x2', '2026-10-22')] };
+      igual(podeReservar(e, pedidoTeste('salao', '2026-10-24', 13, 18), AGORA_TESTE).motivo, 'Limite de 2 reservas/mês atingido para esta área');
+      igual(podeReservar(e, pedidoTeste('salao', '2026-11-05', 13, 18), AGORA_TESTE), { ok: true });
+      igual(podeReservar(e, pedidoTeste('salao', '2026-10-24', 13, 18, '303'), AGORA_TESTE), { ok: true });
+    },
+  },
+  {
+    nome: 'RN04: cancelamento com menos de 72 h avisa multa',
+    rodar() {
+      const perto = avisoCancelamento({ data: '2026-10-10', inicio: 18 }, AGORA_TESTE);
+      igual([perto.multa, perto.horas], [true, 56]);
+      const longe = avisoCancelamento({ data: '2026-10-20', inicio: 18 }, AGORA_TESTE);
+      igual(longe.multa, false);
+    },
+  },
+  {
+    nome: 'RN06: entrega exige código válido e nome de quem retirou',
+    rodar() {
+      const enc = dadosIniciais(AGORA_TESTE).encomendas.find((x) => x.id === 'e1');
+      igual(podeEntregar(enc, '000000', 'Ana Souza').motivo, 'Código inválido');
+      igual(podeEntregar(enc, '481203', '  ').motivo, 'Informe quem retirou');
+      igual(podeEntregar(enc, ' 481203 ', 'Ana Souza'), { ok: true });
+      igual(podeEntregar({ ...enc, status: 'retirada' }, '481203', 'Ana Souza').motivo, 'Encomenda já entregue');
+    },
+  },
+  {
+    nome: 'RN07: ocorrência fechada só pode ser arquivada, nunca apagada',
+    rodar() {
+      igual(acoesOcorrencia({ status: 'fechada', arquivada: false }).map((a) => a.id), ['comentar', 'arquivar']);
+      const aberta = acoesOcorrencia({ status: 'aberta', arquivada: false });
+      igual(aberta.map((a) => a.id), ['avancar', 'comentar']);
+      igual(aberta[0].rotulo, 'Mover para "Em análise"');
+      igual(acoesOcorrencia({ status: 'fechada', arquivada: true }), []);
+    },
+  },
+  {
+    nome: 'RN13: alertas de vencimento de documentos',
+    rodar() {
+      const alertas = alertasDocumentos(dadosIniciais(AGORA_TESTE).documentos, '2026-10-08');
+      igual(alertas.map((a) => [a.documento.id, a.faixa, a.dias]), [['d8', 'vencido', -3], ['d6', '30', 25], ['d7', '60', 58]]);
+    },
+  },
+  {
+    nome: 'SLA vencido só para ocorrência aberta além do prazo',
+    rodar() {
+      const oc = (id) => dadosIniciais(AGORA_TESTE).ocorrencias.find((o) => o.id === id);
+      igual([slaVencido(oc('OC-0042'), AGORA_TESTE), slaVencido(oc('OC-0041'), AGORA_TESTE), slaVencido(oc('OC-0038'), AGORA_TESTE)], [true, false, false]);
+    },
+  },
+  {
+    nome: 'status do dia no calendário',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual([statusDia(e, 'salao', '2026-10-11'), statusDia(e, 'salao', '2026-10-18'), statusDia(e, 'quadra', '2026-10-13'), statusDia(e, 'academia', '2026-10-08')], ['reservado', 'pendente', 'bloqueado', 'livre']);
+    },
+  },
+  {
+    nome: 'horários da área marcam ocupados e encerrados',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(horariosDaArea(e, 'salao', '2026-10-11', AGORA_TESTE).map((h) => [h.inicio, h.livre, h.motivo]), [[13, true, null], [18, false, 'Reservado']]);
+      igual(horariosDaArea(e, 'quadra', '2026-10-08', AGORA_TESTE).slice(0, 4).map((h) => [h.inicio, h.livre, h.motivo]), [[8, false, 'Encerrado'], [9, false, 'Encerrado'], [10, false, 'Encerrado'], [11, true, null]]);
+      igual(horariosDaArea(e, 'salao', '2026-10-11', AGORA_TESTE)[0].rotulo, 'Tarde (13h–18h)');
+    },
+  },
+  {
+    nome: 'destinatários de comunicado',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(destinatarios(e, { tipo: 'andar', valor: '5' }), ['501', '502', '503', '504']);
+      igual(destinatarios(e, { tipo: 'unidades', valor: ['302', '999'] }), ['302']);
+      igual(destinatarios(e, { tipo: 'todos' }).length, 32);
+    },
+  },
+  {
+    nome: 'comunicados da unidade: fixado primeiro',
+    rodar() {
+      igual(comunicadosDaUnidade(dadosIniciais(AGORA_TESTE), '302').map((c) => c.id), ['c1', 'c5', 'c3', 'c2', 'c4']);
+    },
+  },
+  {
+    nome: 'indicadores do síndico',
+    rodar() {
+      igual(indicadoresSindico(dadosIniciais(AGORA_TESTE), AGORA_TESTE), { pendentes: 1, abertas: 4, slaVencidas: 1, paradas: 1, vencendo: 3, adesao: { com: 20, total: 32 } });
+    },
+  },
+];
+```
+
+Atualize `prototipo/testes/casos.test.mjs`:
+```js
+import { test } from 'node:test';
+import { CASOS_DADOS } from '../src/casos/dados.js';
+import { CASOS_REGRAS } from '../src/casos/regras.js';
+
+for (const caso of [...CASOS_DADOS, ...CASOS_REGRAS]) test(caso.nome, () => caso.rodar());
+```
+
+- [ ] **Step 2: Rodar e ver falhar**
+
+Run: `cd prototipo && npm test`
+Expected: FAIL. `../regras.js` não existe.
+
+- [ ] **Step 3: Implementar `src/regras.js`**
+
+```js
+import { CATEGORIAS, FLUXO_OCORRENCIA, NOMES_STATUS } from './dados.js';
+import { isoDia, diferencaDias, momento, horasEntre, fmtHora } from './datas.js';
+
+export const STATUS_ATIVOS = ['pendente', 'confirmada'];
+const REGRA_OK = { ok: true };
+
+function falhaRegra(motivo) {
+  return { ok: false, motivo };
+}
+
+function sobrepoe(a, b) {
+  return a.inicio < b.fim && b.inicio < a.fim;
+}
+
+function plural(n, um, varios) {
+  return n === 1 ? `1 ${um}` : `${n} ${varios}`;
+}
+
+export function areaPorId(estado, id) {
+  return estado.areas.find((a) => a.id === id);
+}
+
+export function conflito(estado, areaId, data, inicio, fim) {
+  const area = areaPorId(estado, areaId);
+  const ids = [areaId, ...(area.vinculadas || [])];
+  const alvo = { inicio, fim };
+  const bloqueio = estado.bloqueios.find((b) => b.areaId === areaId && b.data === data && sobrepoe(b, alvo));
+  if (bloqueio) return { tipo: 'bloqueio', item: bloqueio };
+  const reserva = estado.reservas.find((r) => ids.includes(r.areaId) && r.data === data && STATUS_ATIVOS.includes(r.status) && sobrepoe(r, alvo));
+  if (reserva) return { tipo: 'reserva', item: reserva };
+  return null;
+}
+
+export function podeReservar(estado, pedido, agora) {
+  const area = areaPorId(estado, pedido.areaId);
+  if (!area) return falhaRegra('Área inexistente');
+  const dias = diferencaDias(pedido.data, isoDia(agora));
+  if (dias < 0 || momento(pedido.data, pedido.inicio) <= agora) return falhaRegra('Esse horário já passou');
+  if (dias < area.antecedenciaMin) return falhaRegra(`Reserve com pelo menos ${plural(area.antecedenciaMin, 'dia', 'dias')} de antecedência`);
+  if (dias > area.antecedenciaMax) return falhaRegra(`Reservas abrem com no máximo ${area.antecedenciaMax} dias de antecedência`);
+  const c = conflito(estado, area.id, pedido.data, pedido.inicio, pedido.fim);
+  if (c && c.tipo === 'bloqueio') return falhaRegra(`Área bloqueada: ${c.item.motivo}`);
+  if (c) return falhaRegra('Horário já reservado');
+  if (area.limiteMes) {
+    const mes = pedido.data.slice(0, 7);
+    const usadas = estado.reservas.filter((r) => r.areaId === area.id && r.unidade === pedido.unidade && STATUS_ATIVOS.includes(r.status) && r.data.slice(0, 7) === mes).length;
+    if (usadas >= area.limiteMes) return falhaRegra(`Limite de ${area.limiteMes} reservas/mês atingido para esta área`);
+  }
+  return REGRA_OK;
+}
+
+export function avisoCancelamento(reserva, agora) {
+  const horas = Math.floor(horasEntre(agora, momento(reserva.data, reserva.inicio)));
+  const multa = horas < 72;
+  return {
+    multa,
+    horas,
+    texto: multa
+      ? `Faltam ${horas} h para a reserva. Pelo regulamento, cancelamentos com menos de 72 h perdem a taxa.`
+      : `Faltam ${horas} h para a reserva. Cancelamento sem multa.`,
+  };
+}
+
+export function podeEntregar(encomenda, codigo, nomeRetirada) {
+  if (encomenda.status !== 'aguardando') return falhaRegra('Encomenda já entregue');
+  if (String(codigo || '').trim() !== encomenda.codigo) return falhaRegra('Código inválido');
+  if (!String(nomeRetirada || '').trim()) return falhaRegra('Informe quem retirou');
+  return REGRA_OK;
+}
+
+export function proximoStatus(status) {
+  const i = FLUXO_OCORRENCIA.indexOf(status);
+  return FLUXO_OCORRENCIA[i + 1] || null;
+}
+
+export function acoesOcorrencia(oc) {
+  if (oc.arquivada) return [];
+  const acoes = [];
+  const proximo = proximoStatus(oc.status);
+  if (proximo) acoes.push({ id: 'avancar', rotulo: `Mover para "${NOMES_STATUS[proximo]}"` });
+  acoes.push({ id: 'comentar', rotulo: 'Comentar' });
+  if (oc.status === 'fechada') acoes.push({ id: 'arquivar', rotulo: 'Arquivar' });
+  return acoes;
+}
+
+export function alertasDocumentos(documentos, hoje) {
+  return documentos
+    .filter((d) => d.vencimento)
+    .map((d) => {
+      const dias = diferencaDias(d.vencimento, hoje);
+      const faixa = dias < 0 ? 'vencido' : dias <= 7 ? '7' : dias <= 30 ? '30' : dias <= 60 ? '60' : null;
+      return { documento: d, dias, faixa };
+    })
+    .filter((a) => a.faixa)
+    .sort((a, b) => a.dias - b.dias);
+}
+
+export function slaVencido(oc, agora) {
+  const sla = CATEGORIAS[oc.categoria] && CATEGORIAS[oc.categoria].sla;
+  if (!sla || oc.status !== 'aberta') return false;
+  return horasEntre(new Date(oc.criadaEm), agora) > sla;
+}
+
+export function statusDia(estado, areaId, data) {
+  if (estado.bloqueios.some((b) => b.areaId === areaId && b.data === data)) return 'bloqueado';
+  const area = areaPorId(estado, areaId);
+  const ids = [areaId, ...(area.vinculadas || [])];
+  const doDia = estado.reservas.filter((r) => ids.includes(r.areaId) && r.data === data && STATUS_ATIVOS.includes(r.status));
+  if (!doDia.length) return 'livre';
+  return doDia.some((r) => r.status === 'pendente') ? 'pendente' : 'reservado';
+}
+
+export function horariosDaArea(estado, areaId, data, agora) {
+  const area = areaPorId(estado, areaId);
+  const base = area.tipo === 'periodo'
+    ? area.periodos.map((p) => ({ inicio: p.inicio, fim: p.fim, rotulo: `${p.nome} (${fmtHora(p.inicio)}–${fmtHora(p.fim)})` }))
+    : Array.from({ length: area.horaFim - area.horaInicio }, (_, i) => {
+        const h = area.horaInicio + i;
+        return { inicio: h, fim: h + 1, rotulo: `${fmtHora(h)}–${fmtHora(h + 1)}` };
+      });
+  return base.map((h) => {
+    const c = conflito(estado, areaId, data, h.inicio, h.fim);
+    const passou = momento(data, h.inicio) <= agora;
+    let motivo = null;
+    if (c) motivo = c.tipo === 'bloqueio' ? 'Bloqueado' : c.item.status === 'pendente' ? 'Pendente' : 'Reservado';
+    else if (passou) motivo = 'Encerrado';
+    return { ...h, livre: !motivo, motivo };
+  });
+}
+
+export function destinatarios(estado, publico) {
+  const todas = estado.condominio.unidades;
+  if (publico.tipo === 'andar') return todas.filter((u) => u[0] === String(publico.valor));
+  if (publico.tipo === 'unidades') return todas.filter((u) => publico.valor.includes(u));
+  return [...todas];
+}
+
+export function comunicadosDaUnidade(estado, unidade) {
+  return estado.comunicados
+    .filter((c) => destinatarios(estado, c.publico).includes(unidade))
+    .sort((a, b) => Number(b.fixado) - Number(a.fixado) || b.publicadoEm.localeCompare(a.publicadoEm));
+}
+
+export function encomendaParada(encomenda, agora) {
+  return encomenda.status === 'aguardando' && horasEntre(new Date(encomenda.chegadaEm), agora) > 72;
+}
+
+export function moradoresDaUnidade(estado, unidade) {
+  return estado.pessoas.filter((p) => p.unidade === unidade);
+}
+
+export function indicadoresSindico(estado, agora) {
+  return {
+    pendentes: estado.reservas.filter((r) => r.status === 'pendente').length,
+    abertas: estado.ocorrencias.filter((o) => !o.arquivada && !['resolvida', 'fechada'].includes(o.status)).length,
+    slaVencidas: estado.ocorrencias.filter((o) => slaVencido(o, agora)).length,
+    paradas: estado.encomendas.filter((e) => encomendaParada(e, agora)).length,
+    vencendo: alertasDocumentos(estado.documentos, isoDia(agora)).length,
+    adesao: { com: new Set(estado.pessoas.map((p) => p.unidade)).size, total: estado.condominio.unidades.length },
+  };
+}
+```
+
+O filtro `unidades` preserva a ordem de `UNIDADES`. Para `['302','999']`, o resultado é `['302']`.
+
+- [ ] **Step 4: Incluir na ORDEM**
+
+Em `prototipo/montagem.mjs`:
+```js
+export const ORDEM = [
+  'src/vendor.js',
+  'src/datas.js',
+  'src/dados.js',
+  'src/regras.js',
+  'src/casos/afirmar.js',
+  'src/casos/dados.js',
+  'src/casos/regras.js',
+  'src/ui/app.js',
+];
+```
+
+- [ ] **Step 5: Rodar e ver passar**
+
+Run: `cd prototipo && npm test`
+Expected: todos PASS, incluindo os 18 casos de regras.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add prototipo
+git commit -m "feat(prototipo): regras de negócio puras (RN02, RN04-RN07, RN13, SLA)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 4: Ações (transições de estado)
+
+**Files:**
+- Create: `prototipo/src/acoes.js`, `prototipo/src/casos/acoes.js`
+- Modify: `prototipo/testes/casos.test.mjs`, `prototipo/montagem.mjs` (ORDEM)
+
+**Interfaces:**
+- Consumes: as regras da Task 3, as constantes de `dados.js` e `datas.js`.
+- Produces: toda ação retorna `{ estado, notificacao?: {canal, para, texto}, erro?: string, id?: string, aviso? }`. Em caso de erro, `estado` volta inalterado.
+  - `solicitarReserva(estado, {areaId, unidade, data, inicio, fim, convidados, aceiteTermo}, agora)`, retorna o `id` da nova reserva.
+  - `aprovarReserva(estado, id)`
+  - `recusarReserva(estado, id, motivo)`
+  - `cancelarReserva(estado, id, agora)`, retorna `aviso` (o resultado de `avisoCancelamento`).
+  - `registrarEncomenda(estado, {unidade, transportadora, foto, porteiro}, agora)`, retorna `id`.
+  - `entregarEncomenda(estado, {id, codigo, nome}, agora)`
+  - `lembrarEncomenda(estado, id, agora)`
+  - `publicarComunicado(estado, {tipo, titulo, texto, publico, canais, fixado, anexo}, agora)`, retorna `id`.
+  - `marcarLido(estado, id, unidade)`
+  - `reagir(estado, id, unidade, tipo:'util'|'duvida')`
+  - `abrirOcorrencia(estado, {categoria, descricao, local, unidade, anonima, publica, foto}, agora)`, retorna `id`.
+  - `avancarOcorrencia(estado, id, agora, texto = '')`
+  - `comentarOcorrencia(estado, id, texto, agora, autor = 'Síndico')`
+  - `arquivarOcorrencia(estado, id)`
+  - `avaliarOcorrencia(estado, id, nota)`
+  - `euTambem(estado, id, unidade)`
+
+- [ ] **Step 1: Escrever os casos que falham**
+
+`prototipo/src/casos/acoes.js`:
+```js
+import { dadosIniciais, SINDICO } from '../dados.js';
+import { podeReservar } from '../regras.js';
+import { solicitarReserva, aprovarReserva, recusarReserva, cancelarReserva, registrarEncomenda, entregarEncomenda, lembrarEncomenda, publicarComunicado, marcarLido, reagir, abrirOcorrencia, avancarOcorrencia, comentarOcorrencia, arquivarOcorrencia, avaliarOcorrencia, euTambem } from '../acoes.js';
+import { igual, AGORA_TESTE } from './afirmar.js';
+
+const PEDIDO_SALAO = { areaId: 'salao', unidade: '302', data: '2026-10-15', inicio: 13, fim: 18, convidados: [], aceiteTermo: true };
+
+function acharPorId(lista, id) {
+  return lista.find((x) => x.id === id);
+}
+
+export const CASOS_ACOES = [
+  {
+    nome: 'roteiro encomenda: portaria registra, morador é avisado e retira com código',
+    rodar() {
+      const r = registrarEncomenda(dadosIniciais(AGORA_TESTE), { unidade: '302', transportadora: 'Mercado Livre', foto: true, porteiro: 'Seu José' }, AGORA_TESTE);
+      igual(r.erro, undefined);
+      const nova = acharPorId(r.estado.encomendas, r.id);
+      igual([r.id, nova.unidade, nova.status, nova.codigo.length], ['e8', '302', 'aguardando', 6]);
+      igual([r.notificacao.canal, r.notificacao.para], ['WhatsApp', 'Ana Souza']);
+      const errado = entregarEncomenda(r.estado, { id: r.id, codigo: '000000', nome: 'Ana Souza' }, AGORA_TESTE);
+      igual(errado.erro, 'Código inválido');
+      igual(errado.estado, r.estado);
+      const ok = entregarEncomenda(r.estado, { id: r.id, codigo: nova.codigo, nome: 'Ana Souza' }, AGORA_TESTE);
+      const entregue = acharPorId(ok.estado.encomendas, r.id);
+      igual([entregue.status, entregue.retiradaPor], ['retirada', 'Ana Souza']);
+    },
+  },
+  {
+    nome: 'encomenda para unidade inexistente ou sem transportadora é recusada',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(registrarEncomenda(e, { unidade: '999', transportadora: 'Correios' }, AGORA_TESTE).erro, 'Unidade inexistente');
+      igual(registrarEncomenda(e, { unidade: '302', transportadora: '' }, AGORA_TESTE).erro, 'Escolha a transportadora');
+    },
+  },
+  {
+    nome: 'lembrete de encomenda parada',
+    rodar() {
+      const r = lembrarEncomenda(dadosIniciais(AGORA_TESTE), 'e2', AGORA_TESTE);
+      igual(acharPorId(r.estado.encomendas, 'e2').lembretes, 1);
+      igual(r.notificacao.texto.includes('há 4 dias'), true);
+    },
+  },
+  {
+    nome: 'roteiro reserva: fica pendente, trava o horário e é aprovada',
+    rodar() {
+      const r = solicitarReserva(dadosIniciais(AGORA_TESTE), PEDIDO_SALAO, AGORA_TESTE);
+      igual([r.id, acharPorId(r.estado.reservas, r.id).status, r.notificacao.para], ['r5', 'pendente', SINDICO]);
+      igual(solicitarReserva(r.estado, { ...PEDIDO_SALAO, unidade: '303' }, AGORA_TESTE).erro, 'Horário já reservado');
+      const ap = aprovarReserva(r.estado, 'r5');
+      igual(acharPorId(ap.estado.reservas, 'r5').status, 'confirmada');
+      igual([ap.notificacao.canal, ap.notificacao.para], ['WhatsApp', 'Ana Souza']);
+    },
+  },
+  {
+    nome: 'recusa exige motivo e libera o horário',
+    rodar() {
+      const r = solicitarReserva(dadosIniciais(AGORA_TESTE), PEDIDO_SALAO, AGORA_TESTE);
+      igual(recusarReserva(r.estado, 'r5', '  ').erro, 'Escolha o motivo da recusa');
+      const rec = recusarReserva(r.estado, 'r5', 'Data reservada para manutenção');
+      igual([acharPorId(rec.estado.reservas, 'r5').status, acharPorId(rec.estado.reservas, 'r5').motivo], ['recusada', 'Data reservada para manutenção']);
+      igual(podeReservar(rec.estado, { ...PEDIDO_SALAO, unidade: '303' }, AGORA_TESTE), { ok: true });
+    },
+  },
+  {
+    nome: 'área com aprovação automática confirma na hora',
+    rodar() {
+      const r = solicitarReserva(dadosIniciais(AGORA_TESTE), { ...PEDIDO_SALAO, areaId: 'quadra', data: '2026-10-09', inicio: 15, fim: 16 }, AGORA_TESTE);
+      igual([acharPorId(r.estado.reservas, r.id).status, r.notificacao.para], ['confirmada', 'Ana Souza']);
+    },
+  },
+  {
+    nome: 'reserva sem aceite do termo é recusada',
+    rodar() {
+      igual(solicitarReserva(dadosIniciais(AGORA_TESTE), { ...PEDIDO_SALAO, aceiteTermo: false }, AGORA_TESTE).erro, 'Aceite o termo de responsabilidade');
+    },
+  },
+  {
+    nome: 'cancelar com menos de 72 h avisa multa',
+    rodar() {
+      const r = cancelarReserva(dadosIniciais(AGORA_TESTE), 'r2', AGORA_TESTE);
+      igual([r.aviso.multa, acharPorId(r.estado.reservas, 'r2').status], [true, 'cancelada']);
+      igual(r.notificacao.para, SINDICO);
+    },
+  },
+  {
+    nome: 'roteiro ocorrência: protocolo, status, avaliação e arquivamento',
+    rodar() {
+      const r = abrirOcorrencia(dadosIniciais(AGORA_TESTE), { categoria: 'vazamento', descricao: 'Infiltração no teto', local: 'Banheiro', unidade: '302' }, AGORA_TESTE);
+      igual([r.id, r.estado.proximoProtocolo, r.notificacao.para], ['OC-0043', 44, SINDICO]);
+      let e = r.estado;
+      for (const status of ['em_analise', 'em_andamento', 'resolvida', 'fechada']) {
+        const passo = avancarOcorrencia(e, 'OC-0043', AGORA_TESTE);
+        igual(acharPorId(passo.estado.ocorrencias, 'OC-0043').status, status);
+        igual(passo.notificacao.para, 'Ana Souza');
+        e = passo.estado;
+      }
+      igual(avancarOcorrencia(e, 'OC-0043', AGORA_TESTE).erro, 'Ocorrência já está fechada');
+      const av = avaliarOcorrencia(e, 'OC-0043', 5);
+      igual(acharPorId(av.estado.ocorrencias, 'OC-0043').avaliacao, 5);
+      const arq = arquivarOcorrencia(av.estado, 'OC-0043');
+      const final = acharPorId(arq.estado.ocorrencias, 'OC-0043');
+      igual([final.arquivada, final.linha.length], [true, 5]);
+    },
+  },
+  {
+    nome: 'RN07: só ocorrência fechada pode ser arquivada',
+    rodar() {
+      igual(arquivarOcorrencia(dadosIniciais(AGORA_TESTE), 'OC-0039').erro, 'Só ocorrências fechadas podem ser arquivadas');
+    },
+  },
+  {
+    nome: 'ocorrência sem categoria ou descrição é recusada',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(abrirOcorrencia(e, { categoria: '', descricao: 'x', unidade: '302' }, AGORA_TESTE).erro, 'Escolha a categoria');
+      igual(abrirOcorrencia(e, { categoria: 'barulho', descricao: '  ', unidade: '302' }, AGORA_TESTE).erro, 'Descreva a ocorrência');
+    },
+  },
+  {
+    nome: 'avaliação só depois de resolvida e com nota de 1 a 5',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(avaliarOcorrencia(e, 'OC-0042', 4).erro, 'A avaliação abre quando a ocorrência for resolvida');
+      igual(avaliarOcorrencia(e, 'OC-0038', 0).erro, 'Escolha de 1 a 5 estrelas');
+    },
+  },
+  {
+    nome: 'comentário exige texto e entra na linha do tempo',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      igual(comentarOcorrencia(e, 'OC-0039', '  ', AGORA_TESTE).erro, 'Escreva o comentário');
+      const r = comentarOcorrencia(e, 'OC-0039', 'Peça encomendada', AGORA_TESTE);
+      const ultima = acharPorId(r.estado.ocorrencias, 'OC-0039').linha.at(-1);
+      igual([ultima.status, ultima.texto, ultima.autor], [null, 'Peça encomendada', 'Síndico']);
+    },
+  },
+  {
+    nome: 'eu também alterna na ocorrência pública',
+    rodar() {
+      const um = euTambem(dadosIniciais(AGORA_TESTE), 'OC-0040', '302');
+      igual(acharPorId(um.estado.ocorrencias, 'OC-0040').eutambem.length, 8);
+      const dois = euTambem(um.estado, 'OC-0040', '302');
+      igual(acharPorId(dois.estado.ocorrencias, 'OC-0040').eutambem.length, 7);
+      igual(euTambem(dois.estado, 'OC-0039', '302').erro, 'Ocorrência não é pública');
+    },
+  },
+  {
+    nome: 'roteiro comunicado: urgente vai também por SMS e a leitura é contada',
+    rodar() {
+      const r = publicarComunicado(dadosIniciais(AGORA_TESTE), { tipo: 'urgente', titulo: 'Vazamento de gás', texto: 'Evacuar o 3º andar', publico: { tipo: 'todos' }, canais: ['push'], fixado: false, anexo: null }, AGORA_TESTE);
+      const c = acharPorId(r.estado.comunicados, r.id);
+      igual([r.id, c.canais, c.leituras, r.notificacao.para], ['c6', ['push', 'sms'], [], '32 unidades']);
+      const l1 = marcarLido(r.estado, 'c6', '302');
+      const l2 = marcarLido(l1.estado, 'c6', '302');
+      igual(acharPorId(l2.estado.comunicados, 'c6').leituras, ['302']);
+    },
+  },
+  {
+    nome: 'comunicado sem título, destinatário ou canal é recusado',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      const ok = { tipo: 'geral', titulo: 'Aviso', texto: 'Texto', publico: { tipo: 'todos' }, canais: ['push'], fixado: false, anexo: null };
+      igual(publicarComunicado(e, { ...ok, titulo: ' ' }, AGORA_TESTE).erro, 'Informe o título');
+      igual(publicarComunicado(e, { ...ok, texto: '' }, AGORA_TESTE).erro, 'Escreva o texto do comunicado');
+      igual(publicarComunicado(e, { ...ok, publico: { tipo: 'unidades', valor: ['999'] } }, AGORA_TESTE).erro, 'Escolha ao menos uma unidade');
+      igual(publicarComunicado(e, { ...ok, canais: [] }, AGORA_TESTE).erro, 'Escolha ao menos um canal');
+    },
+  },
+  {
+    nome: 'reação: uma por unidade, alternando',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      const util = reagir(e, 'c1', '302', 'util');
+      igual(acharPorId(util.estado.comunicados, 'c1').reacoes.util.includes('302'), true);
+      const desfeito = reagir(util.estado, 'c1', '302', 'util');
+      igual(acharPorId(desfeito.estado.comunicados, 'c1').reacoes.util.includes('302'), false);
+      const trocou = reagir(util.estado, 'c1', '302', 'duvida');
+      const c = acharPorId(trocou.estado.comunicados, 'c1');
+      igual([c.reacoes.util.includes('302'), c.reacoes.duvida.includes('302')], [false, true]);
+    },
+  },
+];
+```
+
+Atualize `prototipo/testes/casos.test.mjs`:
+```js
+import { test } from 'node:test';
+import { CASOS_DADOS } from '../src/casos/dados.js';
+import { CASOS_REGRAS } from '../src/casos/regras.js';
+import { CASOS_ACOES } from '../src/casos/acoes.js';
+
+for (const caso of [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES]) test(caso.nome, () => caso.rodar());
+```
+
+- [ ] **Step 2: Rodar e ver falhar**
+
+Run: `cd prototipo && npm test`
+Expected: FAIL. `../acoes.js` não existe.
+
+- [ ] **Step 3: Implementar `src/acoes.js`**
+
+```js
+import { podeReservar, podeEntregar, destinatarios, proximoStatus, areaPorId, avisoCancelamento, STATUS_ATIVOS } from './regras.js';
+import { CATEGORIAS, NOMES_STATUS, NOMES_CANAL, SINDICO } from './dados.js';
+import { fmtDia, fmtHora, haQuanto } from './datas.js';
+
+// Cada ação recebe o estado e devolve { estado, notificacao?, erro?, id?, aviso? } sem mutar nada.
+function erroAcao(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function trocarItem(lista, id, mudanca) {
+  return lista.map((x) => (x.id === id ? { ...x, ...mudanca } : x));
+}
+
+function nomesDaUnidade(estado, unidade) {
+  const nomes = estado.pessoas.filter((p) => p.unidade === unidade).map((p) => p.nome);
+  return nomes.length ? nomes.join(', ') : `Apto ${unidade}`;
+}
+
+function gerarCodigo(n) {
+  return String((((n + 1) * 739391) % 900000) + 100000);
+}
+
+function quandoReserva(r) {
+  return `${fmtDia(r.data)}, ${fmtHora(r.inicio)}–${fmtHora(r.fim)}`;
+}
+
+export function solicitarReserva(estado, pedido, agora) {
+  const v = podeReservar(estado, pedido, agora);
+  if (!v.ok) return erroAcao(estado, v.motivo);
+  if (!pedido.aceiteTermo) return erroAcao(estado, 'Aceite o termo de responsabilidade');
+  const area = areaPorId(estado, pedido.areaId);
+  const status = area.aprovacao === 'automatica' ? 'confirmada' : 'pendente';
+  const reserva = { id: `r${estado.reservas.length + 1}`, areaId: area.id, unidade: pedido.unidade, data: pedido.data, inicio: pedido.inicio, fim: pedido.fim, status, convidados: pedido.convidados || [], criadaEm: agora.toISOString() };
+  const notificacao = status === 'pendente'
+    ? { canal: 'Push', para: SINDICO, texto: `Nova reserva para aprovar: ${area.nome}, apto ${reserva.unidade}, ${quandoReserva(reserva)}` }
+    : { canal: 'Push', para: nomesDaUnidade(estado, reserva.unidade), texto: `Reserva confirmada: ${area.nome}, ${quandoReserva(reserva)}` };
+  return { estado: { ...estado, reservas: [...estado.reservas, reserva] }, id: reserva.id, notificacao };
+}
+
+export function aprovarReserva(estado, id) {
+  const r = estado.reservas.find((x) => x.id === id);
+  if (!r || r.status !== 'pendente') return erroAcao(estado, 'Reserva não está pendente');
+  const area = areaPorId(estado, r.areaId);
+  return {
+    estado: { ...estado, reservas: trocarItem(estado.reservas, id, { status: 'confirmada' }) },
+    notificacao: { canal: 'WhatsApp', para: nomesDaUnidade(estado, r.unidade), texto: `Reserva aprovada: ${area.nome}, ${quandoReserva(r)}. A portaria já recebeu a lista de convidados.` },
+  };
+}
+
+export function recusarReserva(estado, id, motivo) {
+  const r = estado.reservas.find((x) => x.id === id);
+  if (!r || r.status !== 'pendente') return erroAcao(estado, 'Reserva não está pendente');
+  const texto = String(motivo || '').trim();
+  if (!texto) return erroAcao(estado, 'Escolha o motivo da recusa');
+  const area = areaPorId(estado, r.areaId);
+  return {
+    estado: { ...estado, reservas: trocarItem(estado.reservas, id, { status: 'recusada', motivo: texto }) },
+    notificacao: { canal: 'WhatsApp', para: nomesDaUnidade(estado, r.unidade), texto: `Reserva recusada: ${area.nome}, ${quandoReserva(r)}. Motivo: ${texto}.` },
+  };
+}
+
+export function cancelarReserva(estado, id, agora) {
+  const r = estado.reservas.find((x) => x.id === id);
+  if (!r || !STATUS_ATIVOS.includes(r.status)) return erroAcao(estado, 'Reserva não pode ser cancelada');
+  const aviso = avisoCancelamento(r, agora);
+  const area = areaPorId(estado, r.areaId);
+  return {
+    estado: { ...estado, reservas: trocarItem(estado.reservas, id, { status: 'cancelada' }) },
+    aviso,
+    notificacao: { canal: 'Push', para: SINDICO, texto: `Reserva cancelada: ${area.nome}, apto ${r.unidade}, ${quandoReserva(r)}${aviso.multa ? ' (fora do prazo de 72 h)' : ''}` },
+  };
+}
+
+export function registrarEncomenda(estado, dados, agora) {
+  const unidade = String(dados.unidade || '').trim();
+  if (!estado.condominio.unidades.includes(unidade)) return erroAcao(estado, 'Unidade inexistente');
+  if (!dados.transportadora) return erroAcao(estado, 'Escolha a transportadora');
+  const encomenda = { id: `e${estado.encomendas.length + 1}`, unidade, transportadora: dados.transportadora, codigo: gerarCodigo(estado.encomendas.length), chegadaEm: agora.toISOString(), status: 'aguardando', foto: !!dados.foto, retiradaPor: null, retiradaEm: null, lembretes: 0, registradaPor: dados.porteiro || 'Seu José' };
+  return {
+    estado: { ...estado, encomendas: [...estado.encomendas, encomenda] },
+    id: encomenda.id,
+    notificacao: { canal: 'WhatsApp', para: nomesDaUnidade(estado, unidade), texto: `Chegou sua encomenda (${encomenda.transportadora}). Código de retirada: ${encomenda.codigo}` },
+  };
+}
+
+export function entregarEncomenda(estado, { id, codigo, nome }, agora) {
+  const e = estado.encomendas.find((x) => x.id === id);
+  if (!e) return erroAcao(estado, 'Encomenda não encontrada');
+  const v = podeEntregar(e, codigo, nome);
+  if (!v.ok) return erroAcao(estado, v.motivo);
+  const quem = nome.trim();
+  return {
+    estado: { ...estado, encomendas: trocarItem(estado.encomendas, id, { status: 'retirada', retiradaPor: quem, retiradaEm: agora.toISOString() }) },
+    notificacao: { canal: 'Push', para: nomesDaUnidade(estado, e.unidade), texto: `Encomenda (${e.transportadora}) retirada por ${quem}.` },
+  };
+}
+
+export function lembrarEncomenda(estado, id, agora) {
+  const e = estado.encomendas.find((x) => x.id === id);
+  if (!e || e.status !== 'aguardando') return erroAcao(estado, 'Encomenda já entregue');
+  return {
+    estado: { ...estado, encomendas: trocarItem(estado.encomendas, id, { lembretes: e.lembretes + 1 }) },
+    notificacao: { canal: 'WhatsApp', para: nomesDaUnidade(estado, e.unidade), texto: `Lembrete: sua encomenda (${e.transportadora}) chegou ${haQuanto(e.chegadaEm, agora)} e está na portaria.` },
+  };
+}
+
+export function publicarComunicado(estado, dados, agora) {
+  const titulo = String(dados.titulo || '').trim();
+  const texto = String(dados.texto || '').trim();
+  if (!titulo) return erroAcao(estado, 'Informe o título');
+  if (!texto) return erroAcao(estado, 'Escreva o texto do comunicado');
+  const dest = destinatarios(estado, dados.publico);
+  if (!dest.length) return erroAcao(estado, 'Escolha ao menos uma unidade');
+  const canais = [...(dados.canais || [])];
+  if (dados.tipo === 'urgente' && !canais.includes('sms')) canais.push('sms');
+  if (!canais.length) return erroAcao(estado, 'Escolha ao menos um canal');
+  const comunicado = { id: `c${estado.comunicados.length + 1}`, tipo: dados.tipo, titulo, texto, publico: dados.publico, canais, fixado: !!dados.fixado, anexo: dados.anexo || null, publicadoEm: agora.toISOString(), leituras: [], reacoes: { util: [], duvida: [] } };
+  return {
+    estado: { ...estado, comunicados: [...estado.comunicados, comunicado] },
+    id: comunicado.id,
+    notificacao: { canal: canais.map((k) => NOMES_CANAL[k]).join(' + '), para: `${dest.length} unidades`, texto: titulo },
+  };
+}
+
+export function marcarLido(estado, id, unidade) {
+  const c = estado.comunicados.find((x) => x.id === id);
+  if (!c) return erroAcao(estado, 'Comunicado não encontrado');
+  if (c.leituras.includes(unidade)) return { estado };
+  return { estado: { ...estado, comunicados: trocarItem(estado.comunicados, id, { leituras: [...c.leituras, unidade] }) } };
+}
+
+export function reagir(estado, id, unidade, tipo) {
+  const c = estado.comunicados.find((x) => x.id === id);
+  if (!c) return erroAcao(estado, 'Comunicado não encontrado');
+  const tinha = c.reacoes[tipo].includes(unidade);
+  const reacoes = { util: c.reacoes.util.filter((u) => u !== unidade), duvida: c.reacoes.duvida.filter((u) => u !== unidade) };
+  if (!tinha) reacoes[tipo] = [...reacoes[tipo], unidade];
+  return { estado: { ...estado, comunicados: trocarItem(estado.comunicados, id, { reacoes }) } };
+}
+
+export function abrirOcorrencia(estado, dados, agora) {
+  if (!CATEGORIAS[dados.categoria]) return erroAcao(estado, 'Escolha a categoria');
+  const descricao = String(dados.descricao || '').trim();
+  if (!descricao) return erroAcao(estado, 'Descreva a ocorrência');
+  const id = `OC-${String(estado.proximoProtocolo).padStart(4, '0')}`;
+  const em = agora.toISOString();
+  const ocorrencia = { id, categoria: dados.categoria, descricao, local: String(dados.local || '').trim(), unidade: dados.unidade, anonima: !!dados.anonima, publica: !!dados.publica, foto: !!dados.foto, status: 'aberta', eutambem: [], linha: [{ em, status: 'aberta', texto: 'Ocorrência aberta', autor: dados.anonima ? 'Anônimo' : nomesDaUnidade(estado, dados.unidade) }], avaliacao: null, arquivada: false, criadaEm: em };
+  return {
+    estado: { ...estado, ocorrencias: [ocorrencia, ...estado.ocorrencias], proximoProtocolo: estado.proximoProtocolo + 1 },
+    id,
+    notificacao: { canal: 'Push', para: SINDICO, texto: `Nova ocorrência ${id}: ${CATEGORIAS[dados.categoria].nome}` },
+  };
+}
+
+export function avancarOcorrencia(estado, id, agora, texto = '') {
+  const oc = estado.ocorrencias.find((x) => x.id === id);
+  if (!oc) return erroAcao(estado, 'Ocorrência não encontrada');
+  if (oc.arquivada) return erroAcao(estado, 'Ocorrência arquivada');
+  const proximo = proximoStatus(oc.status);
+  if (!proximo) return erroAcao(estado, 'Ocorrência já está fechada');
+  const mensagem = String(texto || '').trim();
+  const entrada = { em: agora.toISOString(), status: proximo, texto: mensagem || `Status alterado para ${NOMES_STATUS[proximo]}`, autor: 'Síndico' };
+  return {
+    estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { status: proximo, linha: [...oc.linha, entrada] }) },
+    notificacao: { canal: 'Push', para: nomesDaUnidade(estado, oc.unidade), texto: `${oc.id}: ${NOMES_STATUS[proximo]}${mensagem ? ` — ${mensagem}` : ''}` },
+  };
+}
+
+export function comentarOcorrencia(estado, id, texto, agora, autor = 'Síndico') {
+  const oc = estado.ocorrencias.find((x) => x.id === id);
+  if (!oc) return erroAcao(estado, 'Ocorrência não encontrada');
+  const mensagem = String(texto || '').trim();
+  if (!mensagem) return erroAcao(estado, 'Escreva o comentário');
+  const entrada = { em: agora.toISOString(), status: null, texto: mensagem, autor };
+  return {
+    estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { linha: [...oc.linha, entrada] }) },
+    notificacao: { canal: 'Push', para: nomesDaUnidade(estado, oc.unidade), texto: `${oc.id}: novo comentário do síndico` },
+  };
+}
+
+export function arquivarOcorrencia(estado, id) {
+  const oc = estado.ocorrencias.find((x) => x.id === id);
+  if (!oc) return erroAcao(estado, 'Ocorrência não encontrada');
+  if (oc.status !== 'fechada') return erroAcao(estado, 'Só ocorrências fechadas podem ser arquivadas');
+  return { estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { arquivada: true }) } };
+}
+
+export function avaliarOcorrencia(estado, id, nota) {
+  const oc = estado.ocorrencias.find((x) => x.id === id);
+  if (!oc) return erroAcao(estado, 'Ocorrência não encontrada');
+  if (!['resolvida', 'fechada'].includes(oc.status)) return erroAcao(estado, 'A avaliação abre quando a ocorrência for resolvida');
+  if (!Number.isInteger(nota) || nota < 1 || nota > 5) return erroAcao(estado, 'Escolha de 1 a 5 estrelas');
+  return {
+    estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { avaliacao: nota }) },
+    notificacao: { canal: 'Push', para: SINDICO, texto: `${oc.id} avaliada com ${nota} de 5 estrelas` },
+  };
+}
+
+export function euTambem(estado, id, unidade) {
+  const oc = estado.ocorrencias.find((x) => x.id === id);
+  if (!oc) return erroAcao(estado, 'Ocorrência não encontrada');
+  if (!oc.publica) return erroAcao(estado, 'Ocorrência não é pública');
+  const eutambem = oc.eutambem.includes(unidade) ? oc.eutambem.filter((u) => u !== unidade) : [...oc.eutambem, unidade];
+  return { estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { eutambem }) } };
+}
+```
+
+- [ ] **Step 4: Incluir na ORDEM**
+
+Em `prototipo/montagem.mjs`:
+```js
+export const ORDEM = [
+  'src/vendor.js',
+  'src/datas.js',
+  'src/dados.js',
+  'src/regras.js',
+  'src/acoes.js',
+  'src/casos/afirmar.js',
+  'src/casos/dados.js',
+  'src/casos/regras.js',
+  'src/casos/acoes.js',
+  'src/ui/app.js',
+];
+```
+
+- [ ] **Step 5: Rodar e ver passar**
+
+Run: `cd prototipo && npm test`
+Expected: todos PASS, incluindo os 17 casos de ações.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add prototipo
+git commit -m "feat(prototipo): ações puras para reservas, encomendas, comunicados e ocorrências
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 5: Casca da interface (barra de demonstração, rotas, estado, autoteste, estilos)
+
+> Antes de escrever a página, carregue o skill `artifact-design`: ela vai ser publicada como Artifact. Se o skill pedir algo que este plano não cobre, ajuste o CSS e anote no commit.
+
+**Files:**
+- Create: `prototipo/src/armazenamento.js`, `prototipo/src/ui/comum.js`, `prototipo/src/ui/portaria.js` (provisório), `prototipo/src/ui/morador.js` (provisório), `prototipo/src/ui/sindico.js` (provisório), `prototipo/navegador.mjs`, `prototipo/verificar.mjs`
+- Replace: `prototipo/src/ui/app.js`, `prototipo/src/estilos.css`
+- Modify: `prototipo/montagem.mjs` (ORDEM)
+
+**Interfaces:**
+- Consumes: tudo das Tasks 1 a 4.
+- Produces:
+  - `armazenamento.js`: `carregarEstado()→Estado|null`, `salvarEstado(e)`, `limparEstado()`.
+  - `comum.js` (rotas e formato):
+    - `PERFIS`, `lerRota()→{perfil, tela, id}`, `ir(perfil, tela, id?)`, `fmtMoeda(v)`.
+  - `comum.js` (componentes):
+    - `Etiqueta({tipo, children})`, `EtqReserva({status})`, `EtqOcorrencia({status, arquivada})`
+    - `Erro({texto})`, `Sucesso({texto})`, `Vazio({texto})`, `FotoFalsa({rotulo})`
+    - `Calendario({anoMes, statusDe(iso), selecionado, aoEscolher(iso), aoMudarMes(n)})`; cada dia é um `button[data-dia]`.
+    - `QrFalso({texto, tamanho})`, `LinhaTempo({linha})`
+    - `Estrelas({valor, aoEscolher?})`; cada estrela é um `button[data-estrela]`.
+    - `Selo({canal, para, texto})`, `PrevDoc({documento, aoFechar})`
+    - `Campo({rotulo, dica?, children})`: um `<label>` cujo primeiro `<span>` filho é o rótulo.
+  - Toda tela de perfil recebe as props `{ estado, rota, executar, agora }`. `executar(fn)` chama `fn(estado)`; se o resultado não tiver `erro`, aplica o novo estado e mostra o selo da `notificacao`. Sempre devolve o resultado.
+  - `verificar.mjs`: lista `CHECAGENS` de `[sufixoDaUrl, textos[]]`. Um texto com `!` na frente significa que ele não pode aparecer.
+
+- [ ] **Step 1: Criar as ferramentas de verificação, que hoje vão falhar**
+
+`prototipo/navegador.mjs`:
+```js
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+export const raiz = dirname(fileURLToPath(import.meta.url));
+export const urlPagina = pathToFileURL(join(raiz, 'condofacil.html')).href;
+
+export function acharChrome() {
+  const candidatos = [
+    process.env.CHROME,
+    'C:/Program Files/Google/Chrome/Application/chrome.exe',
+    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  ].filter(Boolean);
+  const achado = candidatos.find((c) => existsSync(c));
+  if (!achado) throw new Error('Chrome ou Edge não encontrado. Defina a variável CHROME com o caminho do executável.');
+  return achado;
+}
+```
+
+`prototipo/verificar.mjs`:
+```js
+// Abre cada rota no Chrome headless e confere textos do DOM. Com --capturas, salva PNGs em capturas/.
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { acharChrome, urlPagina, raiz } from './navegador.mjs';
+
+// [sufixo da URL, textos esperados]; "!" no início = o texto não pode aparecer
+const CHECAGENS = [
+  ['?teste=1', ['falhas: 0']],
+  ['#/sindico/inicio', ['Ver como', 'Reiniciar demonstração', 'Residencial Ipê Amarelo']],
+];
+
+const CAPTURAS = [
+  ['sindico-inicio', '#/sindico/inicio', '1366,900'],
+  ['sindico-reservas', '#/sindico/reservas', '1366,1100'],
+  ['sindico-comunicado', '#/sindico/comunicados/c1', '1366,900'],
+  ['sindico-ocorrencias', '#/sindico/ocorrencias', '1366,900'],
+  ['morador-inicio', '#/morador/inicio', '1366,900'],
+  ['morador-reservas', '#/morador/reservas', '1366,900'],
+  ['portaria-registrar', '#/portaria/registrar', '1366,900'],
+  ['portaria-entregar', '#/portaria/entregar', '1366,900'],
+  ['celular-morador', '#/morador/inicio', '390,844'],
+  ['celular-sindico', '#/sindico/inicio', '390,844'],
+];
+
+const chrome = acharChrome();
+
+function abrir(sufixo, extras) {
+  const perfil = mkdtempSync(join(tmpdir(), 'condofacil-chrome-'));
+  try {
+    const r = spawnSync(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', `--user-data-dir=${perfil}`, '--virtual-time-budget=5000', ...extras, urlPagina + sufixo], { encoding: 'utf8', timeout: 90000 });
+    return r.stdout || '';
+  } finally {
+    try { rmSync(perfil, { recursive: true, force: true }); } catch { /* o Windows pode segurar o perfil por um instante */ }
+  }
+}
+
+let falhas = 0;
+for (const [sufixo, textos] of CHECAGENS) {
+  const dom = abrir(sufixo, ['--dump-dom']);
+  for (const texto of textos) {
+    const negar = texto.startsWith('!');
+    const alvo = negar ? texto.slice(1) : texto;
+    const passou = dom.includes(alvo) !== negar;
+    if (!passou) falhas += 1;
+    console.log(`${passou ? 'ok   ' : 'FALHA'} ${sufixo} ${negar ? 'sem' : 'com'} "${alvo}"`);
+  }
+}
+
+if (process.argv.includes('--capturas')) {
+  const pasta = join(raiz, 'capturas');
+  mkdirSync(pasta, { recursive: true });
+  for (const [nome, sufixo, tamanho] of CAPTURAS) {
+    abrir(sufixo, [`--screenshot=${join(pasta, `${nome}.png`)}`, `--window-size=${tamanho}`, '--hide-scrollbars']);
+    console.log(`captura capturas/${nome}.png`);
+  }
+}
+
+process.exit(falhas ? 1 : 0);
+```
+
+Run: `cd prototipo && npm run montar && npm run verificar`
+Expected: FAIL. A página provisória não tem "falhas: 0" nem "Ver como".
+
+- [ ] **Step 2: Implementar `src/armazenamento.js`**
+
+```js
+const CHAVE_ESTADO = 'condofacil-demo-v1';
+
+export function carregarEstado() {
+  try {
+    const texto = localStorage.getItem(CHAVE_ESTADO);
+    if (!texto) return null;
+    const estado = JSON.parse(texto);
+    return estado && estado.versao === 1 ? estado : null;
+  } catch {
+    return null;
+  }
+}
+
+export function salvarEstado(estado) {
+  try {
+    localStorage.setItem(CHAVE_ESTADO, JSON.stringify(estado));
+  } catch {
+    // Sem armazenamento (aba privada, bloqueio): a demonstração segue só em memória.
+  }
+}
+
+export function limparEstado() {
+  try {
+    localStorage.removeItem(CHAVE_ESTADO);
+  } catch {
+    // Idem.
+  }
+}
+```
+
+- [ ] **Step 3: Implementar `src/ui/comum.js`**
+
+```js
+import { html } from '../vendor.js';
+import { NOMES_STATUS, NOMES_STATUS_RESERVA } from '../dados.js';
+import { diasDoMes, deIso, nomeMes, fmtDia, fmtDataHora, fmtDataCurta } from '../datas.js';
+
+export const PERFIS = [
+  { id: 'sindico', nome: 'Síndico', inicial: 'inicio' },
+  { id: 'morador', nome: 'Morador', inicial: 'inicio' },
+  { id: 'portaria', nome: 'Portaria', inicial: 'registrar' },
+];
+
+export function lerRota() {
+  const [perfil, tela, id] = location.hash.replace(/^#\/?/, '').split('/');
+  const p = PERFIS.find((x) => x.id === perfil);
+  if (!p) return { perfil: PERFIS[0].id, tela: PERFIS[0].inicial, id: null };
+  return { perfil: p.id, tela: tela || p.inicial, id: id ? decodeURIComponent(id) : null };
+}
+
+export function ir(perfil, tela, id) {
+  location.hash = `#/${perfil}/${tela}${id ? `/${encodeURIComponent(id)}` : ''}`;
+}
+
+export function fmtMoeda(valor) {
+  return `R$ ${valor.toFixed(2).replace('.', ',')}`;
+}
+
+const ETQ_RESERVA = { pendente: 'alerta', confirmada: 'ok', recusada: 'perigo', cancelada: 'neutro' };
+const ETQ_OCORRENCIA = { aberta: 'info', em_analise: 'alerta', em_andamento: 'alerta', resolvida: 'ok', fechada: 'neutro' };
+const ROTULO_DIA = { livre: 'Livre', pendente: 'Pendente', reservado: 'Reservado', bloqueado: 'Bloqueado', indisponivel: 'Fora do prazo' };
+
+export function Etiqueta({ tipo = 'neutro', children }) {
+  return html`<span class=${`etq etq-${tipo}`}>${children}</span>`;
+}
+
+export function EtqReserva({ status }) {
+  return html`<${Etiqueta} tipo=${ETQ_RESERVA[status]}>${NOMES_STATUS_RESERVA[status]}<//>`;
+}
+
+export function EtqOcorrencia({ status, arquivada }) {
+  if (arquivada) return html`<${Etiqueta}>Arquivada<//>`;
+  return html`<${Etiqueta} tipo=${ETQ_OCORRENCIA[status]}>${NOMES_STATUS[status]}<//>`;
+}
+
+export function Erro({ texto }) {
+  return texto ? html`<p class="erro" role="alert">${texto}</p>` : null;
+}
+
+export function Sucesso({ texto }) {
+  return texto ? html`<p class="sucesso" role="status">${texto}</p>` : null;
+}
+
+export function Vazio({ texto }) {
+  return html`<p class="vazio">${texto}</p>`;
+}
+
+export function FotoFalsa({ rotulo = 'Foto' }) {
+  return html`<div class="foto-falsa" role="img" aria-label=${rotulo}><span aria-hidden="true">📷</span>${rotulo}</div>`;
+}
+
+export function Campo({ rotulo, dica, children }) {
+  return html`<label class="campo"><span>${rotulo}</span>${children}${dica && html`<small>${dica}</small>`}</label>`;
+}
+
+export function Calendario({ anoMes, statusDe, selecionado, aoEscolher, aoMudarMes }) {
+  const dias = diasDoMes(anoMes);
+  const vazios = deIso(dias[0]).getDay();
+  return html`<div class="calendario">
+    <div class="cal-topo">
+      <button type="button" class="btn-icone" aria-label="Mês anterior" onClick=${() => aoMudarMes(-1)}>‹</button>
+      <strong>${nomeMes(anoMes)}</strong>
+      <button type="button" class="btn-icone" aria-label="Próximo mês" onClick=${() => aoMudarMes(1)}>›</button>
+    </div>
+    <div class="cal-grade">
+      ${['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => html`<span class="cal-sem" key=${`s${i}`} aria-hidden="true">${d}</span>`)}
+      ${Array.from({ length: vazios }, (_, i) => html`<span key=${`v${i}`}></span>`)}
+      ${dias.map((iso) => {
+        const st = statusDe(iso);
+        return html`<button type="button" key=${iso} data-dia=${iso} class=${`cal-dia st-${st}${iso === selecionado ? ' sel' : ''}`} disabled=${st === 'indisponivel'} aria-pressed=${iso === selecionado} aria-label=${`${fmtDia(iso)}: ${ROTULO_DIA[st]}`} onClick=${() => aoEscolher(iso)}>${Number(iso.slice(8))}</button>`;
+      })}
+    </div>
+    <div class="cal-legenda">${['livre', 'pendente', 'reservado', 'bloqueado'].map((s) => html`<span key=${s} class=${`leg st-${s}`}>${ROTULO_DIA[s]}</span>`)}</div>
+  </div>`;
+}
+
+export function QrFalso({ texto, tamanho = 132 }) {
+  // Desenho determinístico com cara de QR Code; não é um QR legível.
+  let semente = [...texto].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const sortear = () => {
+    semente = (semente * 1103515245 + 12345) >>> 0;
+    return semente / 4294967296;
+  };
+  const quadrados = [];
+  for (let y = 0; y < 21; y++) {
+    for (let x = 0; x < 21; x++) {
+      const zona = (x < 8 || x > 12) && (y < 8 || y > 12) && !(x > 12 && y > 12);
+      let escuro;
+      if (zona) {
+        const lx = x < 8 ? x : 20 - x;
+        const ly = y < 8 ? y : 20 - y;
+        escuro = lx !== 7 && ly !== 7 && (lx === 0 || lx === 6 || ly === 0 || ly === 6 || (lx >= 2 && lx <= 4 && ly >= 2 && ly <= 4));
+      } else {
+        escuro = sortear() < 0.5;
+      }
+      if (escuro) quadrados.push(html`<rect key=${`${x}-${y}`} x=${x} y=${y} width="1" height="1" />`);
+    }
+  }
+  return html`<svg class="qr" viewBox="-2 -2 25 25" width=${tamanho} height=${tamanho} role="img" aria-label=${`QR Code de retirada ${texto}`}>
+    <rect x="-2" y="-2" width="25" height="25" fill="#fff" />
+    <g fill="#111">${quadrados}</g>
+  </svg>`;
+}
+
+export function LinhaTempo({ linha }) {
+  return html`<ol class="linha-tempo">${linha.map((p, i) => html`<li key=${i} class=${p.status ? 'marco' : 'comentario'}>
+    <span class="lt-quando">${fmtDataHora(p.em)}</span>
+    <strong>${p.status ? NOMES_STATUS[p.status] : 'Comentário'}</strong>
+    <span>${p.texto}${p.autor ? ` · ${p.autor}` : ''}</span>
+  </li>`)}</ol>`;
+}
+
+export function Estrelas({ valor = 0, aoEscolher }) {
+  if (!aoEscolher) {
+    return html`<div class="estrelas" role="img" aria-label=${`${valor} de 5 estrelas`}>${[1, 2, 3, 4, 5].map((n) => html`<span key=${n} class=${n <= valor ? 'cheia' : ''} aria-hidden="true">★</span>`)}</div>`;
+  }
+  return html`<div class="estrelas" role="radiogroup" aria-label="Avaliação">${[1, 2, 3, 4, 5].map((n) => html`<button type="button" key=${n} data-estrela=${n} role="radio" aria-checked=${n === valor} aria-label=${n === 1 ? '1 estrela' : `${n} estrelas`} class=${n <= valor ? 'cheia' : ''} onClick=${() => aoEscolher(n)}>★</button>`)}</div>`;
+}
+
+export function Selo({ canal, para, texto }) {
+  return html`<div class="selo" role="status" aria-live="polite">
+    <span class="selo-canal">${canal}</span>
+    <div><strong>→ ${para}</strong><p>${texto}</p></div>
+  </div>`;
+}
+
+export function PrevDoc({ documento, aoFechar }) {
+  const atual = documento.versoes[documento.versoes.length - 1];
+  return html`<div class="prev-doc" role="dialog" aria-label=${documento.titulo}>
+    <div class="prev-topo"><strong>${documento.titulo}</strong><button type="button" class="btn secundario" onClick=${aoFechar}>Fechar</button></div>
+    <div class="prev-pagina">
+      <p class="prev-cabecalho">Residencial Ipê Amarelo · ${documento.pasta} · versão ${atual.versao} de ${fmtDataCurta(atual.data)}</p>
+      <h3>${documento.titulo}</h3>
+      ${[1, 2, 3, 4, 5, 6, 7].map((i) => html`<span key=${i} class="prev-linha" style=${`width:${70 + ((i * 37) % 30)}%`}></span>`)}
+      <p class="prev-aviso">Prévia simulada do PDF para o protótipo.</p>
+    </div>
+  </div>`;
+}
+```
+
+- [ ] **Step 4: Criar as telas provisórias dos perfis (as Tasks 6 a 8 substituem)**
+
+`prototipo/src/ui/portaria.js`:
+```js
+import { html } from '../vendor.js';
+
+export function TelaPortaria() {
+  return html`<div class="tablet"><div class="tab-conteudo"><h1>Portaria</h1></div></div>`;
+}
+```
+
+`prototipo/src/ui/morador.js`:
+```js
+import { html } from '../vendor.js';
+
+export function TelaMorador() {
+  return html`<div class="celular"><div class="cel-conteudo"><h1 class="m-titulo">Morador</h1></div></div>`;
+}
+```
+
+`prototipo/src/ui/sindico.js`:
+```js
+import { html } from '../vendor.js';
+
+export function TelaSindico() {
+  return html`<div class="painel"><div class="painel-conteudo"><h1>Síndico</h1></div></div>`;
+}
+```
+
+- [ ] **Step 5: Substituir `src/ui/app.js`**
+
+```js
+import { html, render, useState, useEffect } from '../vendor.js';
+import { dadosIniciais } from '../dados.js';
+import { isoDia } from '../datas.js';
+import { carregarEstado, salvarEstado, limparEstado } from '../armazenamento.js';
+import { CASOS_DADOS } from '../casos/dados.js';
+import { CASOS_REGRAS } from '../casos/regras.js';
+import { CASOS_ACOES } from '../casos/acoes.js';
+import { PERFIS, lerRota, ir, Selo } from './comum.js';
+import { TelaPortaria } from './portaria.js';
+import { TelaMorador } from './morador.js';
+import { TelaSindico } from './sindico.js';
+
+const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria };
+const ultimaRota = {};
+
+function estadoDeHoje() {
+  const salvo = carregarEstado();
+  return salvo && salvo.geradoEm === isoDia(new Date()) ? salvo : dadosIniciais(new Date());
+}
+
+function App() {
+  const [estado, setEstado] = useState(estadoDeHoje);
+  const [rota, setRota] = useState(lerRota);
+  const [selo, setSelo] = useState(null);
+  const [geracao, setGeracao] = useState(0);
+
+  useEffect(() => {
+    const mudou = () => setRota(lerRota());
+    window.addEventListener('hashchange', mudou);
+    return () => window.removeEventListener('hashchange', mudou);
+  }, []);
+
+  useEffect(() => {
+    salvarEstado(estado);
+  }, [estado]);
+
+  useEffect(() => {
+    if (!selo) return undefined;
+    const t = setTimeout(() => setSelo(null), 4500);
+    return () => clearTimeout(t);
+  }, [selo]);
+
+  ultimaRota[rota.perfil] = rota;
+
+  function executar(acao) {
+    const resultado = acao(estado);
+    if (!resultado.erro) {
+      setEstado(resultado.estado);
+      if (resultado.notificacao) setSelo({ ...resultado.notificacao, chave: Date.now() });
+    }
+    return resultado;
+  }
+
+  function trocarPerfil(id) {
+    const anterior = ultimaRota[id];
+    const perfil = PERFIS.find((p) => p.id === id);
+    ir(id, anterior ? anterior.tela : perfil.inicial, anterior ? anterior.id : null);
+  }
+
+  function reiniciar() {
+    limparEstado();
+    setEstado(dadosIniciais(new Date()));
+    setSelo(null);
+    setGeracao(geracao + 1);
+  }
+
+  const Tela = TELAS_PERFIL[rota.perfil];
+  return html`
+    <header class="barra-demo">
+      <div class="marca"><span class="logo" aria-hidden="true">CF</span><strong>CondoFácil</strong><span class="sub">Residencial Ipê Amarelo · 32 unidades</span></div>
+      <div class="ver-como" role="group" aria-label="Ver como">
+        <span>Ver como</span>
+        ${PERFIS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${rota.perfil === p.id} onClick=${() => trocarPerfil(p.id)}>${p.nome}</button>`)}
+      </div>
+      <button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>
+    </header>
+    <main class=${`palco palco-${rota.perfil}`}>
+      <${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />
+    </main>
+    ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
+  `;
+}
+
+function PainelTestes() {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES].map((caso) => {
+    try {
+      caso.rodar();
+      return { nome: caso.nome, ok: true };
+    } catch (e) {
+      return { nome: caso.nome, ok: false, erro: e.message };
+    }
+  });
+  const falhas = resultados.filter((r) => !r.ok);
+  console.log(`Autoteste CondoFácil: ${resultados.length - falhas.length} de ${resultados.length} passaram`, falhas);
+  return html`<main class="painel-testes">
+    <h1>Autoteste das regras</h1>
+    <p><strong>${resultados.length - falhas.length} de ${resultados.length} passaram · falhas: ${falhas.length}</strong></p>
+    <ul>${resultados.map((r) => html`<li key=${r.nome} class=${r.ok ? 'ok' : 'falha'}>${r.ok ? '✓' : '✗'} ${r.nome}${r.erro ? html`<br /><small>${r.erro}</small>` : ''}</li>`)}</ul>
+  </main>`;
+}
+
+const modoTeste = new URLSearchParams(location.search).get('teste') === '1';
+render(modoTeste ? html`<${PainelTestes} />` : html`<${App} />`, document.getElementById('app'));
+```
+
+- [ ] **Step 6: Substituir `src/estilos.css`**
+
+```css
+:root {
+  --bg: #f3f4f1;
+  --sup: #ffffff;
+  --sup-2: #f6f7f5;
+  --texto: #1c2321;
+  --suave: #5a6461;
+  --borda: #d6dbd7;
+  --pri: #1f6b52;
+  --pri-forte: #17543f;
+  --pri-texto: #ffffff;
+  --acento: #e2a400;
+  --acento-texto: #1c1600;
+  --ok: #1d7044; --ok-bg: #e2f3e8;
+  --alerta: #835500; --alerta-bg: #fff1cc;
+  --perigo: #b42318; --perigo-bg: #fde8e6;
+  --info: #24569e; --info-bg: #e4ecf8;
+  --neutro: #4f5754; --neutro-bg: #eceeed;
+  --demo-bg: #202523; --demo-texto: #eef1ef; --demo-suave: #a9b2ae;
+  --moldura: #121514;
+  --raio: 10px;
+  --sombra: 0 1px 2px rgb(16 24 20 / 6%), 0 4px 16px rgb(16 24 20 / 8%);
+  --fonte: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121614; --sup: #1b201e; --sup-2: #222826; --texto: #e7ece9; --suave: #a3ada9; --borda: #353d3a;
+    --pri: #3fa57f; --pri-forte: #57b991; --pri-texto: #0d1311;
+    --ok: #6fcf97; --ok-bg: #17301f; --alerta: #f2c14e; --alerta-bg: #3a2e0e;
+    --perigo: #ff8a80; --perigo-bg: #3b1a17; --info: #8db4f0; --info-bg: #18263d;
+    --neutro: #b5bdb9; --neutro-bg: #2a302e; --demo-bg: #0b0d0c; --moldura: #000000;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #121614; --sup: #1b201e; --sup-2: #222826; --texto: #e7ece9; --suave: #a3ada9; --borda: #353d3a;
+  --pri: #3fa57f; --pri-forte: #57b991; --pri-texto: #0d1311;
+  --ok: #6fcf97; --ok-bg: #17301f; --alerta: #f2c14e; --alerta-bg: #3a2e0e;
+  --perigo: #ff8a80; --perigo-bg: #3b1a17; --info: #8db4f0; --info-bg: #18263d;
+  --neutro: #b5bdb9; --neutro-bg: #2a302e; --demo-bg: #0b0d0c; --moldura: #000000;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--texto); font: 15px/1.45 var(--fonte); min-height: 100vh; }
+h1 { font-size: 1.5rem; margin: 0 0 12px; }
+h2 { font-size: 1.05rem; margin: 22px 0 10px; }
+h3 { font-size: 1rem; margin: 0 0 6px; }
+a { color: var(--pri); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--acento); outline-offset: 2px; }
+
+/* Barra da demonstração (fora do produto) */
+.barra-demo { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 10px 16px; background: var(--demo-bg); color: var(--demo-texto); }
+.marca { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.marca .logo { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--acento); color: var(--acento-texto); font-weight: 800; font-size: 13px; }
+.marca .sub { color: var(--demo-suave); font-size: 13px; }
+.ver-como { display: flex; align-items: center; gap: 4px; background: rgb(255 255 255 / 8%); padding: 4px; border-radius: 999px; }
+.ver-como > span { font-size: 12px; color: var(--demo-suave); padding: 0 8px; }
+.ver-como button { border: 0; background: transparent; color: var(--demo-texto); padding: 6px 14px; border-radius: 999px; cursor: pointer; min-height: 36px; }
+.ver-como button[aria-pressed="true"] { background: var(--demo-texto); color: var(--demo-bg); font-weight: 600; }
+.reiniciar { border: 1px solid var(--demo-suave); background: transparent; color: var(--demo-texto); border-radius: 8px; padding: 6px 12px; cursor: pointer; min-height: 36px; }
+
+.palco { display: flex; justify-content: center; padding: 24px 16px 48px; }
+
+/* Moldura do síndico (desktop) */
+.painel { width: 100%; max-width: 1280px; min-height: 760px; display: grid; grid-template-columns: 230px 1fr; background: var(--sup); border: 1px solid var(--borda); border-radius: 14px; box-shadow: var(--sombra); overflow: hidden; }
+.painel-menu { background: var(--sup-2); border-right: 1px solid var(--borda); padding: 16px 10px; display: flex; flex-direction: column; gap: 2px; }
+.painel-usuario { display: flex; flex-direction: column; margin: 0 8px 14px; }
+.painel-usuario small { color: var(--suave); }
+.painel-menu a { padding: 10px 12px; border-radius: 8px; color: var(--texto); text-decoration: none; min-height: 44px; display: flex; align-items: center; }
+.painel-menu a.ativa { background: var(--pri); color: var(--pri-texto); font-weight: 600; }
+.painel-conteudo { padding: 24px 28px; min-width: 0; }
+
+/* Moldura do morador (celular) */
+.celular { width: 390px; height: 800px; border: 12px solid var(--moldura); border-radius: 46px; background: var(--bg); display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--sombra); }
+.cel-status { display: flex; justify-content: space-between; padding: 8px 22px 4px; font-size: 12px; font-weight: 600; background: var(--sup); }
+.cel-conteudo { flex: 1; overflow-y: auto; }
+.cel-abas { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--borda); background: var(--sup); }
+.cel-abas a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 10px; font-size: 11px; color: var(--suave); text-decoration: none; min-height: 52px; }
+.cel-abas a span { font-size: 18px; }
+.cel-abas a.ativa { color: var(--pri); font-weight: 700; }
+.m-pagina { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.m-pagina h2 { margin: 12px 0 0; }
+.m-titulo { font-size: 1.4rem; margin: 0; }
+.m-sub, .sub { color: var(--suave); margin: 0; font-size: 14px; }
+.m-texto, .texto-longo { white-space: pre-line; margin: 0; }
+.m-ajuda { color: var(--suave); margin-top: -6px; }
+.m-lista, .lista-cartoes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.m-codigo b { font-size: 18px; letter-spacing: 2px; }
+.m-nao-lido { color: var(--pri); font-weight: 700; font-size: 13px; }
+.m-regulamento { margin: 0; font-size: 13px; color: var(--suave); }
+.m-horarios { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+
+/* Moldura da portaria (tablet) */
+.tablet { width: 1100px; max-width: 100%; height: 720px; border: 14px solid var(--moldura); border-radius: 28px; background: var(--bg); display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--sombra); }
+.tab-topo { display: flex; align-items: center; gap: 16px; padding: 10px 18px; background: var(--sup); border-bottom: 1px solid var(--borda); flex-wrap: wrap; }
+.tab-abas { display: flex; gap: 6px; flex: 1; overflow-x: auto; }
+.tab-abas a { display: flex; align-items: center; padding: 0 18px; border-radius: 10px; text-decoration: none; color: var(--texto); font-weight: 600; min-height: 56px; white-space: nowrap; }
+.tab-abas a.ativa { background: var(--pri); color: var(--pri-texto); }
+.tab-turno { color: var(--suave); font-size: 14px; }
+.tab-conteudo { flex: 1; overflow-y: auto; padding: 20px; }
+.p-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.p-coluna { display: flex; flex-direction: column; gap: 12px; }
+.opcoes-grandes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.campo input.entrada-grande { font-size: 1.4rem; padding: 12px 14px; min-height: 64px; }
+.dica-ocr, .dica-unidade { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--info-bg); color: var(--info); font-weight: 600; }
+.lista-encomendas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.item-encomenda { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; text-align: left; padding: 14px 16px; min-height: 64px; border: 1px solid var(--borda); border-radius: var(--raio); background: var(--sup); cursor: pointer; }
+.item-encomenda.sel { border-color: var(--pri); box-shadow: 0 0 0 2px var(--pri); }
+.item-encomenda span { color: var(--suave); }
+.grade-cartoes { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.convidados { margin: 0; padding-left: 18px; }
+
+/* Componentes */
+.cartao { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); }
+.cartao.link { text-decoration: none; color: inherit; text-align: left; cursor: pointer; width: 100%; font: inherit; }
+.cartao.link:hover { border-color: var(--pri); }
+.cartao.nao-lido { border-left: 4px solid var(--pri); }
+.cartao.confirmacao { border-color: var(--ok); background: var(--ok-bg); }
+.cartao.encomenda { flex-direction: row; justify-content: space-between; align-items: center; gap: 12px; }
+.cartao.encomenda > div { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.cartao.bloqueio { background: var(--neutro-bg); }
+.linha-entre { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sugestoes, .acoes, .reacoes, .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 10px 16px; border-radius: 10px; border: 1px solid transparent; font-weight: 600; cursor: pointer; text-decoration: none; text-align: center; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primario { background: var(--pri); color: var(--pri-texto); }
+.btn.primario:hover:not(:disabled) { background: var(--pri-forte); }
+.btn.secundario, .btn.opcao { background: var(--sup); color: var(--texto); border-color: var(--borda); }
+.btn.perigo { background: var(--perigo); color: #fff; }
+.btn.bloco { width: 100%; }
+.btn.grande { min-height: 64px; font-size: 1.1rem; }
+.btn.destaque { background: var(--acento); color: var(--acento-texto); }
+.btn.opcao { flex-direction: column; }
+.btn.opcao small { font-weight: 400; color: var(--suave); }
+.btn.opcao.sel, .btn.secundario[aria-pressed="true"] { border-color: var(--pri); box-shadow: inset 0 0 0 2px var(--pri); }
+.btn-link { background: none; border: 0; padding: 0; color: var(--pri); font-weight: 600; cursor: pointer; text-align: left; text-decoration: underline; min-height: 32px; }
+.btn-icone { width: 44px; height: 44px; border-radius: 8px; border: 1px solid var(--borda); background: var(--sup); cursor: pointer; font-size: 20px; }
+.voltar { align-self: flex-start; background: none; border: 0; padding: 4px 0; color: var(--pri); font-weight: 600; text-decoration: none; cursor: pointer; min-height: 36px; display: inline-flex; align-items: center; }
+.chip { border: 1px solid var(--borda); background: var(--sup); border-radius: 999px; padding: 6px 14px; cursor: pointer; min-height: 40px; }
+.chip[aria-pressed="true"] { background: var(--pri); color: var(--pri-texto); border-color: var(--pri); }
+.etq { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--neutro-bg); color: var(--neutro); white-space: nowrap; }
+.etq-ok { background: var(--ok-bg); color: var(--ok); }
+.etq-alerta { background: var(--alerta-bg); color: var(--alerta); }
+.etq-perigo { background: var(--perigo-bg); color: var(--perigo); }
+.etq-info { background: var(--info-bg); color: var(--info); }
+.erro { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--perigo-bg); color: var(--perigo); font-weight: 600; }
+.sucesso { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--ok-bg); color: var(--ok); font-weight: 600; }
+.vazio { margin: 0; color: var(--suave); font-style: italic; }
+.rotulo { margin: 4px 0 0; font-weight: 600; font-size: 14px; }
+.campo { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: 14px; }
+.campo small { font-weight: 400; color: var(--suave); }
+.campo input, .campo select, .campo textarea { font-weight: 400; font-size: 15px; padding: 10px 12px; border: 1px solid var(--borda); border-radius: 8px; background: var(--sup); min-height: 44px; width: 100%; }
+.check { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.check input { width: 20px; height: 20px; accent-color: var(--pri); flex: none; }
+fieldset { border: 1px solid var(--borda); border-radius: var(--raio); padding: 10px 14px; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+legend { font-weight: 600; padding: 0 4px; }
+.formulario { display: flex; flex-direction: column; gap: 12px; max-width: 680px; }
+.resumo { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; padding: 12px 14px; background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); }
+.resumo dt { color: var(--suave); }
+.resumo dd { margin: 0; font-weight: 600; }
+.foto-falsa { display: flex; align-items: center; justify-content: center; gap: 8px; height: 140px; border-radius: var(--raio); background: repeating-linear-gradient(45deg, var(--sup-2), var(--sup-2) 10px, var(--neutro-bg) 10px, var(--neutro-bg) 20px); color: var(--suave); font-weight: 600; border: 1px dashed var(--borda); }
+.qr { flex: none; border-radius: 6px; }
+.protocolo { margin: 0; font-family: ui-monospace, Consolas, monospace; color: var(--suave); }
+.anexo { margin: 0; font-weight: 600; }
+
+/* Calendário */
+.calendario { background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); padding: 12px; }
+.cal-topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.cal-grade { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-sem { text-align: center; font-size: 12px; color: var(--suave); font-weight: 700; }
+.cal-dia { min-height: 40px; border-radius: 8px; border: 1px solid transparent; cursor: pointer; font-weight: 600; background: var(--sup-2); }
+.cal-dia:disabled { cursor: not-allowed; opacity: .4; }
+.st-livre { background: var(--ok-bg); color: var(--ok); }
+.st-pendente { background: var(--alerta-bg); color: var(--alerta); }
+.st-reservado { background: var(--info-bg); color: var(--info); }
+.st-bloqueado { background: var(--neutro-bg); color: var(--neutro); text-decoration: line-through; }
+.st-indisponivel { background: transparent; color: var(--suave); }
+.cal-dia.sel { border-color: var(--texto); box-shadow: inset 0 0 0 2px var(--texto); }
+.cal-legenda { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.leg { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+.agenda { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 20px; align-items: start; }
+
+/* Síndico */
+.indicadores { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.indicador { display: flex; flex-direction: column; gap: 2px; padding: 16px; border-radius: var(--raio); border: 1px solid var(--borda); border-top: 4px solid var(--borda); background: var(--sup); text-decoration: none; color: inherit; }
+.indicador strong { font-size: 2rem; line-height: 1.1; }
+.indicador small { color: var(--suave); }
+.ind-ok { border-top-color: var(--ok); }
+.ind-alerta { border-top-color: var(--acento); }
+.ind-perigo { border-top-color: var(--perigo); }
+.ind-info { border-top-color: var(--info); }
+.adesao { margin-top: 16px; }
+.barra { height: 10px; border-radius: 999px; background: var(--neutro-bg); overflow: hidden; }
+.barra span { display: block; height: 100%; background: var(--pri); }
+.leitura { display: flex; flex-direction: column; gap: 4px; }
+.atencao { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.tabela-rolagem { overflow-x: auto; }
+.tabela { width: 100%; border-collapse: collapse; background: var(--sup); }
+.tabela th, .tabela td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--borda); vertical-align: middle; }
+.tabela th { font-size: 13px; color: var(--suave); }
+.tabela tr.clicavel { cursor: pointer; }
+.tabela tr.clicavel:hover { background: var(--sup-2); }
+.grade-unidades { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 6px; max-width: 560px; }
+.grade-unidades span, .legenda span { text-align: center; padding: 6px 0; border-radius: 6px; font-weight: 600; font-size: 13px; }
+.legenda span { display: inline-block; padding: 2px 8px; }
+.lida { background: var(--ok-bg); color: var(--ok); }
+.nao-lida { background: var(--neutro-bg); color: var(--suave); }
+.alertas { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.alerta-doc { margin: 0; padding: 10px 12px; border-radius: 8px; }
+.faixa-vencido, .faixa-7 { background: var(--perigo-bg); color: var(--perigo); }
+.faixa-30 { background: var(--alerta-bg); color: var(--alerta); }
+.faixa-60 { background: var(--info-bg); color: var(--info); }
+.historico { margin: 0; padding-left: 18px; color: var(--suave); }
+.recusa { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+
+/* Linha do tempo e estrelas */
+.linha-tempo { list-style: none; margin: 0; padding: 0 0 0 16px; border-left: 2px solid var(--borda); display: flex; flex-direction: column; gap: 12px; }
+.linha-tempo li { display: flex; flex-direction: column; position: relative; }
+.linha-tempo li::before { content: ""; position: absolute; left: -23px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--pri); }
+.linha-tempo li.comentario::before { background: var(--borda); }
+.lt-quando { font-size: 12px; color: var(--suave); }
+.estrelas { display: flex; gap: 4px; font-size: 26px; color: var(--borda); }
+.estrelas button { background: none; border: 0; font-size: inherit; color: inherit; cursor: pointer; min-width: 44px; min-height: 44px; }
+.estrelas .cheia { color: var(--acento); }
+
+/* Selo de notificação simulada */
+.selo { position: fixed; top: 70px; right: 16px; z-index: 30; display: flex; gap: 10px; align-items: flex-start; max-width: 360px; padding: 12px 14px; border-radius: 12px; background: var(--demo-bg); color: var(--demo-texto); box-shadow: 0 8px 24px rgb(0 0 0 / 25%); animation: entrar .25s ease-out; }
+.selo p { margin: 2px 0 0; color: var(--demo-suave); font-size: 14px; }
+.selo-canal { background: var(--acento); color: var(--acento-texto); font-weight: 800; font-size: 12px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+@keyframes entrar { from { transform: translateY(-8px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .selo { animation: none; } }
+
+/* Prévia de documento */
+.prev-doc { display: flex; flex-direction: column; gap: 12px; }
+.prev-topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.prev-pagina { background: #fff; color: #222; border: 1px solid var(--borda); border-radius: 6px; padding: 28px 24px; display: flex; flex-direction: column; gap: 10px; max-width: 640px; min-height: 380px; }
+.prev-cabecalho { margin: 0; font-size: 12px; color: #666; }
+.prev-linha { display: block; height: 8px; border-radius: 4px; background: #e3e3e3; }
+.prev-aviso { margin-top: auto; font-size: 12px; color: #767676; }
+
+/* Autoteste */
+.painel-testes { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+.painel-testes ul { list-style: none; padding: 0; }
+.painel-testes li { padding: 6px 0; border-bottom: 1px solid var(--borda); }
+.painel-testes li.falha { color: var(--perigo); }
+
+/* Telas estreitas: sem molduras */
+@media (max-width: 900px) {
+  .palco { padding: 0; }
+  .painel, .celular, .tablet { width: 100%; max-width: none; height: auto; min-height: calc(100vh - 56px); border: 0; border-radius: 0; box-shadow: none; }
+  .painel { grid-template-columns: 1fr; }
+  .painel-menu { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--borda); padding: 8px; }
+  .painel-usuario { display: none; }
+  .painel-menu a { white-space: nowrap; }
+  .painel-conteudo { padding: 16px; }
+  .cel-status { display: none; }
+  .cel-conteudo { overflow: visible; }
+  .cel-abas { position: sticky; bottom: 0; }
+  .tab-conteudo { overflow: visible; padding: 16px; }
+  .p-grade, .agenda { grid-template-columns: 1fr; }
+  .opcoes-grandes { grid-template-columns: repeat(2, 1fr); }
+  .marca .sub, .tab-turno { display: none; }
+  .selo { top: auto; bottom: 72px; left: 16px; right: 16px; max-width: none; }
+}
+```
+
+- [ ] **Step 7: Atualizar a ORDEM para a lista final**
+
+Em `prototipo/montagem.mjs`:
+```js
+export const ORDEM = [
+  'src/vendor.js',
+  'src/datas.js',
+  'src/dados.js',
+  'src/regras.js',
+  'src/acoes.js',
+  'src/casos/afirmar.js',
+  'src/casos/dados.js',
+  'src/casos/regras.js',
+  'src/casos/acoes.js',
+  'src/armazenamento.js',
+  'src/ui/comum.js',
+  'src/ui/portaria.js',
+  'src/ui/morador.js',
+  'src/ui/sindico.js',
+  'src/ui/app.js',
+];
+```
+
+- [ ] **Step 8: Rodar e ver passar**
+
+Run: `cd prototipo && npm test && npm run montar && npm run verificar`
+Expected: testes PASS. O `verificar` imprime `ok` para `falhas: 0`, `Ver como`, `Reiniciar demonstração` e `Residencial Ipê Amarelo`, e sai com código 0.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add prototipo
+git commit -m "feat(prototipo): casca da interface com barra de demonstração, rotas, estado salvo e autoteste
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 6: Telas da portaria (tablet)
+
+**Files:**
+- Replace: `prototipo/src/ui/portaria.js`
+- Modify: `prototipo/verificar.mjs` (CHECAGENS)
+
+**Interfaces:**
+- Consumes:
+  - `registrarEncomenda` e `entregarEncomenda` (Task 4);
+  - `areaPorId`, `moradoresDaUnidade` e `encomendaParada` (Task 3);
+  - `Campo`, `Erro`, `Vazio`, `FotoFalsa` e `Etiqueta` (Task 5).
+- Produces:
+  - `TelaPortaria(props)` com as rotas `#/portaria/registrar`, `#/portaria/entregar` e `#/portaria/hoje`.
+  - Textos usados pelo e2e (Task 9): "Ler etiqueta", "Registrar encomenda", "Morador avisado por WhatsApp", `.confirmacao[data-codigo]`, rótulos "Buscar por código ou unidade", "Código de retirada" e "Quem retirou", e os botões "Apto NNN …", "Escanear QR do morador", "Confirmar entrega" e "Entrega registrada".
+
+- [ ] **Step 1: Acrescentar as checagens que falham**
+
+Em `prototipo/verificar.mjs`, acrescente ao final do array `CHECAGENS`:
+```js
+  ['#/portaria/registrar', ['Ler etiqueta', 'Registrar encomenda', 'Mercado Livre', 'Seu José']],
+  ['#/portaria/entregar', ['Buscar por código ou unidade', 'Apto 302', 'Parada']],
+  ['#/portaria/hoje', ['Churrasqueira', 'João Pereira', 'Apto 603']],
+```
+
+Run: `cd prototipo && npm run montar && npm run verificar`
+Expected: FAIL nas novas linhas da portaria.
+
+- [ ] **Step 2: Substituir `src/ui/portaria.js`**
+
+```js
+import { html, useState } from '../vendor.js';
+import { TRANSPORTADORAS, PORTEIRO_DIA } from '../dados.js';
+import { areaPorId, moradoresDaUnidade, encomendaParada } from '../regras.js';
+import { registrarEncomenda, entregarEncomenda } from '../acoes.js';
+import { isoDia, fmtHora, haQuanto } from '../datas.js';
+import { Campo, Erro, Vazio, FotoFalsa, Etiqueta } from './comum.js';
+
+const ABAS_PORTARIA = [['registrar', 'Registrar'], ['entregar', 'Entregar'], ['hoje', 'Reservas de hoje']];
+
+export function TelaPortaria(props) {
+  const tela = ABAS_PORTARIA.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'registrar';
+  const Conteudo = { registrar: PRegistrar, entregar: PEntregar, hoje: PReservasHoje }[tela];
+  return html`<div class="tablet">
+    <header class="tab-topo">
+      <strong>Portaria</strong>
+      <nav class="tab-abas" aria-label="Portaria">
+        ${ABAS_PORTARIA.map(([id, nome]) => html`<a key=${id} href=${`#/portaria/${id}`} class=${id === tela ? 'ativa' : ''} aria-current=${id === tela ? 'page' : undefined}>${nome}</a>`)}
+      </nav>
+      <span class="tab-turno">${PORTEIRO_DIA} · turno do dia</span>
+    </header>
+    <div class="tab-conteudo"><${Conteudo} ...${props} /></div>
+  </div>`;
+}
+
+function PRegistrar({ estado, executar }) {
+  const [unidade, setUnidade] = useState('');
+  const [transportadora, setTransportadora] = useState('');
+  const [foto, setFoto] = useState(false);
+  const [lida, setLida] = useState(null);
+  const [erro, setErro] = useState(null);
+  const [registrada, setRegistrada] = useState(null);
+  const numero = unidade.trim();
+  const moradores = moradoresDaUnidade(estado, numero);
+
+  function lerEtiqueta() {
+    setUnidade('302');
+    setTransportadora('Mercado Livre');
+    setFoto(true);
+    setErro(null);
+    setLida('Etiqueta lida: ANA SOUZA · APTO 302 · MERCADO LIVRE');
+  }
+
+  function registrar() {
+    const r = executar((e) => registrarEncomenda(e, { unidade: numero, transportadora, foto, porteiro: PORTEIRO_DIA }, new Date()));
+    if (r.erro) {
+      setErro(r.erro);
+      return;
+    }
+    setRegistrada(r.estado.encomendas.find((x) => x.id === r.id));
+    setUnidade('');
+    setTransportadora('');
+    setFoto(false);
+    setLida(null);
+    setErro(null);
+  }
+
+  return html`<section class="p-grade">
+    <div class="p-coluna">
+      <button type="button" class="btn grande destaque" onClick=${lerEtiqueta}><span aria-hidden="true">📷</span> Ler etiqueta</button>
+      ${lida && html`<p class="dica-ocr">${lida}</p>`}
+      <${Campo} rotulo="Unidade"><input class="entrada-grande" inputmode="numeric" maxlength="3" value=${unidade} onInput=${(ev) => setUnidade(ev.target.value)} placeholder="Ex.: 302" /><//>
+      ${numero.length === 3 && html`<p class="dica-unidade">${moradores.length ? moradores.map((m) => m.nome).join(', ') : 'Unidade sem morador cadastrado'}</p>`}
+      <p class="rotulo">Transportadora</p>
+      <div class="opcoes-grandes" role="group" aria-label="Transportadora">
+        ${TRANSPORTADORAS.map((t) => html`<button type="button" key=${t} class=${`btn grande opcao${t === transportadora ? ' sel' : ''}`} aria-pressed=${t === transportadora} onClick=${() => setTransportadora(t)}>${t}</button>`)}
+      </div>
+    </div>
+    <div class="p-coluna">
+      ${foto ? html`<${FotoFalsa} rotulo="Foto do volume e da etiqueta" />` : html`<button type="button" class="btn grande secundario" onClick=${() => setFoto(true)}>Fotografar volume</button>`}
+      <${Erro} texto=${erro} />
+      <button type="button" class="btn grande primario" disabled=${!numero || !transportadora} onClick=${registrar}>Registrar encomenda</button>
+      ${registrada && html`<div class="cartao confirmacao" role="status" data-codigo=${registrada.codigo}>
+        <strong>Encomenda registrada para o apto ${registrada.unidade}</strong>
+        <span>Código de retirada: <b>${registrada.codigo}</b></span>
+        <span>Morador avisado por WhatsApp com a foto.</span>
+      </div>`}
+    </div>
+  </section>`;
+}
+
+function PEntregar({ estado, executar, agora }) {
+  const [busca, setBusca] = useState('');
+  const [selecionada, setSelecionada] = useState(null);
+  const [codigo, setCodigo] = useState('');
+  const [nome, setNome] = useState('');
+  const [erro, setErro] = useState(null);
+  const [entregue, setEntregue] = useState(null);
+  const termo = busca.trim();
+  const lista = estado.encomendas
+    .filter((e) => e.status === 'aguardando' && (!termo || e.unidade.includes(termo) || e.codigo === termo))
+    .sort((a, b) => a.chegadaEm.localeCompare(b.chegadaEm));
+  const encomenda = selecionada && estado.encomendas.find((e) => e.id === selecionada && e.status === 'aguardando');
+
+  function escolher(id) {
+    setSelecionada(id);
+    setCodigo('');
+    setNome('');
+    setErro(null);
+    setEntregue(null);
+  }
+
+  function confirmar() {
+    const r = executar((e) => entregarEncomenda(e, { id: encomenda.id, codigo, nome }, new Date()));
+    if (r.erro) {
+      setErro(r.erro);
+      return;
+    }
+    setEntregue(`Entrega registrada: apto ${encomenda.unidade}, retirada por ${nome.trim()}.`);
+    setSelecionada(null);
+    setBusca('');
+  }
+
+  return html`<section class="p-grade">
+    <div class="p-coluna">
+      <${Campo} rotulo="Buscar por código ou unidade"><input class="entrada-grande" inputmode="numeric" value=${busca} onInput=${(ev) => setBusca(ev.target.value)} placeholder="Ex.: 302 ou 481203" /><//>
+      ${entregue && html`<p class="sucesso" role="status">${entregue}</p>`}
+      <ul class="lista-encomendas">
+        ${lista.length
+          ? lista.map((e) => html`<li key=${e.id}><button type="button" class=${`item-encomenda${e.id === selecionada ? ' sel' : ''}`} onClick=${() => escolher(e.id)}>
+              <strong>Apto ${e.unidade}</strong>
+              <span>${e.transportadora} · chegou ${haQuanto(e.chegadaEm, agora)}</span>
+              ${encomendaParada(e, agora) && html`<${Etiqueta} tipo="perigo">Parada<//>`}
+            </button></li>`)
+          : html`<li><${Vazio} texto="Nenhuma encomenda aguardando." /></li>`}
+      </ul>
+    </div>
+    <div class="p-coluna">
+      ${encomenda
+        ? html`<div class="cartao">
+            <h2>Entregar: apto ${encomenda.unidade} · ${encomenda.transportadora}</h2>
+            <${Campo} rotulo="Código de retirada"><input class="entrada-grande" inputmode="numeric" maxlength="6" value=${codigo} onInput=${(ev) => setCodigo(ev.target.value)} /><//>
+            <button type="button" class="btn secundario" onClick=${() => setCodigo(encomenda.codigo)}>Escanear QR do morador</button>
+            <${Campo} rotulo="Quem retirou"><input class="entrada-grande" value=${nome} onInput=${(ev) => setNome(ev.target.value)} /><//>
+            <div class="sugestoes">${moradoresDaUnidade(estado, encomenda.unidade).map((m) => html`<button type="button" key=${m.id} class="btn secundario" onClick=${() => setNome(m.nome)}>${m.nome}</button>`)}</div>
+            <${Erro} texto=${erro} />
+            <button type="button" class="btn grande primario" onClick=${confirmar}>Confirmar entrega</button>
+          </div>`
+        : html`<${Vazio} texto="Escolha uma encomenda na lista." />`}
+    </div>
+  </section>`;
+}
+
+function PReservasHoje({ estado, agora }) {
+  const hoje = isoDia(agora);
+  const lista = estado.reservas.filter((r) => r.data === hoje && r.status === 'confirmada').sort((a, b) => a.inicio - b.inicio);
+  return html`<section>
+    <h1>Reservas de hoje</h1>
+    ${lista.length
+      ? html`<div class="grade-cartoes">${lista.map((r) => html`<article key=${r.id} class="cartao">
+          <h3>${areaPorId(estado, r.areaId).nome}</h3>
+          <p class="sub">${fmtHora(r.inicio)}–${fmtHora(r.fim)} · Apto ${r.unidade}</p>
+          <p class="rotulo">Convidados (${r.convidados.length})</p>
+          ${r.convidados.length
+            ? html`<ul class="convidados">${r.convidados.map((c, i) => html`<li key=${i}>${c.nome} <small>${c.documento}</small></li>`)}</ul>`
+            : html`<${Vazio} texto="Sem lista de convidados." />`}
+        </article>`)}</div>`
+      : html`<${Vazio} texto="Nenhuma reserva confirmada para hoje." />`}
+  </section>`;
+}
+```
+
+- [ ] **Step 3: Rodar e ver passar**
+
+Run: `cd prototipo && npm test && npm run montar && npm run verificar`
+Expected: todas as checagens `ok`, com código de saída 0.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add prototipo
+git commit -m "feat(prototipo): telas da portaria (registrar, entregar, reservas de hoje)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 7: Telas do morador (celular)
+
+**Files:**
+- Replace: `prototipo/src/ui/morador.js`
+- Modify: `prototipo/verificar.mjs` (CHECAGENS)
+
+**Interfaces:**
+- Consumes:
+  - `solicitarReserva`, `cancelarReserva`, `marcarLido`, `reagir`, `abrirOcorrencia`, `avaliarOcorrencia` e `euTambem` (Task 4);
+  - as regras da Task 3;
+  - os componentes da Task 5.
+- Produces:
+  - `TelaMorador(props)` com as rotas `#/morador/{inicio|reservas|avisos[/id]|ocorrencias[/nova|/id]|mais|documentos|encomendas}`.
+  - Textos usados pelo e2e:
+    - reservas: botão "Salão de festas", `[data-dia]`, botão "Tarde (13h–18h)", checkbox "Li e aceito o termo de responsabilidade", botão "Solicitar reserva", mensagem "Aguardando aprovação";
+    - ocorrências: rótulos "Categoria" e "Descrição", botão "Enviar ocorrência", "Protocolo OC-NNNN", `[data-estrela]`, "Enviar avaliação", "Sua avaliação";
+    - avisos: "Li e estou ciente", "Você confirmou a leitura".
+
+- [ ] **Step 1: Acrescentar as checagens que falham**
+
+Em `prototipo/verificar.mjs`, acrescente ao final de `CHECAGENS`:
+```js
+  ['#/morador/inicio', ['Olá, Ana', '481203', '730915', 'Retire em breve', 'Fixado pelo síndico', 'Quadra']],
+  ['#/morador/reservas', ['Salão de festas', 'Academia', 'Minhas reservas']],
+  ['#/morador/avisos', ['Falta de água', 'não lido']],
+  ['#/morador/avisos/c1', ['Li e estou ciente', 'Útil · 3']],
+  ['#/morador/ocorrencias', ['Vaga ocupada', 'Públicas do condomínio', 'eu também']],
+  ['#/morador/ocorrencias/OC-0042', ['Protocolo OC-0042', 'Ocorrência aberta']],
+  ['#/morador/documentos', ['Regimento interno', '!Balancete']],
+  ['#/morador/encomendas', ['Retirada por Ana Souza']],
+```
+
+Run: `cd prototipo && npm run montar && npm run verificar`
+Expected: FAIL nas linhas do morador.
+
+- [ ] **Step 2: Substituir `src/ui/morador.js`**
+
+```js
+import { html, useState } from '../vendor.js';
+import { UNIDADE_ANA, CATEGORIAS, TIPOS_COMUNICADO } from '../dados.js';
+import { areaPorId, statusDia, horariosDaArea, comunicadosDaUnidade, avisoCancelamento, encomendaParada, STATUS_ATIVOS } from '../regras.js';
+import { solicitarReserva, cancelarReserva, marcarLido, reagir, abrirOcorrencia, avaliarOcorrencia, euTambem } from '../acoes.js';
+import { isoDia, somarMes, diferencaDias, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
+import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, QrFalso, LinhaTempo, Estrelas, PrevDoc, Campo } from './comum.js';
+
+const ABAS_MORADOR = [['inicio', 'Início', '⌂'], ['reservas', 'Reservas', '📅'], ['avisos', 'Avisos', '📣'], ['ocorrencias', 'Ocorrências', '📝'], ['mais', 'Mais', '☰']];
+
+function relogio(d) {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function lerConvidados(texto) {
+  return texto.split('\n').map((l) => l.trim()).filter(Boolean).map((linha) => {
+    const [nome, ...resto] = linha.split(',');
+    return { nome: nome.trim(), documento: resto.join(',').trim() || 'não informado' };
+  });
+}
+
+function textoAntecedencia(area) {
+  const limite = area.limiteMes ? ` · até ${area.limiteMes} por mês` : '';
+  return area.antecedenciaMin === 0
+    ? `Reserve com até ${area.antecedenciaMax} dias de antecedência${limite}`
+    : `Reserve de ${area.antecedenciaMin} a ${area.antecedenciaMax} dias antes${limite}`;
+}
+
+function tipoEtiquetaAviso(c) {
+  return c.tipo === 'urgente' ? 'perigo' : 'info';
+}
+
+export function TelaMorador(props) {
+  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas };
+  const Conteudo = telas[props.rota.tela] || MInicio;
+  const aba = ['documentos', 'encomendas'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
+  return html`<div class="celular">
+    <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
+    <div class="cel-conteudo"><${Conteudo} ...${props} /></div>
+    <nav class="cel-abas" aria-label="Navegação do morador">
+      ${ABAS_MORADOR.map(([id, nome, icone]) => html`<a key=${id} href=${`#/morador/${id}`} class=${id === aba ? 'ativa' : ''} aria-current=${id === aba ? 'page' : undefined}><span aria-hidden="true">${icone}</span>${nome}</a>`)}
+    </nav>
+  </div>`;
+}
+
+function MCartaoEncomenda({ encomenda, agora }) {
+  return html`<article class="cartao encomenda" data-codigo=${encomenda.codigo}>
+    <div>
+      <strong>${encomenda.transportadora}</strong>
+      <span class="sub">Chegou ${haQuanto(encomenda.chegadaEm, agora)}</span>
+      ${encomendaParada(encomenda, agora) && html`<${Etiqueta} tipo="alerta">Retire em breve<//>`}
+      <span class="m-codigo">Código <b>${encomenda.codigo}</b></span>
+      <small class="sub">Mostre o QR Code na portaria.</small>
+    </div>
+    <${QrFalso} texto=${encomenda.codigo} tamanho=${104} />
+  </article>`;
+}
+
+function MInicio({ estado, agora }) {
+  const hoje = isoDia(agora);
+  const pacotes = estado.encomendas.filter((e) => e.unidade === UNIDADE_ANA && e.status === 'aguardando');
+  const fixado = comunicadosDaUnidade(estado, UNIDADE_ANA).find((c) => c.fixado);
+  const proxima = estado.reservas
+    .filter((r) => r.unidade === UNIDADE_ANA && STATUS_ATIVOS.includes(r.status) && r.data >= hoje)
+    .sort((a, b) => a.data.localeCompare(b.data) || a.inicio - b.inicio)[0];
+  return html`<section class="m-pagina">
+    <h1 class="m-titulo">Olá, Ana</h1>
+    <p class="m-sub">Apto 302 · Residencial Ipê Amarelo</p>
+    <h2>Encomendas na portaria</h2>
+    ${pacotes.length ? pacotes.map((e) => html`<${MCartaoEncomenda} key=${e.id} encomenda=${e} agora=${agora} />`) : html`<${Vazio} texto="Nenhuma encomenda esperando por você." />`}
+    ${fixado && html`<h2>Fixado pelo síndico</h2>
+      <a class="cartao link" href=${`#/morador/avisos/${fixado.id}`}>
+        <${Etiqueta} tipo=${tipoEtiquetaAviso(fixado)}>${TIPOS_COMUNICADO[fixado.tipo]}<//>
+        <strong>${fixado.titulo}</strong>
+        ${!fixado.leituras.includes(UNIDADE_ANA) && html`<span class="m-nao-lido">Toque para confirmar a leitura</span>`}
+      </a>`}
+    <h2>Próxima reserva</h2>
+    ${proxima
+      ? html`<a class="cartao link" href="#/morador/reservas">
+          <div class="linha-entre"><strong>${areaPorId(estado, proxima.areaId).nome}</strong><${EtqReserva} status=${proxima.status} /></div>
+          <span>${fmtDia(proxima.data)} · ${fmtHora(proxima.inicio)}–${fmtHora(proxima.fim)}</span>
+        </a>`
+      : html`<${Vazio} texto="Você não tem reservas futuras." />`}
+    <a class="btn primario bloco" href="#/morador/ocorrencias/nova">Abrir ocorrência</a>
+  </section>`;
+}
+
+function MReservas({ estado, executar, agora }) {
+  const hoje = isoDia(agora);
+  const [areaId, setAreaId] = useState(null);
+  const [anoMes, setAnoMes] = useState(hoje.slice(0, 7));
+  const [data, setData] = useState(null);
+  const [horario, setHorario] = useState(null);
+  const [termo, setTermo] = useState(false);
+  const [convidados, setConvidados] = useState('');
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const area = areaId ? areaPorId(estado, areaId) : null;
+
+  function recomecar(texto) {
+    setAreaId(null);
+    setData(null);
+    setHorario(null);
+    setTermo(false);
+    setConvidados('');
+    setErro(null);
+    setMensagem(texto || null);
+  }
+
+  function solicitar() {
+    const pedido = { areaId, unidade: UNIDADE_ANA, data, inicio: horario.inicio, fim: horario.fim, convidados: lerConvidados(convidados), aceiteTermo: termo };
+    const r = executar((e) => solicitarReserva(e, pedido, new Date()));
+    if (r.erro) {
+      setErro(r.erro);
+      return;
+    }
+    const status = r.estado.reservas.find((x) => x.id === r.id).status;
+    recomecar(status === 'pendente'
+      ? 'Reserva solicitada! Aguardando aprovação do síndico. O horário já está guardado para você.'
+      : 'Reserva confirmada!');
+  }
+
+  if (!area) {
+    return html`<section class="m-pagina">
+      <h1 class="m-titulo">Reservas</h1>
+      <${Sucesso} texto=${mensagem} />
+      <h2>Escolha a área</h2>
+      ${estado.areas.map((a) => html`<button type="button" key=${a.id} class="cartao link" onClick=${() => { setAreaId(a.id); setMensagem(null); }}>
+        <strong>${a.nome}</strong>
+        <span>${a.tipo === 'periodo' ? 'Por período' : 'Por hora'} · ${a.taxa ? fmtMoeda(a.taxa) : 'Sem taxa'}</span>
+        <small class="sub">${a.aprovacao === 'manual' ? 'Precisa de aprovação do síndico' : 'Confirmação na hora'}</small>
+      </button>`)}
+      <${MMinhasReservas} estado=${estado} executar=${executar} agora=${agora} />
+    </section>`;
+  }
+
+  if (!horario) {
+    const horarios = data ? horariosDaArea(estado, area.id, data, agora) : [];
+    const statusDe = (iso) => {
+      const dias = diferencaDias(iso, hoje);
+      return dias < area.antecedenciaMin || dias > area.antecedenciaMax ? 'indisponivel' : statusDia(estado, area.id, iso);
+    };
+    return html`<section class="m-pagina">
+      <button type="button" class="voltar" onClick=${() => recomecar()}>‹ Áreas</button>
+      <h1 class="m-titulo">${area.nome}</h1>
+      <p class="m-sub">${textoAntecedencia(area)}</p>
+      <${Calendario} anoMes=${anoMes} statusDe=${statusDe} selecionado=${data} aoEscolher=${(iso) => { setData(iso); setErro(null); }} aoMudarMes=${(n) => setAnoMes(somarMes(anoMes, n))} />
+      ${data && html`<h2>${fmtDia(data)}</h2>
+        <div class="m-horarios">
+          ${horarios.map((h) => html`<button type="button" key=${h.inicio} class="btn opcao" disabled=${!h.livre} onClick=${() => setHorario(h)}>${h.rotulo}${h.motivo && html`<small>${h.motivo}</small>`}</button>`)}
+        </div>`}
+    </section>`;
+  }
+
+  return html`<section class="m-pagina">
+    <button type="button" class="voltar" onClick=${() => { setHorario(null); setErro(null); }}>‹ Horários</button>
+    <h1 class="m-titulo">Confirmar reserva</h1>
+    <dl class="resumo">
+      <dt>Área</dt><dd>${area.nome}</dd>
+      <dt>Quando</dt><dd>${fmtDia(data)}, ${fmtHora(horario.inicio)}–${fmtHora(horario.fim)}</dd>
+      <dt>Taxa</dt><dd>${area.taxa ? `${fmtMoeda(area.taxa)} no próximo boleto` : 'Sem taxa'}</dd>
+      <dt>Aprovação</dt><dd>${area.aprovacao === 'manual' ? 'Pelo síndico em até 48 h; o horário fica guardado para você' : 'Automática'}</dd>
+      <dt>Inclui</dt><dd>${area.itens}</dd>
+    </dl>
+    <p class="m-regulamento">${area.regulamento} Cancelamento sem multa até 72 h antes.</p>
+    <${Campo} rotulo="Convidados (opcional)" dica="Um por linha: nome, documento. A lista vai para a portaria."><textarea rows="3" value=${convidados} onInput=${(ev) => setConvidados(ev.target.value)}></textarea><//>
+    <label class="check"><input type="checkbox" checked=${termo} onChange=${(ev) => setTermo(ev.target.checked)} /><span>Li e aceito o termo de responsabilidade</span></label>
+    <${Erro} texto=${erro} />
+    <button type="button" class="btn primario bloco" disabled=${!termo} onClick=${solicitar}>Solicitar reserva</button>
+  </section>`;
+}
+
+function MMinhasReservas({ estado, executar, agora }) {
+  const [cancelando, setCancelando] = useState(null);
+  const [aviso, setAviso] = useState(null);
+  const hoje = isoDia(agora);
+  const minhas = estado.reservas.filter((r) => r.unidade === UNIDADE_ANA).sort((a, b) => b.data.localeCompare(a.data));
+
+  function confirmar(id) {
+    const r = executar((e) => cancelarReserva(e, id, new Date()));
+    setCancelando(null);
+    setAviso(r.erro || (r.aviso.multa ? 'Reserva cancelada fora do prazo: a taxa será retida conforme o regulamento.' : 'Reserva cancelada sem multa.'));
+  }
+
+  return html`<h2>Minhas reservas</h2>
+    <${Sucesso} texto=${aviso} />
+    ${minhas.length
+      ? html`<ul class="m-lista">${minhas.map((r) => {
+          const podeCancelar = STATUS_ATIVOS.includes(r.status) && r.data >= hoje;
+          return html`<li key=${r.id} class="cartao">
+            <div class="linha-entre"><strong>${areaPorId(estado, r.areaId).nome}</strong><${EtqReserva} status=${r.status} /></div>
+            <span>${fmtDia(r.data)} · ${fmtHora(r.inicio)}–${fmtHora(r.fim)}</span>
+            ${r.motivo && html`<small class="sub">Motivo: ${r.motivo}</small>`}
+            ${podeCancelar && (cancelando === r.id
+              ? html`<div class="cartao">
+                  <p class="m-texto">${avisoCancelamento(r, agora).texto}</p>
+                  <div class="acoes">
+                    <button type="button" class="btn perigo" onClick=${() => confirmar(r.id)}>Confirmar cancelamento</button>
+                    <button type="button" class="btn secundario" onClick=${() => setCancelando(null)}>Manter reserva</button>
+                  </div>
+                </div>`
+              : html`<button type="button" class="btn secundario" onClick=${() => setCancelando(r.id)}>Cancelar</button>`)}
+          </li>`;
+        })}</ul>`
+      : html`<${Vazio} texto="Você ainda não fez reservas." />`}`;
+}
+
+function MAvisos({ estado, rota, executar }) {
+  const lista = comunicadosDaUnidade(estado, UNIDADE_ANA);
+  const c = rota.id ? lista.find((x) => x.id === rota.id) : null;
+  if (c) {
+    const lido = c.leituras.includes(UNIDADE_ANA);
+    return html`<section class="m-pagina">
+      <a class="voltar" href="#/morador/avisos">‹ Avisos</a>
+      <div><${Etiqueta} tipo=${tipoEtiquetaAviso(c)}>${TIPOS_COMUNICADO[c.tipo]}<//></div>
+      <h1 class="m-titulo">${c.titulo}</h1>
+      <p class="m-sub">${fmtDataHora(c.publicadoEm)} · Roberto Lima, síndico</p>
+      <p class="m-texto">${c.texto}</p>
+      ${c.anexo && html`<p class="anexo">📎 ${c.anexo}</p>`}
+      ${lido
+        ? html`<p class="sucesso">✓ Você confirmou a leitura</p>`
+        : html`<button type="button" class="btn primario bloco" onClick=${() => executar((e) => marcarLido(e, c.id, UNIDADE_ANA))}>Li e estou ciente</button>`}
+      <div class="reacoes" role="group" aria-label="Reações">
+        ${[['util', 'Útil'], ['duvida', 'Tenho dúvida']].map(([tipo, nome]) => html`<button type="button" key=${tipo} class="btn secundario" aria-pressed=${c.reacoes[tipo].includes(UNIDADE_ANA)} onClick=${() => executar((e) => reagir(e, c.id, UNIDADE_ANA, tipo))}>${nome} · ${c.reacoes[tipo].length}</button>`)}
+      </div>
+    </section>`;
+  }
+  return html`<section class="m-pagina">
+    <h1 class="m-titulo">Avisos</h1>
+    <ul class="m-lista">${lista.map((x) => {
+      const lido = x.leituras.includes(UNIDADE_ANA);
+      return html`<li key=${x.id}><a class=${`cartao link${lido ? '' : ' nao-lido'}`} href=${`#/morador/avisos/${x.id}`}>
+        <div class="linha-entre"><${Etiqueta} tipo=${tipoEtiquetaAviso(x)}>${TIPOS_COMUNICADO[x.tipo]}<//>${x.fixado && html`<small>📌 Fixado</small>`}</div>
+        <strong>${x.titulo}</strong>
+        <small class="sub">${fmtDataHora(x.publicadoEm)}${lido ? '' : ' · não lido'}</small>
+      </a></li>`;
+    })}</ul>
+  </section>`;
+}
+
+function MOcorrencias(props) {
+  const { estado, rota } = props;
+  if (rota.id === 'nova') return html`<${MNovaOcorrencia} ...${props} />`;
+  const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id && (o.unidade === UNIDADE_ANA || o.publica)) : null;
+  if (oc) return html`<${MDetalheOcorrencia} executar=${props.executar} oc=${oc} />`;
+  const minhas = estado.ocorrencias.filter((o) => o.unidade === UNIDADE_ANA);
+  const publicas = estado.ocorrencias.filter((o) => o.publica && o.unidade !== UNIDADE_ANA);
+  const item = (o) => html`<li key=${o.id}><a class="cartao link" href=${`#/morador/ocorrencias/${o.id}`}>
+    <div class="linha-entre"><strong>${CATEGORIAS[o.categoria].nome}</strong><${EtqOcorrencia} status=${o.status} arquivada=${o.arquivada} /></div>
+    <span>${o.descricao}</span>
+    <small class="sub">${o.id}${o.publica ? ` · ${o.eutambem.length} "eu também"` : ''}</small>
+  </a></li>`;
+  return html`<section class="m-pagina">
+    <h1 class="m-titulo">Ocorrências</h1>
+    <a class="btn primario bloco" href="#/morador/ocorrencias/nova">Abrir ocorrência</a>
+    <h2>Minhas</h2>
+    ${minhas.length ? html`<ul class="m-lista">${minhas.map(item)}</ul>` : html`<${Vazio} texto="Você não abriu ocorrências." />`}
+    <h2>Públicas do condomínio</h2>
+    ${publicas.length ? html`<ul class="m-lista">${publicas.map(item)}</ul>` : html`<${Vazio} texto="Nenhuma ocorrência pública." />`}
+  </section>`;
+}
+
+function MNovaOcorrencia({ executar }) {
+  const [categoria, setCategoria] = useState('');
+  const [local, setLocal] = useState('');
+  const [descricao, setDescricao] = useState('');
+  const [foto, setFoto] = useState(false);
+  const [anonima, setAnonima] = useState(false);
+  const [publica, setPublica] = useState(false);
+  const [erro, setErro] = useState(null);
+
+  function enviar() {
+    const r = executar((e) => abrirOcorrencia(e, { categoria, local, descricao, foto, anonima, publica, unidade: UNIDADE_ANA }, new Date()));
+    if (r.erro) {
+      setErro(r.erro);
+      return;
+    }
+    ir('morador', 'ocorrencias', r.id);
+  }
+
+  return html`<section class="m-pagina">
+    <a class="voltar" href="#/morador/ocorrencias">‹ Ocorrências</a>
+    <h1 class="m-titulo">Abrir ocorrência</h1>
+    <${Campo} rotulo="Categoria"><select value=${categoria} onChange=${(ev) => setCategoria(ev.target.value)}>
+      <option value="">Escolha…</option>
+      ${Object.entries(CATEGORIAS).map(([id, c]) => html`<option key=${id} value=${id}>${c.nome}</option>`)}
+    </select><//>
+    <${Campo} rotulo="Local"><input value=${local} onInput=${(ev) => setLocal(ev.target.value)} placeholder="Ex.: garagem, 5º andar, salão" /><//>
+    <${Campo} rotulo="Descrição"><textarea rows="4" value=${descricao} onInput=${(ev) => setDescricao(ev.target.value)}></textarea><//>
+    ${foto ? html`<${FotoFalsa} rotulo="Foto anexada" />` : html`<button type="button" class="btn secundario" onClick=${() => setFoto(true)}>Anexar foto</button>`}
+    <label class="check"><input type="checkbox" checked=${anonima} onChange=${(ev) => setAnonima(ev.target.checked)} /><span>Enviar como anônima</span></label>
+    <small class="m-ajuda">O síndico vê o conteúdo, mas não quem enviou.</small>
+    <label class="check"><input type="checkbox" checked=${publica} onChange=${(ev) => setPublica(ev.target.checked)} /><span>Tornar pública</span></label>
+    <small class="m-ajuda">Todos os moradores veem e podem marcar "eu também".</small>
+    <${Erro} texto=${erro} />
+    <button type="button" class="btn primario bloco" onClick=${enviar}>Enviar ocorrência</button>
+  </section>`;
+}
+
+function MDetalheOcorrencia({ executar, oc }) {
+  const [nota, setNota] = useState(0);
+  const [erro, setErro] = useState(null);
+  const minha = oc.unidade === UNIDADE_ANA;
+  const podeAvaliar = minha && ['resolvida', 'fechada'].includes(oc.status) && !oc.avaliacao;
+
+  function avaliar() {
+    const r = executar((e) => avaliarOcorrencia(e, oc.id, nota));
+    setErro(r.erro || null);
+  }
+
+  return html`<section class="m-pagina">
+    <a class="voltar" href="#/morador/ocorrencias">‹ Ocorrências</a>
+    <p class="protocolo">Protocolo ${oc.id}</p>
+    <h1 class="m-titulo">${CATEGORIAS[oc.categoria].nome}</h1>
+    <div><${EtqOcorrencia} status=${oc.status} arquivada=${oc.arquivada} /></div>
+    <p class="m-texto">${oc.descricao}</p>
+    ${oc.local && html`<p class="m-sub">Local: ${oc.local}</p>`}
+    ${oc.foto && html`<${FotoFalsa} rotulo="Foto enviada" />`}
+    ${oc.publica && html`<button type="button" class="btn secundario" aria-pressed=${oc.eutambem.includes(UNIDADE_ANA)} onClick=${() => executar((e) => euTambem(e, oc.id, UNIDADE_ANA))}>Eu também · ${oc.eutambem.length}</button>`}
+    <h2>Andamento</h2>
+    <${LinhaTempo} linha=${oc.linha} />
+    ${podeAvaliar && html`<div class="cartao">
+      <strong>Como foi o atendimento?</strong>
+      <${Estrelas} valor=${nota} aoEscolher=${setNota} />
+      <${Erro} texto=${erro} />
+      <button type="button" class="btn primario" disabled=${!nota} onClick=${avaliar}>Enviar avaliação</button>
+    </div>`}
+    ${minha && oc.avaliacao && html`<div class="cartao"><strong>Sua avaliação</strong><${Estrelas} valor=${oc.avaliacao} /></div>`}
+  </section>`;
+}
+
+function MMais() {
+  return html`<section class="m-pagina">
+    <h1 class="m-titulo">Mais</h1>
+    <a class="cartao link" href="#/morador/encomendas"><strong>Encomendas</strong><span class="sub">Na portaria e histórico de retiradas</span></a>
+    <a class="cartao link" href="#/morador/documentos"><strong>Documentos</strong><span class="sub">Convenção, regimento, atas e laudos</span></a>
+  </section>`;
+}
+
+function MDocumentos({ estado }) {
+  const [aberto, setAberto] = useState(null);
+  const visiveis = estado.documentos.filter((d) => d.visibilidade === 'todos');
+  const pastas = [...new Set(visiveis.map((d) => d.pasta))];
+  const doc = aberto ? visiveis.find((d) => d.id === aberto) : null;
+  if (doc) return html`<section class="m-pagina"><${PrevDoc} documento=${doc} aoFechar=${() => setAberto(null)} /></section>`;
+  return html`<section class="m-pagina">
+    <a class="voltar" href="#/morador/mais">‹ Mais</a>
+    <h1 class="m-titulo">Documentos</h1>
+    ${pastas.map((p) => html`<div key=${p}>
+      <h2>${p}</h2>
+      <ul class="m-lista">${visiveis.filter((d) => d.pasta === p).map((d) => {
+        const atual = d.versoes[d.versoes.length - 1];
+        return html`<li key=${d.id}><button type="button" class="cartao link" onClick=${() => setAberto(d.id)}>
+          <strong>${d.titulo}</strong>
+          <small class="sub">Versão ${atual.versao} · ${fmtDataCurta(atual.data)}</small>
+        </button></li>`;
+      })}</ul>
+    </div>`)}
+  </section>`;
+}
+
+function MEncomendas({ estado, agora }) {
+  const minhas = estado.encomendas.filter((e) => e.unidade === UNIDADE_ANA);
+  const aguardando = minhas.filter((e) => e.status === 'aguardando');
+  const retiradas = minhas.filter((e) => e.status === 'retirada').sort((a, b) => b.retiradaEm.localeCompare(a.retiradaEm));
+  return html`<section class="m-pagina">
+    <a class="voltar" href="#/morador/mais">‹ Mais</a>
+    <h1 class="m-titulo">Encomendas</h1>
+    <h2>Na portaria</h2>
+    ${aguardando.length ? aguardando.map((e) => html`<${MCartaoEncomenda} key=${e.id} encomenda=${e} agora=${agora} />`) : html`<${Vazio} texto="Nada esperando por você." />`}
+    <h2>Retiradas</h2>
+    ${retiradas.length
+      ? html`<ul class="m-lista">${retiradas.map((e) => html`<li key=${e.id} class="cartao"><strong>${e.transportadora}</strong><small class="sub">Retirada por ${e.retiradaPor} em ${fmtDataHora(e.retiradaEm)}</small></li>`)}</ul>`
+      : html`<${Vazio} texto="Nenhuma retirada ainda." />`}
+  </section>`;
+}
+```
+
+- [ ] **Step 3: Rodar e ver passar**
+
+Run: `cd prototipo && npm test && npm run montar && npm run verificar`
+Expected: todas as checagens `ok`, com código de saída 0.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add prototipo
+git commit -m "feat(prototipo): telas do morador (início, reservas, avisos, ocorrências, documentos, encomendas)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 8: Painel do síndico (desktop)
+
+**Files:**
+- Replace: `prototipo/src/ui/sindico.js`
+- Modify: `prototipo/verificar.mjs` (CHECAGENS)
+
+**Interfaces:**
+- Consumes:
+  - `aprovarReserva`, `recusarReserva`, `publicarComunicado`, `avancarOcorrencia`, `comentarOcorrencia`, `arquivarOcorrencia` e `lembrarEncomenda` (Task 4);
+  - as regras da Task 3;
+  - os componentes da Task 5.
+- Produces:
+  - `TelaSindico(props)` com as rotas `#/sindico/{inicio|reservas|comunicados[/novo|/id]|ocorrencias[/id]|documentos|encomendas}`.
+  - Textos usados pelo e2e:
+    - reservas: `[data-acao="aprovar-rN"]`;
+    - comunicados: rótulos "Tipo" e "Título", botão "Publicar comunicado", "N de M unidades leram";
+    - ocorrências: botões `Mover para "…"`, texto "Status alterado para …".
+
+- [ ] **Step 1: Acrescentar as checagens que falham**
+
+Em `prototipo/verificar.mjs`, acrescente ao final de `CHECAGENS`:
+```js
+  ['#/sindico/inicio', ['Reservas pendentes', 'Ocorrências abertas', '20 de 32 unidades com app', 'Precisa da sua atenção', 'Prazo vencido: OC-0042']],
+  ['#/sindico/reservas', ['Pendentes de aprovação', 'aprovar-r4', 'Regras das áreas', 'Sem limite']],
+  ['#/sindico/comunicados', ['Novo comunicado', '19 de 32 unidades leram']],
+  ['#/sindico/comunicados/c1', ['Confirmação de leitura', '19 de 32 unidades leram']],
+  ['#/sindico/comunicados/novo', ['Publicar comunicado', 'Aviso aos moradores']],
+  ['#/sindico/ocorrencias', ['OC-0042', 'Anônima', 'Vencido']],
+  ['#/sindico/ocorrencias/OC-0039', ['Mover para "Resolvida"', 'Encanador agendado']],
+  ['#/sindico/documentos', ['Vencido há 3 dias', 'Vence em 25 dias', 'Só conselho']],
+  ['#/sindico/encomendas', ['Reenviar lembrete', 'Retirada por Beatriz Rocha']],
+```
+
+Run: `cd prototipo && npm run montar && npm run verificar`
+Expected: FAIL nas linhas do síndico.
+
+- [ ] **Step 2: Substituir `src/ui/sindico.js`**
+
+```js
+import { html, useState } from '../vendor.js';
+import { CATEGORIAS, TIPOS_COMUNICADO, MODELOS_COMUNICADO, NOMES_CANAL, NOMES_STATUS, FLUXO_OCORRENCIA } from '../dados.js';
+import { areaPorId, statusDia, indicadoresSindico, slaVencido, alertasDocumentos, acoesOcorrencia, destinatarios, encomendaParada, moradoresDaUnidade } from '../regras.js';
+import { aprovarReserva, recusarReserva, publicarComunicado, avancarOcorrencia, comentarOcorrencia, arquivarOcorrencia, lembrarEncomenda } from '../acoes.js';
+import { isoDia, somarMes, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
+import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, LinhaTempo, Estrelas, PrevDoc, Campo } from './comum.js';
+
+const MENU_SINDICO = [['inicio', 'Início'], ['reservas', 'Reservas'], ['comunicados', 'Comunicados'], ['ocorrencias', 'Ocorrências'], ['documentos', 'Documentos'], ['encomendas', 'Encomendas']];
+const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
+const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
+
+function textoAlerta(alerta) {
+  const n = Math.abs(alerta.dias);
+  const dias = n === 1 ? '1 dia' : `${n} dias`;
+  if (alerta.dias < 0) return `Vencido há ${dias}`;
+  if (alerta.dias === 0) return 'Vence hoje';
+  return `Vence em ${dias}`;
+}
+
+function textoPrazo(oc) {
+  const sla = CATEGORIAS[oc.categoria].sla;
+  if (!sla) return 'Sem prazo';
+  return oc.status === 'aberta' ? `${sla} h para atender` : 'Atendida';
+}
+
+function tipoEtiquetaComunicado(c) {
+  return c.tipo === 'urgente' ? 'perigo' : 'info';
+}
+
+export function TelaSindico(props) {
+  const tela = MENU_SINDICO.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'inicio';
+  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas }[tela];
+  return html`<div class="painel">
+    <nav class="painel-menu" aria-label="Menu do síndico">
+      <p class="painel-usuario"><strong>Roberto Lima</strong><small>Síndico · apto 801</small></p>
+      ${MENU_SINDICO.map(([id, nome]) => html`<a key=${id} href=${`#/sindico/${id}`} class=${id === tela ? 'ativa' : ''} aria-current=${id === tela ? 'page' : undefined}>${nome}</a>`)}
+    </nav>
+    <div class="painel-conteudo"><${Conteudo} ...${props} /></div>
+  </div>`;
+}
+
+function SInicio({ estado, agora }) {
+  const ind = indicadoresSindico(estado, agora);
+  const pendentes = estado.reservas.filter((r) => r.status === 'pendente');
+  const vencidas = estado.ocorrencias.filter((o) => slaVencido(o, agora));
+  const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora));
+  const alertas = alertasDocumentos(estado.documentos, isoDia(agora));
+  const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
+  const cartoes = [
+    ['Reservas pendentes', ind.pendentes, '#/sindico/reservas', ind.pendentes ? 'alerta' : 'ok', 'Aguardando sua aprovação'],
+    ['Ocorrências abertas', ind.abertas, '#/sindico/ocorrencias', ind.slaVencidas ? 'perigo' : 'info', ind.slaVencidas ? `${ind.slaVencidas} com prazo vencido` : 'Todas dentro do prazo'],
+    ['Encomendas paradas', ind.paradas, '#/sindico/encomendas', ind.paradas ? 'alerta' : 'ok', 'Há mais de 3 dias na portaria'],
+    ['Documentos vencendo', ind.vencendo, '#/sindico/documentos', ind.vencendo ? 'perigo' : 'ok', 'Vencidos ou nos próximos 60 dias'],
+  ];
+  const semPendencias = !pendentes.length && !vencidas.length && !paradas.length && !alertas.length;
+  return html`<section>
+    <h1>Olá, Roberto</h1>
+    <div class="indicadores">
+      ${cartoes.map(([rotulo, valor, href, tipo, detalhe]) => html`<a key=${rotulo} class=${`indicador ind-${tipo}`} href=${href}><span>${rotulo}</span><strong>${valor}</strong><small>${detalhe}</small></a>`)}
+    </div>
+    <div class="cartao adesao">
+      <div class="linha-entre"><strong>Adesão dos moradores</strong><span>${ind.adesao.com} de ${ind.adesao.total} unidades com app</span></div>
+      <div class="barra" role="progressbar" aria-label="Adesão" aria-valuenow=${pct} aria-valuemin="0" aria-valuemax="100"><span style=${`width:${pct}%`}></span></div>
+      <small class="sub">Meta do piloto: 60% das unidades em 30 dias. Hoje: ${pct}%.</small>
+    </div>
+    <h2>Precisa da sua atenção</h2>
+    ${semPendencias
+      ? html`<${Vazio} texto="Nada pendente. Bom trabalho!" />`
+      : html`<ul class="atencao">
+          ${pendentes.map((r) => html`<li key=${r.id}><a href="#/sindico/reservas">Aprovar reserva: ${areaPorId(estado, r.areaId).nome}, apto ${r.unidade}, ${fmtDia(r.data)}</a></li>`)}
+          ${vencidas.map((o) => html`<li key=${o.id}><a href=${`#/sindico/ocorrencias/${o.id}`}>Prazo vencido: ${o.id} · ${CATEGORIAS[o.categoria].nome}</a></li>`)}
+          ${paradas.map((e) => html`<li key=${e.id}><a href="#/sindico/encomendas">Encomenda parada: apto ${e.unidade}, chegou ${haQuanto(e.chegadaEm, agora)}</a></li>`)}
+          ${alertas.map((a) => html`<li key=${a.documento.id}><a href="#/sindico/documentos">${textoAlerta(a)}: ${a.documento.titulo}</a></li>`)}
+        </ul>`}
+  </section>`;
+}
+
+function SReservas({ estado, executar, agora }) {
+  const hoje = isoDia(agora);
+  const [areaId, setAreaId] = useState('salao');
+  const [anoMes, setAnoMes] = useState(hoje.slice(0, 7));
+  const [dia, setDia] = useState(hoje);
+  const [recusando, setRecusando] = useState(null);
+  const [motivo, setMotivo] = useState(MOTIVOS_RECUSA[0]);
+  const [erro, setErro] = useState(null);
+  const pendentes = estado.reservas.filter((r) => r.status === 'pendente').sort((a, b) => a.data.localeCompare(b.data));
+  const doDia = estado.reservas.filter((r) => r.data === dia && r.areaId === areaId && r.status !== 'cancelada').sort((a, b) => a.inicio - b.inicio);
+  const bloqueios = estado.bloqueios.filter((b) => b.data === dia && b.areaId === areaId);
+
+  function aprovar(id) {
+    const r = executar((e) => aprovarReserva(e, id));
+    setErro(r.erro || null);
+  }
+
+  function recusar(id) {
+    const r = executar((e) => recusarReserva(e, id, motivo));
+    if (r.erro) {
+      setErro(r.erro);
+      return;
+    }
+    setRecusando(null);
+    setErro(null);
+  }
+
+  return html`<section>
+    <h1>Reservas</h1>
+    <h2>Pendentes de aprovação</h2>
+    <${Erro} texto=${erro} />
+    ${pendentes.length
+      ? html`<ul class="lista-cartoes">${pendentes.map((r) => html`<li key=${r.id} class="cartao">
+          <div class="linha-entre"><strong>${areaPorId(estado, r.areaId).nome} · apto ${r.unidade}</strong><span>${fmtDia(r.data)}, ${fmtHora(r.inicio)}–${fmtHora(r.fim)}</span></div>
+          <small class="sub">Solicitada ${haQuanto(r.criadaEm, agora)} · ${r.convidados.length} convidados · aprovação automática em 48 h se não houver resposta</small>
+          ${recusando === r.id
+            ? html`<div class="recusa">
+                <${Campo} rotulo="Motivo da recusa"><select value=${motivo} onChange=${(ev) => setMotivo(ev.target.value)}>${MOTIVOS_RECUSA.map((m) => html`<option key=${m} value=${m}>${m}</option>`)}</select><//>
+                <button type="button" class="btn perigo" onClick=${() => recusar(r.id)}>Confirmar recusa</button>
+                <button type="button" class="btn secundario" onClick=${() => setRecusando(null)}>Voltar</button>
+              </div>`
+            : html`<div class="acoes">
+                <button type="button" class="btn primario" data-acao=${`aprovar-${r.id}`} onClick=${() => aprovar(r.id)}>Aprovar</button>
+                <button type="button" class="btn secundario" data-acao=${`recusar-${r.id}`} onClick=${() => setRecusando(r.id)}>Recusar</button>
+              </div>`}
+        </li>`)}</ul>`
+      : html`<${Vazio} texto="Nenhuma reserva aguardando aprovação." />`}
+    <h2>Agenda</h2>
+    <div class="chips" role="group" aria-label="Área">
+      ${estado.areas.map((a) => html`<button type="button" key=${a.id} class="chip" aria-pressed=${a.id === areaId} onClick=${() => setAreaId(a.id)}>${a.nome}</button>`)}
+    </div>
+    <div class="agenda">
+      <${Calendario} anoMes=${anoMes} statusDe=${(iso) => statusDia(estado, areaId, iso)} selecionado=${dia} aoEscolher=${setDia} aoMudarMes=${(n) => setAnoMes(somarMes(anoMes, n))} />
+      <div>
+        <h3>${fmtDia(dia)}</h3>
+        ${bloqueios.map((b) => html`<p key=${b.id} class="cartao bloqueio">Bloqueado ${fmtHora(b.inicio)}–${fmtHora(b.fim)}: ${b.motivo}</p>`)}
+        ${doDia.length
+          ? html`<ul class="lista-cartoes">${doDia.map((r) => html`<li key=${r.id} class="cartao"><div class="linha-entre"><span>${fmtHora(r.inicio)}–${fmtHora(r.fim)} · apto ${r.unidade}</span><${EtqReserva} status=${r.status} /></div></li>`)}</ul>`
+          : !bloqueios.length && html`<${Vazio} texto="Nenhuma reserva neste dia." />`}
+      </div>
+    </div>
+    <h2>Regras das áreas</h2>
+    <div class="tabela-rolagem"><table class="tabela">
+      <thead><tr><th>Área</th><th>Tipo</th><th>Taxa</th><th>Aprovação</th><th>Antecedência</th><th>Limite</th></tr></thead>
+      <tbody>${estado.areas.map((a) => html`<tr key=${a.id}>
+        <td>${a.nome}</td>
+        <td>${a.tipo === 'periodo' ? 'Período' : 'Por hora'}</td>
+        <td>${a.taxa ? fmtMoeda(a.taxa) : '—'}</td>
+        <td>${a.aprovacao === 'manual' ? 'Manual' : 'Automática'}</td>
+        <td>${a.antecedenciaMin} a ${a.antecedenciaMax} dias</td>
+        <td>${a.limiteMes ? `${a.limiteMes} por mês` : 'Sem limite'}</td>
+      </tr>`)}</tbody>
+    </table></div>
+  </section>`;
+}
+
+function BarraLeitura({ lidas, total }) {
+  const pct = total ? Math.round((lidas / total) * 100) : 0;
+  return html`<div class="leitura">
+    <div class="barra" role="progressbar" aria-label="Leitura" aria-valuenow=${pct} aria-valuemin="0" aria-valuemax="100"><span style=${`width:${pct}%`}></span></div>
+    <small class="sub">${lidas} de ${total} unidades leram</small>
+  </div>`;
+}
+
+function SComunicados(props) {
+  const { estado, rota } = props;
+  if (rota.id === 'novo') return html`<${SNovoComunicado} executar=${props.executar} />`;
+  const c = rota.id ? estado.comunicados.find((x) => x.id === rota.id) : null;
+  if (c) return html`<${SDetalheComunicado} estado=${estado} c=${c} />`;
+  const lista = [...estado.comunicados].sort((a, b) => b.publicadoEm.localeCompare(a.publicadoEm));
+  return html`<section>
+    <div class="linha-entre"><h1>Comunicados</h1><a class="btn primario" href="#/sindico/comunicados/novo">Novo comunicado</a></div>
+    <ul class="lista-cartoes">${lista.map((x) => html`<li key=${x.id}><a class="cartao link" href=${`#/sindico/comunicados/${x.id}`}>
+      <div class="linha-entre"><span><${Etiqueta} tipo=${tipoEtiquetaComunicado(x)}>${TIPOS_COMUNICADO[x.tipo]}<//>${x.fixado ? ' 📌' : ''}</span><small class="sub">${fmtDataHora(x.publicadoEm)}</small></div>
+      <strong>${x.titulo}</strong>
+      <${BarraLeitura} lidas=${x.leituras.length} total=${destinatarios(estado, x.publico).length} />
+    </a></li>`)}</ul>
+  </section>`;
+}
+
+function SDetalheComunicado({ estado, c }) {
+  const dest = destinatarios(estado, c.publico);
+  return html`<section>
+    <a class="voltar" href="#/sindico/comunicados">‹ Comunicados</a>
+    <div><${Etiqueta} tipo=${tipoEtiquetaComunicado(c)}>${TIPOS_COMUNICADO[c.tipo]}<//></div>
+    <h1>${c.titulo}</h1>
+    <p class="sub">Publicado em ${fmtDataHora(c.publicadoEm)} · ${c.canais.map((k) => NOMES_CANAL[k]).join(', ')}</p>
+    <p class="texto-longo">${c.texto}</p>
+    ${c.anexo && html`<p class="anexo">📎 ${c.anexo}</p>`}
+    <h2>Confirmação de leitura</h2>
+    <${BarraLeitura} lidas=${c.leituras.length} total=${dest.length} />
+    <div class="grade-unidades">${dest.map((u) => {
+      const lida = c.leituras.includes(u);
+      return html`<span key=${u} class=${lida ? 'lida' : 'nao-lida'} aria-label=${`Apto ${u}: ${lida ? 'leu' : 'não leu'}`}>${u}</span>`;
+    })}</div>
+    <p class="legenda"><span class="lida">Leu</span> <span class="nao-lida">Não leu</span></p>
+    <p class="sub">${c.reacoes.util.length} acharam útil · ${c.reacoes.duvida.length} com dúvida</p>
+  </section>`;
+}
+
+function SNovoComunicado({ executar }) {
+  const [tipo, setTipo] = useState('geral');
+  const [titulo, setTitulo] = useState(MODELOS_COMUNICADO.geral.titulo);
+  const [texto, setTexto] = useState(MODELOS_COMUNICADO.geral.texto);
+  const [publicoTipo, setPublicoTipo] = useState('todos');
+  const [andar, setAndar] = useState('1');
+  const [unidades, setUnidades] = useState('');
+  const [canais, setCanais] = useState(['push', 'email', 'whatsapp']);
+  const [fixado, setFixado] = useState(false);
+  const [anexo, setAnexo] = useState(null);
+  const [erro, setErro] = useState(null);
+  const urgente = tipo === 'urgente';
+
+  function trocarTipo(novo) {
+    setTipo(novo);
+    setTitulo(MODELOS_COMUNICADO[novo].titulo);
+    setTexto(MODELOS_COMUNICADO[novo].texto);
+  }
+
+  function alternarCanal(k) {
+    setCanais(canais.includes(k) ? canais.filter((x) => x !== k) : [...canais, k]);
+  }
+
+  function publicar() {
+    let publico = { tipo: 'todos' };
+    if (publicoTipo === 'andar') publico = { tipo: 'andar', valor: andar };
+    if (publicoTipo === 'unidades') publico = { tipo: 'unidades', valor: unidades.split(/[\s,;]+/).filter(Boolean) };
+    const r = executar((e) => publicarComunicado(e, { tipo, titulo, texto, publico, canais, fixado, anexo }, new Date()));
+    if (r.erro) {
+      setErro(r.erro);
+      return;
+    }
+    ir('sindico', 'comunicados', r.id);
+  }
+
+  return html`<section class="formulario">
+    <a class="voltar" href="#/sindico/comunicados">‹ Comunicados</a>
+    <h1>Novo comunicado</h1>
+    <${Campo} rotulo="Tipo" dica="Trocar o tipo preenche um modelo pronto."><select value=${tipo} onChange=${(ev) => trocarTipo(ev.target.value)}>${Object.entries(TIPOS_COMUNICADO).map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>
+    <${Campo} rotulo="Título"><input value=${titulo} onInput=${(ev) => setTitulo(ev.target.value)} /><//>
+    <${Campo} rotulo="Texto"><textarea rows="7" value=${texto} onInput=${(ev) => setTexto(ev.target.value)}></textarea><//>
+    <fieldset>
+      <legend>Público</legend>
+      ${[['todos', 'Todo o condomínio'], ['andar', 'Um andar'], ['unidades', 'Unidades específicas']].map(([id, nome]) => html`<label key=${id} class="check"><input type="radio" name="publico" checked=${publicoTipo === id} onChange=${() => setPublicoTipo(id)} /><span>${nome}</span></label>`)}
+      ${publicoTipo === 'andar' && html`<${Campo} rotulo="Andar"><select value=${andar} onChange=${(ev) => setAndar(ev.target.value)}>${[1, 2, 3, 4, 5, 6, 7, 8].map((n) => html`<option key=${n} value=${String(n)}>${n}º andar</option>`)}</select><//>`}
+      ${publicoTipo === 'unidades' && html`<${Campo} rotulo="Unidades" dica="Separe por vírgula. Ex.: 302, 303"><input value=${unidades} onInput=${(ev) => setUnidades(ev.target.value)} /><//>`}
+    </fieldset>
+    <fieldset>
+      <legend>Canais</legend>
+      ${Object.entries(NOMES_CANAL).map(([k, nome]) => {
+        const travado = k === 'sms' && urgente;
+        return html`<label key=${k} class="check"><input type="checkbox" checked=${travado || canais.includes(k)} disabled=${travado} onChange=${() => alternarCanal(k)} /><span>${nome}${travado ? ' (obrigatório em urgentes)' : ''}</span></label>`;
+      })}
+    </fieldset>
+    <label class="check"><input type="checkbox" checked=${fixado} onChange=${(ev) => setFixado(ev.target.checked)} /><span>Fixar no topo</span></label>
+    ${anexo
+      ? html`<p class="anexo">📎 ${anexo} <button type="button" class="btn-link" onClick=${() => setAnexo(null)}>remover</button></p>`
+      : html`<button type="button" class="btn secundario" onClick=${() => setAnexo('comunicado-anexo.pdf')}>Anexar PDF</button>`}
+    <${Erro} texto=${erro} />
+    <button type="button" class="btn primario" onClick=${publicar}>Publicar comunicado</button>
+  </section>`;
+}
+
+function SOcorrencias(props) {
+  const { estado, rota, agora } = props;
+  const [filtro, setFiltro] = useState('ativas');
+  const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id) : null;
+  if (oc) return html`<${SDetalheOcorrencia} executar=${props.executar} agora=${agora} oc=${oc} />`;
+  const lista = estado.ocorrencias
+    .filter((o) => {
+      if (filtro === 'arquivadas') return o.arquivada;
+      if (o.arquivada) return false;
+      if (filtro === 'todas') return true;
+      if (filtro === 'ativas') return !['resolvida', 'fechada'].includes(o.status);
+      return o.status === filtro;
+    })
+    .sort((a, b) => b.criadaEm.localeCompare(a.criadaEm));
+  return html`<section>
+    <h1>Ocorrências</h1>
+    <div class="formulario"><${Campo} rotulo="Mostrar"><select value=${filtro} onChange=${(ev) => setFiltro(ev.target.value)}>${FILTROS_OCORRENCIA.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//></div>
+    <div class="tabela-rolagem"><table class="tabela">
+      <thead><tr><th>Protocolo</th><th>Categoria</th><th>Unidade</th><th>Status</th><th>Prazo</th><th>Aberta</th></tr></thead>
+      <tbody>${lista.map((o) => html`<tr key=${o.id} class="clicavel" onClick=${() => ir('sindico', 'ocorrencias', o.id)}>
+        <td><a href=${`#/sindico/ocorrencias/${o.id}`}>${o.id}</a></td>
+        <td>${CATEGORIAS[o.categoria].nome}${o.publica && html` <${Etiqueta}>Pública<//>`}</td>
+        <td>${o.anonima ? 'Anônima' : o.unidade}</td>
+        <td><${EtqOcorrencia} status=${o.status} arquivada=${o.arquivada} /></td>
+        <td>${slaVencido(o, agora) ? html`<${Etiqueta} tipo="perigo">Vencido<//>` : textoPrazo(o)}</td>
+        <td>${haQuanto(o.criadaEm, agora)}</td>
+      </tr>`)}</tbody>
+    </table></div>
+    ${!lista.length && html`<${Vazio} texto="Nenhuma ocorrência neste filtro." />`}
+  </section>`;
+}
+
+function SDetalheOcorrencia({ executar, agora, oc }) {
+  const [texto, setTexto] = useState('');
+  const [erro, setErro] = useState(null);
+  const acoes = acoesOcorrencia(oc);
+
+  function fazer(acao) {
+    const r = executar((e) => {
+      if (acao === 'avancar') return avancarOcorrencia(e, oc.id, new Date(), texto);
+      if (acao === 'comentar') return comentarOcorrencia(e, oc.id, texto, new Date());
+      return arquivarOcorrencia(e, oc.id);
+    });
+    if (r.erro) {
+      setErro(r.erro);
+      return;
+    }
+    setErro(null);
+    setTexto('');
+  }
+
+  return html`<section>
+    <a class="voltar" href="#/sindico/ocorrencias">‹ Ocorrências</a>
+    <p class="protocolo">Protocolo ${oc.id}</p>
+    <div class="linha-entre"><h1>${CATEGORIAS[oc.categoria].nome}</h1><${EtqOcorrencia} status=${oc.status} arquivada=${oc.arquivada} /></div>
+    <p class="sub">${oc.anonima ? 'Autor anônimo' : `Apto ${oc.unidade}`}${oc.local ? ` · ${oc.local}` : ''} · aberta ${haQuanto(oc.criadaEm, agora)}${slaVencido(oc, agora) ? ' · prazo vencido' : ''}</p>
+    <p class="texto-longo">${oc.descricao}</p>
+    ${oc.foto && html`<${FotoFalsa} rotulo="Foto enviada pelo morador" />`}
+    ${oc.publica && html`<p class="sub">Pública · ${oc.eutambem.length} moradores marcaram "eu também"</p>`}
+    ${oc.avaliacao && html`<div><span class="sub">Avaliação do morador</span><${Estrelas} valor=${oc.avaliacao} /></div>`}
+    <h2>Linha do tempo</h2>
+    <${LinhaTempo} linha=${oc.linha} />
+    ${acoes.length
+      ? html`<div class="cartao">
+          <${Campo} rotulo="Mensagem ao morador" dica="Opcional ao mudar o status; obrigatória para comentar."><textarea rows="2" value=${texto} onInput=${(ev) => setTexto(ev.target.value)}></textarea><//>
+          <${Erro} texto=${erro} />
+          <div class="acoes">${acoes.map((a) => html`<button type="button" key=${a.id} class=${a.id === 'avancar' ? 'btn primario' : 'btn secundario'} onClick=${() => fazer(a.id)}>${a.rotulo}</button>`)}</div>
+        </div>`
+      : html`<p class="sub">Ocorrência arquivada. O histórico fica guardado para auditoria e não pode ser apagado.</p>`}
+  </section>`;
+}
+
+function SDocumentos({ estado, agora }) {
+  const [busca, setBusca] = useState('');
+  const [aberto, setAberto] = useState(null);
+  const [historico, setHistorico] = useState(null);
+  const alertas = alertasDocumentos(estado.documentos, isoDia(agora));
+  const termo = busca.trim().toLowerCase();
+  const docs = estado.documentos.filter((d) => !termo || d.titulo.toLowerCase().includes(termo) || d.pasta.toLowerCase().includes(termo));
+  const pastas = [...new Set(docs.map((d) => d.pasta))];
+  const doc = aberto ? estado.documentos.find((d) => d.id === aberto) : null;
+  if (doc) return html`<section><${PrevDoc} documento=${doc} aoFechar=${() => setAberto(null)} /></section>`;
+  return html`<section>
+    <h1>Documentos</h1>
+    ${alertas.length > 0 && html`<div class="alertas">${alertas.map((a) => html`<p key=${a.documento.id} class=${`alerta-doc faixa-${a.faixa}`}><strong>${textoAlerta(a)}</strong> · ${a.documento.titulo} (${fmtDataCurta(a.documento.vencimento)})</p>`)}</div>`}
+    <div class="formulario"><${Campo} rotulo="Buscar documento"><input type="search" value=${busca} onInput=${(ev) => setBusca(ev.target.value)} placeholder="Ex.: ata, AVCB, regimento" /><//></div>
+    ${pastas.map((p) => html`<div key=${p}>
+      <h2>${p}</h2>
+      <ul class="lista-cartoes">${docs.filter((d) => d.pasta === p).map((d) => {
+        const atual = d.versoes[d.versoes.length - 1];
+        return html`<li key=${d.id} class="cartao">
+          <div class="linha-entre"><button type="button" class="btn-link" onClick=${() => setAberto(d.id)}>${d.titulo}</button>${d.visibilidade === 'conselho' && html`<${Etiqueta}>Só conselho<//>`}</div>
+          <small class="sub">Vigente: versão ${atual.versao} de ${fmtDataCurta(atual.data)}${d.vencimento ? ` · vence em ${fmtDataCurta(d.vencimento)}` : ''}</small>
+          ${d.versoes.length > 1 && html`<button type="button" class="btn-link" onClick=${() => setHistorico(historico === d.id ? null : d.id)}>${historico === d.id ? 'Ocultar histórico' : `Histórico (${d.versoes.length} versões)`}</button>`}
+          ${historico === d.id && html`<ul class="historico">${[...d.versoes].reverse().map((v) => html`<li key=${v.versao}>Versão ${v.versao} · ${fmtDataCurta(v.data)}</li>`)}</ul>`}
+        </li>`;
+      })}</ul>
+    </div>`)}
+    ${!docs.length && html`<${Vazio} texto="Nenhum documento encontrado." />`}
+  </section>`;
+}
+
+function SEncomendas({ estado, executar, agora }) {
+  const [mensagem, setMensagem] = useState(null);
+  const lista = [...estado.encomendas].sort((a, b) => b.chegadaEm.localeCompare(a.chegadaEm));
+
+  function lembrar(id) {
+    const r = executar((e) => lembrarEncomenda(e, id, new Date()));
+    setMensagem(r.erro || 'Lembrete reenviado por WhatsApp.');
+  }
+
+  return html`<section>
+    <h1>Encomendas</h1>
+    <${Sucesso} texto=${mensagem} />
+    <div class="tabela-rolagem"><table class="tabela">
+      <thead><tr><th>Unidade</th><th>Morador</th><th>Transportadora</th><th>Chegada</th><th>Situação</th><th><span class="sub">Ação</span></th></tr></thead>
+      <tbody>${lista.map((e) => {
+        const parada = encomendaParada(e, agora);
+        let situacao = html`<${Etiqueta} tipo="alerta">Aguardando<//>`;
+        if (e.status === 'retirada') situacao = html`<${Etiqueta} tipo="ok">Retirada por ${e.retiradaPor}<//>`;
+        else if (parada) situacao = html`<${Etiqueta} tipo="perigo">Parada, chegou ${haQuanto(e.chegadaEm, agora)}<//>`;
+        return html`<tr key=${e.id}>
+          <td>${e.unidade}</td>
+          <td>${moradoresDaUnidade(estado, e.unidade).map((m) => m.nome).join(', ') || '—'}</td>
+          <td>${e.transportadora}</td>
+          <td>${fmtDataHora(e.chegadaEm)}</td>
+          <td>${situacao}${e.lembretes ? html` <small class="sub">${e.lembretes} lembrete(s)</small>` : ''}</td>
+          <td>${e.status === 'aguardando' && html`<button type="button" class="btn secundario" onClick=${() => lembrar(e.id)}>Reenviar lembrete</button>`}</td>
+        </tr>`;
+      })}</tbody>
+    </table></div>
+  </section>`;
+}
+```
+
+- [ ] **Step 3: Rodar e ver passar**
+
+Run: `cd prototipo && npm test && npm run montar && npm run verificar`
+Expected: todas as checagens `ok`, com código de saída 0.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add prototipo
+git commit -m "feat(prototipo): painel do síndico (indicadores, aprovação, comunicados, ocorrências, documentos, encomendas)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 9: Roteiros ponta a ponta no navegador
+
+**Files:**
+- Create: `prototipo/e2e.mjs`
+
+**Interfaces:**
+- Consumes: `navegador.mjs` (Task 5) e os textos e atributos listados nas Tasks 6 a 8.
+- Produces: `npm run e2e`, que sai com código 0 quando os 4 roteiros, a persistência e a largura de 390 px passam.
+
+- [ ] **Step 1: Escrever `prototipo/e2e.mjs`**
+
+```js
+// Percorre os 4 roteiros da especificação num Chrome headless via DevTools Protocol (sem dependências).
+import { spawn } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { acharChrome, urlPagina } from './navegador.mjs';
+
+const AJUDANTES = `window.__e2e = {
+  visivel(el) { return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length); },
+  clicar(texto) {
+    for (const seletor of ['button', 'a']) {
+      const els = [...document.querySelectorAll(seletor)].filter((el) => this.visivel(el) && !el.disabled);
+      const el = els.find((e) => e.textContent.trim() === texto) || els.find((e) => e.textContent.includes(texto));
+      if (el) { el.click(); return true; }
+    }
+    throw new Error('Nada clicável com o texto: ' + texto);
+  },
+  clicarSeletor(seletor) {
+    const el = document.querySelector(seletor);
+    if (!el) throw new Error('Seletor não encontrado: ' + seletor);
+    if (el.disabled) throw new Error('Elemento desabilitado: ' + seletor);
+    el.click();
+    return true;
+  },
+  campo(rotulo) {
+    const label = [...document.querySelectorAll('label')].find((l) => { const s = l.querySelector(':scope > span'); return s && s.textContent.trim() === rotulo; });
+    if (!label || !label.control) throw new Error('Campo não encontrado: ' + rotulo);
+    return label.control;
+  },
+  preencher(rotulo, valor) {
+    const el = this.campo(rotulo);
+    el.value = valor;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  },
+  marcar(rotulo) { const el = this.campo(rotulo); if (!el.checked) el.click(); return true; },
+};`;
+
+const chrome = acharChrome();
+const perfil = mkdtempSync(join(tmpdir(), 'condofacil-e2e-'));
+const porta = 9300 + Math.floor(Math.random() * 500);
+const processo = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', `--user-data-dir=${perfil}`, `--remote-debugging-port=${porta}`, '--window-size=1366,900', 'about:blank'], { stdio: 'ignore' });
+
+const pausa = (ms) => new Promise((ok) => setTimeout(ok, ms));
+
+async function enderecoDaPagina() {
+  for (let i = 0; i < 75; i++) {
+    try {
+      const alvos = await (await fetch(`http://127.0.0.1:${porta}/json/list`)).json();
+      const pagina = alvos.find((a) => a.type === 'page');
+      if (pagina) return pagina.webSocketDebuggerUrl;
+    } catch {
+      // Chrome ainda subindo.
+    }
+    await pausa(200);
+  }
+  throw new Error('Não foi possível conectar ao Chrome');
+}
+
+const ws = new WebSocket(await enderecoDaPagina());
+await new Promise((ok, falha) => { ws.onopen = ok; ws.onerror = falha; });
+let sequencia = 0;
+const pendentes = new Map();
+ws.onmessage = (m) => {
+  const dados = JSON.parse(m.data);
+  if (dados.id && pendentes.has(dados.id)) {
+    pendentes.get(dados.id)(dados);
+    pendentes.delete(dados.id);
+  }
+};
+
+function cdp(method, params = {}) {
+  return new Promise((ok) => {
+    sequencia += 1;
+    pendentes.set(sequencia, ok);
+    ws.send(JSON.stringify({ id: sequencia, method, params }));
+  });
+}
+
+async function js(expressao) {
+  const r = await cdp('Runtime.evaluate', { expression: expressao, awaitPromise: true, returnByValue: true });
+  if (r.error) throw new Error(r.error.message);
+  if (r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text);
+  return r.result.result.value;
+}
+
+async function esperar(condicao, descricao, ms = 5000) {
+  const limite = Date.now() + ms;
+  while (Date.now() < limite) {
+    if (await js(condicao)) return;
+    await pausa(100);
+  }
+  throw new Error(`tempo esgotado esperando ${descricao}`);
+}
+
+const esperarTexto = (texto) => esperar(`document.body.innerText.includes(${JSON.stringify(texto)})`, `o texto "${texto}"`);
+const paginaPronta = () => esperar(`document.readyState === 'complete' && !!document.querySelector('.barra-demo')`, 'a página carregar', 20000);
+const clicar = async (texto) => { await js(`__e2e.clicar(${JSON.stringify(texto)})`); await pausa(120); };
+const clicarSeletor = async (seletor) => { await js(`__e2e.clicarSeletor(${JSON.stringify(seletor)})`); await pausa(120); };
+const preencher = async (rotulo, valor) => { await js(`__e2e.preencher(${JSON.stringify(rotulo)}, ${JSON.stringify(valor)})`); await pausa(80); };
+const marcar = async (rotulo) => { await js(`__e2e.marcar(${JSON.stringify(rotulo)})`); await pausa(80); };
+const irPara = async (hash) => { await js(`location.hash = ${JSON.stringify(hash)}`); await pausa(200); };
+
+const ROTEIROS = {
+  async encomenda() {
+    await irPara('#/portaria/registrar');
+    await clicar('Ler etiqueta');
+    await clicar('Registrar encomenda');
+    await esperarTexto('Morador avisado por WhatsApp');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Ana Souza')`, 'o selo de WhatsApp para a Ana');
+    const codigo = await js(`document.querySelector('.confirmacao').dataset.codigo`);
+    await irPara('#/morador/inicio');
+    await esperarTexto(codigo);
+    await irPara('#/portaria/entregar');
+    await preencher('Buscar por código ou unidade', codigo);
+    await clicar('Apto 302');
+    await preencher('Código de retirada', '000000');
+    await preencher('Quem retirou', 'Ana Souza');
+    await clicar('Confirmar entrega');
+    await esperarTexto('Código inválido');
+    await clicar('Escanear QR do morador');
+    await clicar('Confirmar entrega');
+    await esperarTexto('Entrega registrada');
+    await irPara('#/morador/encomendas');
+    await esperar(`document.body.innerText.split('Retirada por Ana Souza').length > 2`, 'duas retiradas da Ana no histórico');
+  },
+
+  async reserva() {
+    const alvo = await js(`(() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })()`);
+    await irPara('#/morador/reservas');
+    await clicar('Salão de festas');
+    if (!(await js(`!!document.querySelector('[data-dia="${alvo}"]')`))) await clicarSeletor('[aria-label="Próximo mês"]');
+    await clicarSeletor(`[data-dia="${alvo}"]`);
+    await clicar('Tarde (13h–18h)');
+    await marcar('Li e aceito o termo de responsabilidade');
+    await clicar('Solicitar reserva');
+    await esperarTexto('Aguardando aprovação');
+    await irPara('#/sindico/reservas');
+    await clicarSeletor('[data-acao="aprovar-r5"]');
+    await esperar(`!document.querySelector('[data-acao="aprovar-r5"]')`, 'a reserva sair da fila de aprovação');
+    await irPara('#/morador/reservas');
+    await esperar(`[...document.querySelectorAll('.m-lista li')].some((li) => li.innerText.includes('Salão de festas') && li.innerText.includes('Confirmada'))`, 'a reserva do salão confirmada para a Ana');
+  },
+
+  async ocorrencia() {
+    await irPara('#/morador/ocorrencias/nova');
+    await preencher('Categoria', 'vazamento');
+    await preencher('Descrição', 'Infiltração no teto do banheiro');
+    await clicar('Enviar ocorrência');
+    await esperarTexto('Protocolo OC-0043');
+    await irPara('#/sindico/ocorrencias/OC-0043');
+    for (const status of ['Em análise', 'Em andamento', 'Resolvida']) {
+      await clicar(`Mover para "${status}"`);
+      await esperarTexto(`Status alterado para ${status}`);
+    }
+    await irPara('#/morador/ocorrencias/OC-0043');
+    await clicarSeletor('[data-estrela="5"]');
+    await clicar('Enviar avaliação');
+    await esperarTexto('Sua avaliação');
+  },
+
+  async comunicado() {
+    await irPara('#/sindico/comunicados/novo');
+    await preencher('Tipo', 'evento');
+    await preencher('Título', 'Bazar de Natal');
+    await clicar('Publicar comunicado');
+    await esperarTexto('0 de 32 unidades leram');
+    const id = await js(`location.hash.split('/').pop()`);
+    await irPara('#/morador/avisos');
+    await clicar('Bazar de Natal');
+    await clicar('Li e estou ciente');
+    await esperarTexto('Você confirmou a leitura');
+    await irPara(`#/sindico/comunicados/${id}`);
+    await esperarTexto('1 de 32 unidades leram');
+  },
+
+  async persistencia() {
+    await irPara('#/sindico/comunicados');
+    await esperarTexto('Bazar de Natal');
+    await cdp('Page.reload');
+    await pausa(300);
+    await paginaPronta();
+    await esperarTexto('Bazar de Natal');
+    await clicar('Reiniciar demonstração');
+    await esperar(`!document.body.innerText.includes('Bazar de Natal')`, 'o reinício apagar o comunicado novo');
+  },
+
+  async larguraCelular() {
+    await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    await pausa(300);
+    for (const hash of ['#/sindico/inicio', '#/sindico/reservas', '#/sindico/comunicados/novo', '#/sindico/ocorrencias', '#/sindico/encomendas', '#/morador/inicio', '#/morador/reservas', '#/portaria/registrar', '#/portaria/entregar']) {
+      await irPara(hash);
+      const largura = await js('document.documentElement.scrollWidth');
+      if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);
+    }
+    await cdp('Emulation.clearDeviceMetricsOverride');
+  },
+};
+
+let falhou = false;
+try {
+  await cdp('Page.enable');
+  await cdp('Page.addScriptToEvaluateOnNewDocument', { source: AJUDANTES });
+  await cdp('Page.navigate', { url: `${urlPagina}#/sindico/inicio` });
+  await paginaPronta();
+  await clicar('Reiniciar demonstração');
+  for (const [nome, roteiro] of Object.entries(ROTEIROS)) {
+    try {
+      await roteiro();
+      console.log(`ok    ${nome}`);
+    } catch (e) {
+      falhou = true;
+      console.log(`FALHA ${nome}: ${e.message}`);
+    }
+  }
+} finally {
+  ws.close();
+  processo.kill();
+  await pausa(500);
+  try { rmSync(perfil, { recursive: true, force: true }); } catch { /* o Windows pode segurar o perfil por um instante */ }
+}
+process.exit(falhou ? 1 : 0);
+```
+
+- [ ] **Step 2: Rodar**
+
+Run: `cd prototipo && npm run montar && npm run e2e`
+Expected: seis linhas `ok` (encomenda, reserva, ocorrencia, comunicado, persistencia, larguraCelular) e código de saída 0.
+
+Se alguma falhar, use superpowers:systematic-debugging. O defeito está no código da interface, não no roteiro, a menos que o roteiro contradiga a especificação. Corrija, rode de novo `npm test && npm run montar && npm run verificar && npm run e2e` e só avance com tudo verde.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add prototipo
+git commit -m "test(prototipo): roteiros ponta a ponta no Chrome headless
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 10: Revisão visual e publicação
+
+**Files:**
+- Modify: `prototipo/src/estilos.css` (só se as capturas mostrarem defeito)
+- Generated: `prototipo/condofacil.html`
+
+- [ ] **Step 1: Gerar as capturas e olhar cada uma**
+
+Run: `cd prototipo && npm run montar && npm run verificar -- --capturas`
+Expected: checagens `ok` e 10 arquivos em `prototipo/capturas/`.
+
+Abra cada PNG (ferramenta Read) e confira:
+- nenhum texto cortado ou sobreposto;
+- molduras de celular e tablet visíveis no desktop e ausentes a 390 px;
+- contraste legível;
+- a barra de demonstração distinguível do produto.
+
+Corrija o CSS se precisar e repita o passo.
+
+- [ ] **Step 2: Rodar a bateria completa**
+
+Run: `cd prototipo && npm test && npm run montar && npm run verificar && npm run e2e`
+Expected: tudo verde.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add prototipo
+git commit -m "chore(prototipo): ajustes visuais após revisão das capturas
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+(Pule o commit se nada mudou.)
+
+- [ ] **Step 4: Publicar como Artifact**
+
+Publique `prototipo/condofacil.html` com a ferramenta Artifact:
+- `icon`: `building`
+- `description`: "Protótipo navegável do MVP do CondoFácil (síndico, morador e portaria) para entrevistas com síndicos."
+
+Guarde a URL devolvida e informe-a ao usuário.
+
+- [ ] **Step 5: Registrar a URL**
+
+Acrescente ao final da especificação, numa seção nova `## Publicação`, a linha `Protótipo publicado: <URL>`. Depois:
+
+```bash
+git add docs/superpowers/specs/2026-10-08-prototipo-navegavel-design.md
+git commit -m "docs: registra o link do protótipo publicado
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+A rodada de refinamento visual com o skill `frontend-design` vem depois deste plano, como etapa separada.
