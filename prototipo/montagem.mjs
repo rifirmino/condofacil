@@ -33,6 +33,7 @@ export const ORDEM = [
   'src/ui/comum.js',
   'src/ui/portaria.js',
   'src/ui/financeiro-sindico.js',
+  'src/ui/acordos.js',
   'src/ui/financeiro-morador.js',
   'src/ui/vendas.js',
   'src/ui/morador.js',

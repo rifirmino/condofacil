@@ -1,11 +1,13 @@
 import { html, useState } from '../vendor.js';
 import { ETAPAS_REGUA, CATEGORIAS_DESPESA, NOMES_FORMA, NOMES_RELACAO } from '../cobranca/dados.js';
-import { fmtReais, fmtReaisCurto, mesCurto, mesExtenso, situacaoCobranca, valorAtualizado, previaCompetencia, proximaCompetencia, etapasNoPlano, devedores, indicadoresFinanceiros, serieReceitasDespesas, tituloSerie } from '../cobranca/regras.js';
+import { fmtReais, fmtReaisCurto, mesCurto, mesExtenso, situacaoCobranca, valorAtualizado, previaCompetencia, proximaCompetencia, etapasNoPlano, devedores, indicadoresFinanceiros, serieReceitasDespesas, tituloSerie, rotuloCobranca } from '../cobranca/regras.js';
+import { alertasAcordos } from '../cobranca/acordos.js';
 import { emitirCompetencia, editarItemPrevia, baixaManual, cancelarEReemitir, enviarSegundaVia, executarRegua, salvarParametros } from '../cobranca/acoes.js';
 import { lerPreco } from '../vendas/regras.js';
 import { PLANOS, liberado, planoMinimo, mensalidade } from '../planos.js';
 import { isoDia, nomeMes, fmtDataCurta, fmtDataHora } from '../datas.js';
 import { Campo, Erro, Sucesso, Vazio, Etiqueta, QuadroIcone } from './comum.js';
+import { CAcordos } from './acordos.js';
 
 const ETQ_COBRANCA = { aberta: 'info', vencida: 'perigo', paga: 'ok', cancelada: 'neutro' };
 const NOMES_SITUACAO_COBRANCA = { aberta: 'Em aberto', vencida: 'Vencida', paga: 'Paga', cancelada: 'Cancelada' };
@@ -31,6 +33,7 @@ export function pendenciasCobranca(estado, hoje) {
   const itens = [];
   if (!fin.emitidas.includes(proxima)) itens.push({ chave: 'emitir', texto: `Emitir cobranças de ${mesExtenso(proxima)} (fechamento dia ${fin.parametros.diaFechamento})`, href: '#sindico.cobranca.previa' });
   for (const d of devedores(estado, hoje).filter((x) => x.dias >= 60)) itens.push({ chave: `juridico-${d.unidade}`, texto: `${d.unidade}: débito há mais de 60 dias, avaliar cobrança jurídica`, href: '#sindico.cobranca.emitidas' });
+  itens.push(...alertasAcordos(estado, hoje));
   return itens;
 }
 
@@ -76,8 +79,8 @@ function ListaDevedores({ estado, hoje }) {
     <h2>Devedores</h2>
     ${lista.length
       ? html`<div class="tabela-rolagem"><table class="tabela">
-          <thead><tr><th>Unidade</th><th>Responsável</th><th>Cobranças</th><th>Valor atualizado</th><th>Atraso</th><th>Etapa da régua</th></tr></thead>
-          <tbody>${lista.map((d) => html`<tr key=${d.unidade}><td>${d.unidade}</td><td>${d.responsavel ? d.responsavel.nome : '—'}</td><td>${d.cobrancas}</td><td>${fmtReais(d.valor)}</td><td>${d.dias} dias</td><td>${d.etapa ? d.etapa.nome : '—'}</td></tr>`)}</tbody>
+          <thead><tr><th>Unidade</th><th>Responsável</th><th>Cobranças</th><th>Valor atualizado</th><th>Atraso</th><th>Etapa da régua</th><th>Acordo</th></tr></thead>
+          <tbody>${lista.map((d) => html`<tr key=${d.unidade}><td>${d.unidade}</td><td>${d.responsavel ? d.responsavel.nome : '—'}</td><td>${d.cobrancas}</td><td>${fmtReais(d.valor)}</td><td>${d.dias} dias</td><td>${d.etapa ? d.etapa.nome : '—'}</td><td>${d.acordo ? html`<${Etiqueta} tipo=${d.acordo === 'ativo' ? 'info' : 'alerta'}>${d.acordo === 'ativo' ? 'acordo ativo' : 'proposta enviada'}<//>` : liberado(estado.plano, 'acordos') ? html`<a class="btn-link" data-propor=${d.unidade} href=${`#sindico.cobranca.novoacordo-${d.unidade}`}>Propor acordo</a>` : '—'}</td></tr>`)}</tbody>
         </table></div>`
       : html`<${Vazio} texto="Nenhuma unidade em atraso." />`}
     <small class="sub">Lista visível só para quem tem acesso financeiro. Nunca aparece para os moradores.</small>
@@ -126,12 +129,14 @@ export function PainelFinanceiro({ estado, agora }) {
   </div>`;
 }
 
-const ABAS_COBRANCA = [['previa', 'Prévia e emissão'], ['emitidas', 'Cobranças emitidas'], ['regua', 'Régua'], ['parametros', 'Parâmetros']];
+const ABAS_COBRANCA = [['previa', 'Prévia e emissão'], ['emitidas', 'Cobranças emitidas'], ['acordos', 'Acordos'], ['regua', 'Régua'], ['parametros', 'Parâmetros']];
 const FILTROS_COBRANCA = [['todas', 'Todas'], ['aberta', 'Em aberto'], ['vencida', 'Vencidas'], ['paga', 'Pagas'], ['cancelada', 'Canceladas']];
 
 export function SCobranca(props) {
-  const aba = ABAS_COBRANCA.some(([id]) => id === props.rota.id) ? props.rota.id : 'previa';
-  const Conteudo = { previa: CPrevia, emitidas: CEmitidas, regua: CRegua, parametros: CParametros }[aba];
+  const idRota = props.rota.id || '';
+  const deAcordo = idRota.startsWith('novoacordo') || idRota.startsWith('AC-');
+  const aba = deAcordo ? 'acordos' : ABAS_COBRANCA.some(([id]) => id === idRota) ? idRota : 'previa';
+  const Conteudo = { previa: CPrevia, emitidas: CEmitidas, acordos: CAcordos, regua: CRegua, parametros: CParametros }[aba];
   return html`<section>
     <h1>Cobrança</h1>
     <p class="faixa-asaas">Conta Asaas ativa · subconta do condomínio. O dinheiro cai direto na conta do condomínio; o CondoFácil só organiza emissão, baixa e relatórios.</p>
@@ -219,7 +224,7 @@ function CPrevia({ estado, executar }) {
   </div>`;
 }
 
-function DetalheCobranca({ estado, cobranca, executar, hoje, aoFechar }) {
+export function DetalheCobranca({ estado, cobranca, executar, hoje, aoFechar }) {
   const fin = estado.financeiro;
   const [comprovante, setComprovante] = useState('');
   const [data, setData] = useState(hoje);
@@ -240,7 +245,7 @@ function DetalheCobranca({ estado, cobranca, executar, hoje, aoFechar }) {
   }
 
   return html`<article class="cartao">
-    <div class="linha-entre"><strong>Apto ${cobranca.unidade} · ${nomeMes(cobranca.competencia)}</strong><${EtqCobranca} situacao=${situacao} /></div>
+    <div class="linha-entre"><strong>Apto ${cobranca.unidade} · ${rotuloCobranca(cobranca)}</strong><${EtqCobranca} situacao=${situacao} /></div>
     <small class="sub">${responsavel ? `${responsavel.nome} · ${responsavel.documento}` : 'Sem responsável'} · vencimento ${fmtDataCurta(cobranca.vencimento)}${cobranca.substituiu ? ` · substitui ${cobranca.substituiu}` : ''}</small>
     <ul class="itens-sacola">
       ${cobranca.itens.map((i, n) => html`<li key=${n}><span>${i.descricao}</span><span>${fmtReais(i.valor)}</span></li>`)}
@@ -268,12 +273,12 @@ function DetalheCobranca({ estado, cobranca, executar, hoje, aoFechar }) {
 function CEmitidas({ estado, executar, agora }) {
   const fin = estado.financeiro;
   const hoje = isoDia(agora);
-  const competencias = [...new Set(fin.cobrancas.map((c) => c.competencia))].sort().reverse();
+  const competencias = [...new Set(fin.cobrancas.filter((c) => !c.acordo).map((c) => c.competencia))].sort().reverse();
   const [competencia, setCompetencia] = useState(competencias[0]);
   const [filtro, setFiltro] = useState('todas');
   const [aberta, setAberta] = useState(null);
   const lista = fin.cobrancas
-    .filter((c) => c.competencia === competencia && (filtro === 'todas' || situacaoCobranca(c, hoje) === filtro))
+    .filter((c) => !c.acordo && c.competencia === competencia && (filtro === 'todas' || situacaoCobranca(c, hoje) === filtro))
     .sort((a, b) => a.unidade.localeCompare(b.unidade) || a.id.localeCompare(b.id));
   const selecionada = aberta ? fin.cobrancas.find((c) => c.id === aberta) : null;
   return html`<div class="pilha">
@@ -322,7 +327,7 @@ function CRegua({ estado, executar }) {
     <small class="sub">A régua para sozinha quando a cobrança é paga.</small>
     <button type="button" class="btn primario" data-acao="executar-regua" onClick=${executarHoje}>Executar a régua de hoje</button>
     ${resumo && (resumo.length
-      ? html`<div class="cartao"><strong>${resumo.length} avisos enviados</strong><ul class="itens-sacola">${resumo.map((r, n) => html`<li key=${n}><span>Apto ${r.unidade} · ${nomeMes(r.competencia)}</span><span>${r.etapa.nome}</span></li>`)}</ul></div>`
+      ? html`<div class="cartao"><strong>${resumo.length} avisos enviados</strong><ul class="itens-sacola">${resumo.map((r, n) => html`<li key=${n}><span>Apto ${r.unidade} · ${r.rotulo}</span><span>${r.etapa.nome}</span></li>`)}</ul></div>`
       : html`<p class="sucesso">Nenhum aviso pendente hoje.</p>`)}
   </div>`;
 }

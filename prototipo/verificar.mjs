@@ -45,8 +45,12 @@ const CHECAGENS = [
   ['#sindico.cobranca.emitidas', ['Competência', 'Vencida', 'Auditoria']],
   ['#sindico.cobranca.regua', ['30 dias após', 'Disponível no Avançado', 'Executar a régua de hoje']],
   ['#sindico.cobranca.parametros', ['Multa por atraso (%)', 'Composição da taxa', 'Pintura da fachada']],
-  ['#sindico.inicio', ['Saldo em caixa', 'R$ 48.350', 'Arrecadado em', '91%', '3 de 32', 'Despesas do mês', 'Despesa superou a receita só em julho', 'Para onde foi o dinheiro', 'Devedores', 'Helena Prado', 'Emitir cobranças de', 'Operação', 'Reservas pendentes']],
+  ['#sindico.inicio', ['Saldo em caixa', 'R$ 48.350', 'Arrecadado em', '91%', '4 de 32', 'Despesas do mês', 'Despesa superou a receita só em julho', 'Para onde foi o dinheiro', 'Devedores', 'Helena Prado', 'Emitir cobranças de', 'Operação', 'Reservas pendentes']],
   ['#sindico.vendas', ['Salgados assados para festas', 'aprovar-vendedor-102', 'Juliana Costa · apto 104', 'Bicicleta infantil aro 16', 'Pedidos no mês']],
+  ['#sindico.cobranca.acordos', ['AC-001', 'Otávio Reis', '1 de 4 parcelas pagas', 'Ativo', 'Novo acordo']],
+  ['#sindico.cobranca.AC-001', ['Acordo AC-001 · apto 304', 'Parcela 2/4', 'Vencida', 'Proposta de acordo', 'Desconto em acordo', 'Acordo aceito']],
+  ['#sindico.cobranca.novoacordo-704', ['Novo acordo', 'Perdoar a multa', 'Total do acordo', 'Enviar proposta']],
+  ['#sindico.inicio', ['Acordo AC-001 (304): parcela 2 vencida', 'Propor acordo', 'acordo ativo', '!>Acordos<small>']],
 ];
 
 // Só larguras de desktop: o Chrome headless impõe janela mínima maior que um celular; a largura de 390 px é medida no e2e.

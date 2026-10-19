@@ -451,3 +451,9 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 .pagamento .campo { width: 100%; }
 .pagamento input[readonly] { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .indicador.fin strong { font-size: 1.7rem; white-space: nowrap; }
+
+/* Fase 2: acordos */
+.cronograma li { flex-wrap: wrap; gap: 4px 8px; }
+.cronograma-fim { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.simulacao strong { color: var(--titulo); }
+.proposta-acordo { border-left: 4px solid var(--laranja); }
