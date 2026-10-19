@@ -1,4 +1,5 @@
-import { CATEGORIAS, FLUXO_OCORRENCIA, NOMES_STATUS } from './dados.js';
+import { FLUXO_OCORRENCIA, NOMES_STATUS } from './dados.js';
+import { prazosVencidos } from './notificacoes/regras.js';
 import { isoDia, diferencaDias, momento, horasEntre, fmtHora } from './datas.js';
 
 export const STATUS_ATIVOS = ['pendente', 'confirmada'];
@@ -96,9 +97,8 @@ export function alertasDocumentos(documentos, hoje) {
 }
 
 export function slaVencido(oc, agora) {
-  const sla = CATEGORIAS[oc.categoria] && CATEGORIAS[oc.categoria].sla;
-  if (!sla || oc.status !== 'aberta') return false;
-  return horasEntre(new Date(oc.criadaEm), agora) > sla;
+  const v = prazosVencidos(oc, agora);
+  return v.resposta !== null || v.solucao !== null;
 }
 
 export function statusDia(estado, areaId, data) {

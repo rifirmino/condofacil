@@ -9,20 +9,32 @@ export const SINDICO = 'Síndico Roberto Lima';
 export const PORTEIRO_DIA = 'Seu José';
 
 export const CATEGORIAS = {
-  barulho: { nome: 'Barulho', sla: 48 },
-  vazamento: { nome: 'Vazamento', sla: 24 },
-  vaga: { nome: 'Vaga ocupada', sla: 24 },
-  lampada: { nome: 'Lâmpada queimada', sla: 72 },
-  seguranca: { nome: 'Segurança', sla: 24 },
-  limpeza: { nome: 'Limpeza', sla: 72 },
-  sugestao: { nome: 'Sugestão', sla: null },
-  vizinho: { nome: 'Reclamação de vizinho', sla: 72 },
-  pet: { nome: 'Pet', sla: 72 },
-  elogio: { nome: 'Elogio', sla: null },
+  vazamento: { nome: 'Vazamento', tipo: 'manutencao', prioridade: 'urgente' },
+  eletrica: { nome: 'Elétrica/iluminação', tipo: 'manutencao', prioridade: 'alta' },
+  elevador: { nome: 'Elevador', tipo: 'manutencao', prioridade: 'alta' },
+  portao: { nome: 'Portão/garagem', tipo: 'manutencao', prioridade: 'alta' },
+  interfone: { nome: 'Interfone', tipo: 'manutencao', prioridade: 'normal' },
+  limpeza: { nome: 'Limpeza', tipo: 'manutencao', prioridade: 'normal' },
+  piscina: { nome: 'Piscina', tipo: 'manutencao', prioridade: 'normal' },
+  outros: { nome: 'Outros', tipo: 'manutencao', prioridade: 'normal' },
+  jardim: { nome: 'Jardim', tipo: 'manutencao', prioridade: 'baixa' },
+  seguranca: { nome: 'Segurança', tipo: 'irregularidade', prioridade: 'alta' },
+  barulho: { nome: 'Barulho', tipo: 'irregularidade', prioridade: 'normal' },
+  vaga: { nome: 'Vaga ocupada', tipo: 'irregularidade', prioridade: 'normal' },
+  lixo: { nome: 'Lixo fora do lugar', tipo: 'irregularidade', prioridade: 'normal' },
+  pet: { nome: 'Pet', tipo: 'irregularidade', prioridade: 'normal' },
+  obra: { nome: 'Obra fora do horário', tipo: 'irregularidade', prioridade: 'normal' },
+  area_comum: { nome: 'Uso indevido de área comum', tipo: 'irregularidade', prioridade: 'normal' },
+  sugestao: { nome: 'Sugestão', tipo: 'outro', prioridade: 'baixa' },
+  elogio: { nome: 'Elogio', tipo: 'outro', prioridade: 'baixa' },
 };
 
+export const TIPOS_NOTIFICACAO = { manutencao: 'Manutenção', irregularidade: 'Irregularidade', outro: 'Sugestão ou elogio' };
+export const PRIORIDADES = { urgente: { nome: 'Urgente', resposta: 1, solucao: 24 }, alta: { nome: 'Alta', resposta: 4, solucao: 72 }, normal: { nome: 'Normal', resposta: 24, solucao: 168 }, baixa: { nome: 'Baixa', resposta: 72, solucao: null } };
+export const ORDEM_PRIORIDADE = ['urgente', 'alta', 'normal', 'baixa'];
+
 export const FLUXO_OCORRENCIA = ['aberta', 'em_analise', 'em_andamento', 'resolvida', 'fechada'];
-export const NOMES_STATUS = { aberta: 'Aberta', em_analise: 'Em análise', em_andamento: 'Em andamento', resolvida: 'Resolvida', fechada: 'Fechada' };
+export const NOMES_STATUS = { aberta: 'Recebida', em_analise: 'Em análise', em_andamento: 'Em atendimento', resolvida: 'Resolvida', fechada: 'Fechada' };
 export const NOMES_STATUS_RESERVA = { pendente: 'Pendente', confirmada: 'Confirmada', recusada: 'Recusada', cancelada: 'Cancelada' };
 
 export const TIPOS_COMUNICADO = {
@@ -72,9 +84,9 @@ export function dadosIniciais(agora = new Date()) {
   ];
 
   return comAcordoInicial({
-    versao: 4,
+    versao: 5,
     geradoEm: hoje,
-    proximoProtocolo: 43,
+    proximoProtocolo: 44,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
     pessoas,
     areas: [
@@ -98,7 +110,7 @@ export function dadosIniciais(agora = new Date()) {
       { id: 'c5', tipo: 'urgente', titulo: 'Elevador 2 parado', texto: 'O elevador 2 está parado aguardando o técnico. Use o elevador 1 ou a escada. Avisaremos assim que voltar a funcionar.', publico: { tipo: 'todos' }, canais: [...canaisPadrao, 'sms'], fixado: false, anexo: null, publicadoEm: em(-1, 21), leituras: leramSemAna(22), reacoes: { util: ['702', '703'], duvida: [] } },
     ],
     ocorrencias: [
-      { id: 'OC-0037', categoria: 'lampada', descricao: 'Lâmpada do hall do 5º andar queimada.', local: '5º andar', unidade: '502', anonima: false, publica: false, foto: false, status: 'resolvida', eutambem: [], linha: [
+      { id: 'OC-0037', categoria: 'eletrica', descricao: 'Lâmpada do hall do 5º andar queimada.', local: '5º andar', unidade: '502', anonima: false, publica: false, foto: false, status: 'resolvida', eutambem: [], linha: [
         { em: em(-9, 19), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Larissa Moura' },
         { em: em(-8, 9), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
         { em: em(-8, 10), status: 'em_andamento', texto: 'Zelador vai trocar hoje à tarde', autor: 'Síndico' },
@@ -113,7 +125,7 @@ export function dadosIniciais(agora = new Date()) {
         { em: em(-3, 10), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
         { em: em(-2, 9), status: 'em_andamento', texto: 'Encanador agendado para avaliar a prumada', autor: 'Síndico' },
       ], avaliacao: null, arquivada: false, criadaEm: em(-3, 8) },
-      { id: 'OC-0040', categoria: 'seguranca', descricao: 'Elevador 2 parado entre o 3º e o 4º andar.', local: 'Elevador 2', unidade: '702', anonima: false, publica: true, foto: false, status: 'em_andamento', eutambem: ['101', '104', '201', '404', '501', '603', '703'], linha: [
+      { id: 'OC-0040', categoria: 'elevador', descricao: 'Elevador 2 parado entre o 3º e o 4º andar.', local: 'Elevador 2', unidade: '702', anonima: false, publica: true, foto: false, status: 'em_andamento', eutambem: ['101', '104', '201', '404', '501', '603', '703'], linha: [
         { em: em(-1, 20), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Sônia Araújo' },
         { em: em(-1, 20, 30), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
         { em: em(-1, 21), status: 'em_andamento', texto: 'Técnico da empresa de elevadores acionado', autor: 'Síndico' },
@@ -125,7 +137,10 @@ export function dadosIniciais(agora = new Date()) {
       { id: 'OC-0042', categoria: 'vaga', descricao: 'Carro desconhecido parado na minha vaga (G1-18) desde ontem.', local: 'Garagem G1, vaga 18', unidade: UNIDADE_ANA, anonima: false, publica: false, foto: true, status: 'aberta', eutambem: [], linha: [
         { em: em(-2, 7), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Ana Souza' },
       ], avaliacao: null, arquivada: false, criadaEm: em(-2, 7) },
-    ],
+      { id: 'OC-0043', categoria: 'obra', descricao: 'Furadeira no domingo às 8h no 5º andar, parece ser no 503.', local: '5º andar', unidade: '702', anonima: false, publica: false, foto: false, status: 'aberta', eutambem: [], linha: [
+        { em: em(0, 5), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Sônia Araújo' },
+      ], avaliacao: null, arquivada: false, criadaEm: em(0, 5) },
+    ].map((o) => ({ prioridade: CATEGORIAS[o.categoria].prioridade, os: null, advertencia: null, motivoArquivamento: null, ...o })),
     documentos: [
       { id: 'd1', pasta: 'Convenção', titulo: 'Convenção do condomínio', versoes: [{ versao: 1, data: '2019-03-10' }], visibilidade: 'todos' },
       { id: 'd2', pasta: 'Regimento interno', titulo: 'Regimento interno', versoes: [{ versao: 1, data: '2019-03-10' }, { versao: 2, data: '2024-05-20' }], visibilidade: 'todos' },

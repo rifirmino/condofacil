@@ -1,5 +1,5 @@
 import { html, useState } from '../vendor.js';
-import { CATEGORIAS, TIPOS_COMUNICADO, MODELOS_COMUNICADO, NOMES_CANAL, NOMES_STATUS, FLUXO_OCORRENCIA } from '../dados.js';
+import { CATEGORIAS, PRIORIDADES, TIPOS_COMUNICADO, MODELOS_COMUNICADO, NOMES_CANAL, NOMES_STATUS, FLUXO_OCORRENCIA } from '../dados.js';
 import { areaPorId, statusDia, indicadoresSindico, slaVencido, alertasDocumentos, acoesOcorrencia, destinatarios, encomendaParada, moradoresDaUnidade } from '../regras.js';
 import { aprovarReserva, recusarReserva, publicarComunicado, avancarOcorrencia, comentarOcorrencia, arquivarOcorrencia, lembrarEncomenda } from '../acoes.js';
 import { aprovarVendedor, recusarVendedor, suspenderVendedor, reativarVendedor, ocultarAnuncio, mostrarAnuncio } from '../vendas/acoes.js';
@@ -22,7 +22,7 @@ function textoAlerta(alerta) {
 }
 
 function textoPrazo(oc) {
-  const sla = CATEGORIAS[oc.categoria].sla;
+  const sla = PRIORIDADES[oc.prioridade].solucao;
   if (!sla) return 'Sem prazo';
   return oc.status === 'aberta' ? `${sla} h para atender` : 'Atendida';
 }

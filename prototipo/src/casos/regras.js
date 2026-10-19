@@ -144,7 +144,7 @@ export const CASOS_REGRAS = [
   {
     nome: 'indicadores do síndico',
     rodar() {
-      igual(indicadoresSindico(dadosIniciais(AGORA_TESTE), AGORA_TESTE), { pendentes: 1, abertas: 4, slaVencidas: 1, paradas: 1, vencendo: 3, adesao: { com: 20, total: 32 } });
+      igual(indicadoresSindico(dadosIniciais(AGORA_TESTE), AGORA_TESTE), { pendentes: 1, abertas: 5, slaVencidas: 2, paradas: 1, vencendo: 3, adesao: { com: 20, total: 32 } });
     },
   },
 ];

@@ -88,19 +88,19 @@ export const CASOS_ACOES = [
     nome: 'roteiro ocorrência: protocolo, status, avaliação e arquivamento',
     rodar() {
       const r = abrirOcorrencia(dadosIniciais(AGORA_TESTE), { categoria: 'vazamento', descricao: 'Infiltração no teto', local: 'Banheiro', unidade: '302' }, AGORA_TESTE);
-      igual([r.id, r.estado.proximoProtocolo, r.notificacao.para], ['OC-0043', 44, SINDICO]);
+      igual([r.id, r.estado.proximoProtocolo, r.notificacao.para], ['OC-0044', 45, SINDICO]);
       let e = r.estado;
       for (const status of ['em_analise', 'em_andamento', 'resolvida', 'fechada']) {
-        const passo = avancarOcorrencia(e, 'OC-0043', AGORA_TESTE);
-        igual(acharPorId(passo.estado.ocorrencias, 'OC-0043').status, status);
+        const passo = avancarOcorrencia(e, 'OC-0044', AGORA_TESTE);
+        igual(acharPorId(passo.estado.ocorrencias, 'OC-0044').status, status);
         igual(passo.notificacao.para, 'Ana Souza');
         e = passo.estado;
       }
-      igual(avancarOcorrencia(e, 'OC-0043', AGORA_TESTE).erro, 'Ocorrência já está fechada');
-      const av = avaliarOcorrencia(e, 'OC-0043', 5);
-      igual(acharPorId(av.estado.ocorrencias, 'OC-0043').avaliacao, 5);
-      const arq = arquivarOcorrencia(av.estado, 'OC-0043');
-      const final = acharPorId(arq.estado.ocorrencias, 'OC-0043');
+      igual(avancarOcorrencia(e, 'OC-0044', AGORA_TESTE).erro, 'Ocorrência já está fechada');
+      const av = avaliarOcorrencia(e, 'OC-0044', 5);
+      igual(acharPorId(av.estado.ocorrencias, 'OC-0044').avaliacao, 5);
+      const arq = arquivarOcorrencia(av.estado, 'OC-0044');
+      const final = acharPorId(arq.estado.ocorrencias, 'OC-0044');
       igual([final.arquivada, final.linha.length], [true, 5]);
     },
   },

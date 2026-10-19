@@ -16,6 +16,11 @@ const RECURSOS_PLANO = {
   orcadoRealizado: 'avancado',
   acordos: 'intermediario',
   termoConfissao: 'avancado',
+  notificacoesPrazo: 'intermediario',
+  zelador: 'intermediario',
+  indicadorAtendimento: 'avancado',
+  cotacoes: 'avancado',
+  caixaPequeno: 'avancado',
 };
 
 const ORDEM_PLANOS = ['basico', 'intermediario', 'avancado'];
