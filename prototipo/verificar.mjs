@@ -53,6 +53,11 @@ const CHECAGENS = [
   ['#sindico.cobranca.novoacordo-704', ['Novo acordo', 'Perdoar a multa', 'Total do acordo', 'Enviar proposta']],
   ['#sindico.inicio', ['Acordo AC-001 (304): parcela 2 vencida', 'Propor acordo', 'acordo ativo', '!>Acordos<small>']],
   ['#sindico.inicio', ['OC-0039: solução vencida há', 'OS-002 concluída: validar', 'CP-001 aguardando aprovação', 'Notificações abertas', '!Em breve · Intermediário</small></span><span class="em-breve" aria-disabled="true">Zelador']],
+  ['#sindico.manutencao', ['Manutenção', 'OS-003', 'Em execução', 'Garagem, vaga 12', 'OS-002', 'Concluída', 'Nova OS']],
+  ['#sindico.manutencao.compras', ['CP-001', 'Aguardando aprovação', 'Registro de 3/4', 'CP-002', 'Recebida']],
+  ['#sindico.manutencao.CP-001', ['Aprovar', 'Recusar', 'Casa do Encanador', 'OS-003']],
+  ['#sindico.manutencao.caixa', ['Caixa pequeno', 'Disponível no plano Avançado']],
+  ['#sindico.manutencao.OS-002', ['Validar', 'OC-0037', 'Concluída com fotos do depois', 'Foto do depois']],
 ];
 
 // Só larguras de desktop: o Chrome headless impõe janela mínima maior que um celular; a largura de 390 px é medida no e2e.
