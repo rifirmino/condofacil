@@ -62,7 +62,7 @@ export const CASOS_COBRANCA_REGRAS = [
       igual(etapaRegua(cobrancaFase2(e, '704', '2026-09'), HOJE_FASE2).id, 'atraso30');
       igual(etapaRegua(cobrancaFase2(e, '302', '2026-10'), HOJE_FASE2), null);
       const resumo = (plano) => pendentesDaRegua(e, HOJE_FASE2, plano).map((p) => [p.cobranca.unidade, p.cobranca.competencia, p.etapa.id]);
-      igual(resumo('intermediario'), [['202', '2026-10', 'atraso1'], ['503', '2026-10', 'atraso1'], ['704', '2026-10', 'atraso1'], ['704', '2026-09', 'atraso15'], ['202', '2026-09', 'atraso15'], ['202', '2026-08', 'atraso60']]);
+      igual(resumo('intermediario'), [['202', '2026-10', 'atraso1'], ['503', '2026-10', 'atraso1'], ['704', '2026-10', 'atraso1'], ['704', '2026-09', 'atraso15'], ['202', '2026-09', 'atraso15'], ['202', '2026-08', 'atraso60'], ['304', '2026-10', 'atraso1']]);
       igual(resumo('basico'), []);
       igual(resumo('avancado')[3], ['704', '2026-09', 'atraso30']);
     },
@@ -73,8 +73,15 @@ export const CASOS_COBRANCA_REGRAS = [
       igual(devedores(estadoFase2(), HOJE_FASE2).map((d) => [d.unidade, d.cobrancas, d.valor, d.dias, d.etapa.id, d.responsavel.nome]), [
         ['202', 3, 268093, 70, 'atraso60', 'Helena Prado'],
         ['704', 2, 177845, 39, 'atraso30', 'Vicente Moraes'],
+        ['304', 1, 29399, 9, 'atraso1', 'Otávio Reis'],
         ['503', 1, 88490, 9, 'atraso1', 'Márcio Lopes'],
       ]);
+    },
+  },
+  {
+    nome: 'cobrança: devedores marcam acordo ativo',
+    rodar() {
+      igual(devedores(estadoFase2(), HOJE_FASE2).map((d) => [d.unidade, d.acordo]), [['202', null], ['704', null], ['304', 'ativo'], ['503', null]]);
     },
   },
   {
@@ -83,7 +90,7 @@ export const CASOS_COBRANCA_REGRAS = [
       igual(indicadoresFinanceiros(estadoFase2(), HOJE_FASE2), {
         saldo: { valor: 4835000, despesaMedia: 1909545, alerta: false },
         arrecadado: { competencia: '2026-10', recebido: 2567200, previsto: 2826700, pct: 91, alerta: false, proxima: null },
-        inadimplencia: { unidades: 3, total: 32, pct: 9.4, valor: 534428, alerta: false },
+        inadimplencia: { unidades: 4, total: 32, pct: 12.5, valor: 563827, alerta: true },
         despesas: { valor: 1810000, orcado: 1790000, desvio: 1.1, alerta: false },
       });
     },

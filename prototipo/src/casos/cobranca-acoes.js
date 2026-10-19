@@ -21,11 +21,11 @@ export const CASOS_COBRANCA_ACOES = [
       igual(emitirCompetencia(e, '2026-11', 'morador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
       igual(emitirCompetencia(e, '2026-10', 'sindico', AGORA_FASE2).erro, 'Competência já emitida');
       const r = emitirCompetencia(e, '2026-11', 'sindico', AGORA_FASE2);
-      igual([r.emitidas, r.notificacao.para, r.estado.financeiro.cobrancas.filter((c) => c.competencia === '2026-11').length], [31, '31 responsáveis', 31]);
+      igual([r.emitidas, r.notificacao.para, r.estado.financeiro.cobrancas.filter((c) => c.competencia === '2026-11' && !c.acordo).length], [31, '31 responsáveis', 31]);
       igual(cobrancaPorId(r.estado, 'CB-2026-11-302').valor, 86500);
       igual(cobrancaPorId(r.estado, 'CB-2026-11-403'), undefined);
       igual(indicadoresFinanceiros(r.estado, HOJE_ACOES).arrecadado.proxima, { competencia: '2026-11', pagas: 0, total: 31 });
-      igual(r.estado.financeiro.auditoria[0].acao, 'Emissão em lote');
+      igual(r.estado.financeiro.auditoria.at(-1).acao, 'Emissão em lote');
     },
   },
   {
@@ -56,7 +56,7 @@ export const CASOS_COBRANCA_ACOES = [
       igual(baixaManual(e, 'CB-2026-10-503', { data: HOJE_ACOES, comprovante: 'x.pdf' }, 'morador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
       const r = baixaManual(e, 'CB-2026-10-503', { data: HOJE_ACOES, comprovante: 'comprovante-503.pdf' }, 'sindico', AGORA_FASE2);
       const c = cobrancaPorId(r.estado, 'CB-2026-10-503');
-      igual([c.status, c.forma, c.baixaManual.comprovante, devedores(r.estado, HOJE_ACOES).length], ['paga', 'manual', 'comprovante-503.pdf', 2]);
+      igual([c.status, c.forma, c.baixaManual.comprovante, devedores(r.estado, HOJE_ACOES).length], ['paga', 'manual', 'comprovante-503.pdf', 3]);
       igual(r.estado.financeiro.auditoria.at(-1).acao, 'Baixa manual');
     },
   },
@@ -65,7 +65,7 @@ export const CASOS_COBRANCA_ACOES = [
     rodar() {
       const e = dadosIniciais(AGORA_FASE2);
       const r = executarRegua(e, AGORA_FASE2);
-      igual([r.resumo.length, r.notificacao.para], [6, '3 responsáveis']);
+      igual([r.resumo.length, r.notificacao.para], [7, '4 responsáveis']);
       igual(cobrancaPorId(r.estado, 'CB-2026-10-503').regua.map((x) => x.etapa), ['antes5', 'vencimento', 'atraso1']);
       const deNovo = executarRegua(r.estado, AGORA_FASE2);
       igual([deNovo.resumo, deNovo.notificacao], [[], undefined]);
@@ -77,7 +77,7 @@ export const CASOS_COBRANCA_ACOES = [
     rodar() {
       const r = cancelarEReemitir(dadosIniciais(AGORA_FASE2), 'CB-2026-10-503', 'sindico', AGORA_FASE2);
       igual([cobrancaPorId(r.estado, 'CB-2026-10-503').status, r.id, cobrancaPorId(r.estado, r.id).substituiu, cobrancaPorId(r.estado, r.id).status], ['cancelada', 'CB-2026-10-503-R1', 'CB-2026-10-503', 'aberta']);
-      igual(devedores(r.estado, HOJE_ACOES).length, 3);
+      igual(devedores(r.estado, HOJE_ACOES).length, 4);
     },
   },
   {

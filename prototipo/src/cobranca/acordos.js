@@ -1,8 +1,8 @@
 import { SINDICO } from '../dados.js';
 import { liberado, planoMinimo } from '../planos.js';
-import { isoDia, somarDias, somarMes, fmtDataCurta } from '../datas.js';
+import { isoDia, somarDias, somarMes, momento, fmtDataCurta } from '../datas.js';
 import { situacaoCobranca, valorAtualizado, fmtReais, podeOperar, rotuloCobranca } from './regras.js';
-import { SO_SINDICO, comFinanceiro, comAuditoria, nomeResponsavel } from './acoes.js';
+import { SO_SINDICO, comFinanceiro, comAuditoria, nomeResponsavel, confirmarPagamentoAsaas } from './acoes.js';
 
 // Acordos de inadimplência: o acordo junta débitos vencidos; cada entrada ou parcela vira uma cobrança comum marcada com o acordo.
 export const PARCELA_MINIMA = 5000;
@@ -186,4 +186,20 @@ export function aceitarAcordo(estado, id, { quem, ciente }, agora) {
     }),
     notificacao: { canal: 'App', para: SINDICO, texto: `Acordo ${id} aceito. ${primeira.numero ? 'A parcela 1' : 'A entrada'} vence em ${fmtDataCurta(primeira.vencimento)}.` },
   };
+}
+
+// Acordo antigo da 304, gerado pelas próprias ações: proposto e aceito no dia 5 de dois meses atrás, entrada e parcela 1 pagas.
+export function comAcordoInicial(estado) {
+  const fin = estado.financeiro;
+  const dia = momento(`${somarMes(fin.vigente, -2)}-05`, 10);
+  const originais = fin.cobrancas.filter((c) => c.unidade === '304' && c.status === 'aberta').map((c) => c.id);
+  let e = proporAcordo(estado, { unidade: '304', originais, perdoaMulta: true, jurosPerdoadosPct: 0, entrada: 30000, parcelas: 4 }, 'sindico', dia).estado;
+  e = aceitarAcordo(e, 'AC-001', { quem: 'Otávio Reis', ciente: true }, dia).estado;
+  for (const id of ['AC-001-E', 'AC-001-P1']) {
+    const c = e.financeiro.cobrancas.find((x) => x.id === id);
+    e = confirmarPagamentoAsaas(e, id, `evt-${id}-pix`, 'pix', momento(somarDias(c.vencimento, -1), 11)).estado;
+  }
+  const p2 = e.financeiro.cobrancas.find((x) => x.id === 'AC-001-P2');
+  const regua = [{ etapa: 'antes5', em: momento(somarDias(p2.vencimento, -5), 9).toISOString() }, { etapa: 'vencimento', em: momento(p2.vencimento, 9).toISOString() }];
+  return comFinanceiro(e, { saldo: fin.saldo, cobrancas: e.financeiro.cobrancas.map((c) => (c.id === p2.id ? { ...c, regua } : c)) });
 }

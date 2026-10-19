@@ -1,8 +1,8 @@
 import { dadosIniciais } from '../dados.js';
 import { liberado, planoMinimo } from '../planos.js';
 import { rotuloCobranca, devedores } from '../cobranca/regras.js';
-import { debitosParaAcordo, simularAcordo, proporAcordo, cancelarProposta, marcarTermoLido, aceitarAcordo, alertasAcordos, acordoDaUnidade, cobrancasDoAcordo } from '../cobranca/acordos.js';
-import { confirmarPagamentoAsaas } from '../cobranca/acoes.js';
+import { debitosParaAcordo, simularAcordo, proporAcordo, cancelarProposta, marcarTermoLido, aceitarAcordo, alertasAcordos, acordoDaUnidade, cobrancasDoAcordo, progressoAcordo } from '../cobranca/acordos.js';
+import { confirmarPagamentoAsaas, baixaManual } from '../cobranca/acoes.js';
 import { igual, AGORA_FASE2 } from './afirmar.js';
 
 const HOJE_ACORDO = '2026-10-19';
@@ -142,6 +142,34 @@ export const CASOS_ACORDOS = [
       const a = aceitarAcordo(p, 'AC-002', { quem: 'Vicente Moraes', ciente: true }, AGORA_FASE2).estado;
       const r = confirmarPagamentoAsaas(a, 'AC-002-P1', 'evt-q', 'pix', AGORA_FASE2);
       igual([r.estado.financeiro.acordos.find((x) => x.id === 'AC-002').situacao, r.notificacao.texto.endsWith('· acordo AC-002 quitado')], ['quitado', true]);
+    },
+  },
+  {
+    nome: 'acordos: AC-001 da 304 com parcela 2 vencida',
+    rodar() {
+      const e = estadoAcordo();
+      const a = e.financeiro.acordos[0];
+      igual([a.id, a.unidade, a.situacao, a.valorOriginal, a.multa, a.juros, a.desconto, a.total, a.entrada, a.parcelas, a.valorParcela, a.aceitoPor], ['AC-001', '304', 'ativo', 143000, 2860, 1955, 2860, 144955, 30000, 4, 28738, 'Otávio Reis']);
+      igual(e.financeiro.cobrancas.filter((c) => ['CB-2026-06-304', 'CB-2026-07-304'].includes(c.id)).map((c) => [c.status, c.substituidaPor]), [['cancelada', 'AC-001'], ['cancelada', 'AC-001']]);
+      igual(cobrancasDoAcordo(e, 'AC-001').map((c) => [c.id, c.vencimento, c.valor, c.status]), [
+        ['AC-001-E', '2026-08-08', 30000, 'paga'],
+        ['AC-001-P1', '2026-09-10', 28738, 'paga'],
+        ['AC-001-P2', '2026-10-10', 28738, 'aberta'],
+        ['AC-001-P3', '2026-11-10', 28738, 'aberta'],
+        ['AC-001-P4', '2026-12-10', 28741, 'aberta'],
+      ]);
+      igual(cobrancasDoAcordo(e, 'AC-001')[2].regua.map((r) => r.etapa), ['antes5', 'vencimento']);
+      igual([e.financeiro.saldo, progressoAcordo(e, a).pagas, progressoAcordo(e, a).total, progressoAcordo(e, a).proxima.id], [4835000, 1, 4, 'AC-001-P2']);
+      igual(alertasAcordos(e, HOJE_ACORDO).map((x) => x.texto), ['Acordo AC-001 (304): parcela 2 vencida']);
+      igual(e.financeiro.auditoria.map((x) => x.acao), ['Proposta de acordo', 'Desconto em acordo', 'Acordo aceito']);
+    },
+  },
+  {
+    nome: 'acordos: baixa manual das últimas parcelas quita o AC-001',
+    rodar() {
+      let e = estadoAcordo();
+      for (const id of ['AC-001-P2', 'AC-001-P3', 'AC-001-P4']) e = baixaManual(e, id, { data: HOJE_ACORDO, comprovante: 'c.pdf' }, 'sindico', AGORA_FASE2).estado;
+      igual([e.financeiro.acordos[0].situacao, acordoDaUnidade(e, '304')], ['quitado', null]);
     },
   },
 ];

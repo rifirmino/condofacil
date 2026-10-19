@@ -86,6 +86,9 @@ export function financeiroInicial(hoje, em, pessoas, unidades) {
   cobrancas.push(novaCobranca('202', somarMes(vigente, -2), vencimentoAgosto, 'aberta', { regua: enviadas(['antes5', 'vencimento', 'atraso1', 'atraso15', 'atraso30']) }));
   cobrancas.push(novaCobranca('302', somarMes(vigente, -1), vencimentoSetembro, 'paga', { pagaEm: em(-38, 10), forma: 'pix' }));
   cobrancas.push(novaCobranca('302', somarMes(vigente, -2), vencimentoAgosto, 'paga', { pagaEm: em(-68, 10), forma: 'pix' }));
+  // Débitos de junho e julho da 304, substituídos pelo acordo AC-001 (ver comAcordoInicial).
+  cobrancas.push(novaCobranca('304', somarMes(vigente, -4), mesmoDiaDoMes(vencimentoVigente, -4), 'aberta'));
+  cobrancas.push(novaCobranca('304', somarMes(vigente, -3), mesmoDiaDoMes(vencimentoVigente, -3), 'aberta'));
   return {
     parametros: { diaVencimento: Number(vencimentoVigente.slice(8, 10)), diaFechamento: 20, multaPct: 2, jurosPct: 1, descontoPct: 0, descontoAprovadoEm: '', formas: ['boleto', 'pix', 'cartao'], tarifa: 'condominio' },
     composicao,

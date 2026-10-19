@@ -1,5 +1,6 @@
 import { ETAPAS_REGUA, itensBase, mesmoDiaDoMes, diferencaMeses } from './dados.js';
 import { diferencaDias, somarMes, nomeMes } from '../datas.js';
+import { acordoDaUnidade } from './acordos.js';
 
 const MESES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 const ETAPAS_POR_PLANO = {
@@ -109,7 +110,7 @@ export function devedores(estado, hoje) {
   for (const c of fin.cobrancas) {
     if (situacaoCobranca(c, hoje) !== 'vencida') continue;
     const v = valorAtualizado(c, fin.parametros, hoje);
-    if (!grupos[c.unidade]) grupos[c.unidade] = { unidade: c.unidade, responsavel: fin.unidades[c.unidade].responsavel, cobrancas: 0, valor: 0, dias: 0, etapa: null };
+    if (!grupos[c.unidade]) grupos[c.unidade] = { unidade: c.unidade, responsavel: fin.unidades[c.unidade].responsavel, cobrancas: 0, valor: 0, dias: 0, etapa: null, acordo: null };
     const g = grupos[c.unidade];
     g.cobrancas += 1;
     g.valor += v.total;
@@ -118,12 +119,13 @@ export function devedores(estado, hoje) {
       g.etapa = etapaRegua(c, hoje);
     }
   }
+  for (const g of Object.values(grupos)) g.acordo = acordoDaUnidade(estado, g.unidade);
   return Object.values(grupos).sort((a, b) => b.dias - a.dias);
 }
 
 export function indicadoresFinanceiros(estado, hoje) {
   const fin = estado.financeiro;
-  const daCompetencia = (competencia) => fin.cobrancas.filter((c) => c.competencia === competencia && c.status !== 'cancelada');
+  const daCompetencia = (competencia) => fin.cobrancas.filter((c) => c.competencia === competencia && c.status !== 'cancelada' && !c.acordo);
   const vigentes = daCompetencia(fin.vigente);
   const previsto = vigentes.reduce((soma, c) => soma + c.valor, 0);
   const recebido = vigentes.filter((c) => c.status === 'paga').reduce((soma, c) => soma + c.valor, 0);

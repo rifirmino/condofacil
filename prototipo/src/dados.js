@@ -1,6 +1,7 @@
 import { isoDia, somarDias, momento, fmtDia } from './datas.js';
 import { vendasIniciais, perfilVenda } from './vendas/dados.js';
 import { financeiroInicial } from './cobranca/dados.js';
+import { comAcordoInicial } from './cobranca/acordos.js';
 
 export const UNIDADES = Array.from({ length: 32 }, (_, i) => `${Math.floor(i / 4) + 1}0${(i % 4) + 1}`);
 export const UNIDADE_ANA = '302';
@@ -70,7 +71,7 @@ export function dadosIniciais(agora = new Date()) {
     { id: 'p704', nome: 'Vicente Moraes', unidade: '704', naoResidente: true, ...perfilVenda('704', em) },
   ];
 
-  return {
+  return comAcordoInicial({
     versao: 4,
     geradoEm: hoje,
     proximoProtocolo: 43,
@@ -149,5 +150,5 @@ export function dadosIniciais(agora = new Date()) {
     ...vendasIniciais(em),
     plano: 'intermediario',
     financeiro: financeiroInicial(hoje, em, pessoas, UNIDADES),
-  };
+  });
 }

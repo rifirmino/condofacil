@@ -21,7 +21,7 @@ export const CASOS_COBRANCA_DADOS = [
   {
     nome: 'cobrança: outubro com 31 emitidas, 28 pagas e 3 em aberto',
     rodar() {
-      const outubro = financeiroTeste().cobrancas.filter((c) => c.competencia === '2026-10');
+      const outubro = financeiroTeste().cobrancas.filter((c) => c.competencia === '2026-10' && !c.acordo);
       igual([outubro.length, outubro.filter((c) => c.status === 'paga').length], [31, 28]);
       igual(outubro.filter((c) => c.status === 'aberta').map((c) => c.unidade), ['202', '503', '704']);
     },
@@ -47,7 +47,7 @@ export const CASOS_COBRANCA_DADOS = [
     nome: 'cobrança: débitos antigos e histórico da Ana',
     rodar() {
       const f = financeiroTeste();
-      igual(f.cobrancas.filter((c) => c.status === 'aberta' && c.competencia !== '2026-10').map((c) => `${c.unidade}/${c.competencia}`), ['704/2026-09', '202/2026-09', '202/2026-08']);
+      igual(f.cobrancas.filter((c) => c.status === 'aberta' && !c.acordo && c.competencia !== '2026-10').map((c) => `${c.unidade}/${c.competencia}`), ['704/2026-09', '202/2026-09', '202/2026-08']);
       igual(f.cobrancas.filter((c) => c.unidade === '302' && c.status === 'paga').map((c) => c.competencia), ['2026-10', '2026-09', '2026-08']);
     },
   },
