@@ -457,3 +457,4 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 .cronograma-fim { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .simulacao strong { color: var(--titulo); }
 .proposta-acordo { border-left: 4px solid var(--laranja); }
+.cartao > .resumo, .cartao.simulacao .resumo { padding: 0; border: 0; background: none; }

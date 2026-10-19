@@ -268,8 +268,8 @@ const ROTEIROS = {
   async cobrancaReguaBaixa() {
     await irPara('#sindico.cobranca.regua');
     await clicarSeletor('[data-acao="executar-regua"]');
-    await esperarTexto('6 avisos enviados');
-    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('3 responsáveis')`, 'o aviso da régua');
+    await esperarTexto('7 avisos enviados');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('4 responsáveis')`, 'o aviso da régua');
     await irPara('#sindico.cobranca.emitidas');
     const vigente = await js(`[...document.getElementById('emitidas-competencia').options].map((o) => o.value)[1]`);
     await preencher('Competência', vigente);
@@ -279,7 +279,7 @@ const ROTEIROS = {
     await clicar('Confirmar baixa');
     await esperarTexto('Baixa registrada');
     await irPara('#sindico.inicio');
-    await esperarTexto('2 de 32');
+    await esperarTexto('3 de 32');
   },
 
   async cobrancaPlanos() {
@@ -302,10 +302,67 @@ const ROTEIROS = {
     await esperar(`!document.body.innerText.includes('Bazar de Natal')`, 'o reinício apagar o comunicado novo');
   },
 
+  async acordoProposta() {
+    await irPara('#sindico.inicio');
+    await esperarTexto('Acordo AC-001 (304): parcela 2 vencida');
+    await clicarSeletor('[data-propor="704"]');
+    await esperarTexto('Enviar proposta');
+    await marcar('Perdoar a multa');
+    await preencher('Entrada (R$)', '300,00');
+    await preencher('Parcelas', '3');
+    await esperarTexto('Total do acordo');
+    await clicarSeletor('[data-acao="enviar-proposta"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Proposta AC-002 enviada a Vicente Moraes')`, 'o aviso da proposta');
+    await esperarTexto('Aguardando aceite');
+    await irPara('#morador.inicio');
+    await clicar('Vicente · 704');
+    await esperarTexto('Proposta de acordo do síndico');
+    await irPara('#morador.financeiro');
+    await esperarTexto('proprietário não residente');
+    await clicar('Aceitar acordo');
+    await esperarTexto('Marque que leu e aceita as condições');
+    await marcar('Li e aceito as condições do acordo');
+    await clicar('Aceitar acordo');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Acordo AC-002 aceito')`, 'o aviso do aceite');
+    await esperarTexto('Meu acordo AC-002');
+    await esperarTexto('Substituída pelo acordo AC-002');
+    await clicar('Pagar com Pix');
+    await clicar('Simular confirmação do Asaas');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Pagamento recebido')`, 'o pagamento da entrada');
+    await clicar('Ana · 302');
+    await irPara('#sindico.cobranca.acordos');
+    await esperar(`[...document.querySelectorAll('tr')].some((tr) => tr.innerText.includes('AC-002') && tr.innerText.toLowerCase().includes('ativo'))`, 'o AC-002 ativo na lista');
+  },
+
+  async acordoPlanos() {
+    await clicar('Reiniciar demonstração');
+    await clicar('Básico');
+    await irPara('#sindico.cobranca.acordos');
+    await esperarTexto('Disponível no plano Intermediário');
+    await clicar('Avançado');
+    await irPara('#sindico.cobranca.novoacordo-704');
+    await esperarTexto('Total do acordo');
+    await clicarSeletor('[data-acao="enviar-proposta"]');
+    await esperarTexto('Aguardando aceite');
+    await irPara('#morador.financeiro');
+    await clicar('Vicente · 704');
+    await marcar('Li e aceito as condições do acordo');
+    await clicar('Aceitar acordo');
+    await esperarTexto('Leia o termo de confissão antes de aceitar');
+    await clicar('Ler o termo de confissão de dívida');
+    await esperarTexto('Termo de confissão de dívida · AC-002');
+    await clicar('Fechar');
+    await marcar('Li e aceito as condições do acordo');
+    await clicar('Aceitar acordo');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Acordo AC-002 aceito')`, 'o aceite com termo');
+    await clicar('Ana · 302');
+    await clicar('Intermediário');
+  },
+
   async larguraCelular() {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await pausa(300);
-    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro']) {
+    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo']) {
       await irPara(hash);
       const largura = await js('document.documentElement.scrollWidth');
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);
