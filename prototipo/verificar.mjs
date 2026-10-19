@@ -20,13 +20,14 @@ const CHECAGENS = [
   ['#morador.ocorrencias.OC-0042', ['Protocolo OC-0042', 'Ocorrência aberta']],
   ['#morador.documentos', ['Regimento interno', '!Balancete']],
   ['#morador.encomendas', ['Retirada por Ana Souza']],
-  ['#sindico.inicio', ['Reservas pendentes', 'Ocorrências abertas', '20 de 32 unidades com app', 'Precisa da sua atenção', 'Prazo vencido: OC-0042']],
+  ['#sindico.inicio', ['Reservas pendentes', 'Notificações abertas', '20 de 32 unidades com app', 'Precisa da sua atenção', 'OC-0042: 1ª resposta vencida']],
   ['#sindico.reservas', ['Pendentes de aprovação', 'aprovar-r4', 'Regras das áreas', 'Sem limite']],
   ['#sindico.comunicados', ['Novo comunicado', '19 de 32 unidades leram']],
   ['#sindico.comunicados.c1', ['Confirmação de leitura', '19 de 32 unidades leram']],
   ['#sindico.comunicados.novo', ['Publicar comunicado', 'Trocar o tipo preenche um modelo pronto.']],
-  ['#sindico.ocorrencias', ['OC-0042', 'Anônima', 'Vencido']],
-  ['#sindico.ocorrencias.OC-0039', ['Mover para "Resolvida"', 'Encanador agendado']],
+  ['#sindico.ocorrencias', ['Notificações', 'OC-0042', 'Anônima', '1ª resposta', 'Solução', 'vencida há', 'Prazos por prioridade', 'Urgente']],
+  ['#sindico.ocorrencias.OC-0039', ['Mover para "Resolvida"', 'Encanador agendado', 'OS-003']],
+  ['#sindico.ocorrencias.OC-0043', ['Obra fora do horário', 'Irregularidade', 'Gerar advertência', 'Gerar OS', 'Pedir mais informações', 'Arquivar com justificativa']],
   ['#sindico.documentos', ['Vencido há 3 dias', 'Vence em 25 dias', 'Só conselho']],
   ['#sindico.encomendas', ['Reenviar lembrete', 'Retirada por Beatriz Rocha']],
   ['#morador.preferencias', ['Receber avisos de novos anúncios', 'Você ainda não vende', 'Ana · 302', 'Juliana · 104']],
@@ -51,6 +52,7 @@ const CHECAGENS = [
   ['#sindico.cobranca.AC-001', ['Acordo AC-001 · apto 304', 'Parcela 2/4', 'Vencida', 'Proposta de acordo', 'Desconto em acordo', 'Acordo aceito']],
   ['#sindico.cobranca.novoacordo-704', ['Novo acordo', 'Perdoar a multa', 'Total do acordo', 'Enviar proposta']],
   ['#sindico.inicio', ['Acordo AC-001 (304): parcela 2 vencida', 'Propor acordo', 'acordo ativo', '!>Acordos<small>']],
+  ['#sindico.inicio', ['OC-0039: solução vencida há', 'OS-002 concluída: validar', 'CP-001 aguardando aprovação', 'Notificações abertas', '!Em breve · Intermediário</small></span><span class="em-breve" aria-disabled="true">Zelador']],
 ];
 
 // Só larguras de desktop: o Chrome headless impõe janela mínima maior que um celular; a largura de 390 px é medida no e2e.

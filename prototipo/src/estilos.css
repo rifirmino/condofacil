@@ -458,3 +458,6 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 .simulacao strong { color: var(--titulo); }
 .proposta-acordo { border-left: 4px solid var(--laranja); }
 .cartao > .resumo, .cartao.simulacao .resumo { padding: 0; border: 0; background: none; }
+
+/* Fase 2: notificações e manutenção */
+.filtros-notificacao { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); max-width: 680px; }

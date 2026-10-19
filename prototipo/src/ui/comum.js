@@ -141,10 +141,10 @@ export function QrFalso({ texto, tamanho = 132 }) {
   </svg>`;
 }
 
-export function LinhaTempo({ linha }) {
+export function LinhaTempo({ linha, nomes = NOMES_STATUS }) {
   return html`<ol class="linha-tempo">${linha.map((p, i) => html`<li key=${i} class=${p.status ? 'marco' : 'comentario'}>
     <span class="lt-quando">${fmtDataHora(p.em)}</span>
-    <strong>${p.status ? NOMES_STATUS[p.status] : 'Comentário'}</strong>
+    <strong>${p.status ? nomes[p.status] : 'Comentário'}</strong>
     <span>${p.texto}${p.autor ? ` · ${p.autor}` : ''}</span>
   </li>`)}</ol>`;
 }

@@ -1,15 +1,21 @@
 import { html, useState } from '../vendor.js';
-import { CATEGORIAS, PRIORIDADES, TIPOS_COMUNICADO, MODELOS_COMUNICADO, NOMES_CANAL, NOMES_STATUS, FLUXO_OCORRENCIA } from '../dados.js';
-import { areaPorId, statusDia, indicadoresSindico, slaVencido, alertasDocumentos, acoesOcorrencia, destinatarios, encomendaParada, moradoresDaUnidade } from '../regras.js';
+import { CATEGORIAS, PRIORIDADES, ORDEM_PRIORIDADE, TIPOS_NOTIFICACAO, TIPOS_COMUNICADO, MODELOS_COMUNICADO, NOMES_CANAL, NOMES_STATUS, FLUXO_OCORRENCIA } from '../dados.js';
+import { areaPorId, statusDia, indicadoresSindico, alertasDocumentos, acoesOcorrencia, destinatarios, encomendaParada, moradoresDaUnidade } from '../regras.js';
 import { aprovarReserva, recusarReserva, publicarComunicado, avancarOcorrencia, comentarOcorrencia, arquivarOcorrencia, lembrarEncomenda } from '../acoes.js';
 import { aprovarVendedor, recusarVendedor, suspenderVendedor, reativarVendedor, ocultarAnuncio, mostrarAnuncio } from '../vendas/acoes.js';
 import { nomeVizinho, fmtCentavos } from '../vendas/regras.js';
 import { PainelFinanceiro, pendenciasCobranca, SCobranca } from './financeiro-sindico.js';
+import { liberado } from '../planos.js';
+import { caixaDeEntrada, prazosDe, prazosVencidos, textoAtraso, alertasNotificacoes, indicadorAtendimento } from '../notificacoes/regras.js';
+import { definirPrioridade, pedirInformacao, gerarAdvertencia, arquivarComJustificativa } from '../notificacoes/acoes.js';
+import { ZELADOR } from '../manutencao/dados.js';
+import { alertasManutencao } from '../manutencao/regras.js';
+import { gerarOS } from '../manutencao/acoes.js';
 import { isoDia, somarMes, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
 import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
-const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
-const EM_BREVE = ['Notificações e OS', 'Zelador', 'Escala de porteiros'];
+const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Notificações', 'prancheta'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
+const EM_BREVE = [['Escala de porteiros', 'Intermediário'], ['Estoque, checklist e rondas', 'Avançado']];
 const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
 const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
 
@@ -38,7 +44,7 @@ export function TelaSindico(props) {
     <nav class="painel-menu" aria-label="Menu do síndico">
       <p class="painel-usuario"><strong>Roberto Lima</strong><small>Síndico · apto 801</small></p>
       ${MENU_SINDICO.map(([id, nome, icone]) => html`<a key=${id} href=${`#sindico.${id}`} class=${id === tela ? 'ativa' : ''} aria-current=${id === tela ? 'page' : undefined}><${Icone} nome=${icone} tamanho=${20} />${nome}</a>`)}
-      ${EM_BREVE.map((nome) => html`<span key=${nome} class="em-breve" aria-disabled="true">${nome}<small>Em breve · Intermediário</small></span>`)}
+      ${EM_BREVE.map(([nome, plano]) => html`<span key=${nome} class="em-breve" aria-disabled="true">${nome}<small>Em breve · ${plano}</small></span>`)}
     </nav>
     <div class="painel-conteudo"><${Conteudo} ...${props} /></div>
   </div>`;
@@ -47,19 +53,26 @@ export function TelaSindico(props) {
 function SInicio({ estado, agora }) {
   const ind = indicadoresSindico(estado, agora);
   const pendentes = estado.reservas.filter((r) => r.status === 'pendente');
-  const vencidas = estado.ocorrencias.filter((o) => slaVencido(o, agora));
   const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora));
   const alertas = alertasDocumentos(estado.documentos, isoDia(agora));
   const vendedoresPendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
   const pendCobranca = pendenciasCobranca(estado, isoDia(agora));
+  const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
+  const pendOperacao = comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : [];
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
   const cartoes = [
     ['Reservas pendentes', ind.pendentes, '#sindico.reservas', ind.pendentes ? 'alerta' : 'ok', 'Aguardando sua aprovação', 'calendario'],
-    ['Ocorrências abertas', ind.abertas, '#sindico.ocorrencias', ind.slaVencidas ? 'perigo' : 'info', ind.slaVencidas ? `${ind.slaVencidas} com prazo vencido` : 'Todas dentro do prazo', 'prancheta'],
+    comPrazo
+      ? ['Notificações abertas', ind.abertas, '#sindico.ocorrencias', ind.slaVencidas ? 'perigo' : 'info', ind.slaVencidas ? `${ind.slaVencidas} com prazo vencido` : 'Todas dentro do prazo', 'prancheta']
+      : ['Notificações abertas', ind.abertas, '#sindico.ocorrencias', 'info', 'Sem prazos no Básico', 'prancheta'],
     ['Encomendas paradas', ind.paradas, '#sindico.encomendas', ind.paradas ? 'alerta' : 'ok', 'Há mais de 3 dias na portaria', 'pacote'],
     ['Documentos vencendo', ind.vencendo, '#sindico.documentos', ind.vencendo ? 'perigo' : 'ok', 'Vencidos ou nos próximos 60 dias', 'documento'],
   ];
-  const semPendencias = !pendentes.length && !vencidas.length && !paradas.length && !alertas.length && !vendedoresPendentes.length && !pendCobranca.length;
+  if (liberado(estado.plano, 'indicadorAtendimento')) {
+    const a = indicadorAtendimento(estado);
+    cartoes.push(['Atendimento', `${a.pct}%`, '#sindico.ocorrencias', a.alerta ? 'perigo' : 'ok', `${a.abertas} abertas · ${a.noPrazo} de ${a.comPrazo} resolvidas no prazo`, 'prancheta']);
+  }
+  const semPendencias = !pendentes.length && !pendOperacao.length && !paradas.length && !alertas.length && !vendedoresPendentes.length && !pendCobranca.length;
   return html`<section>
     <h1>Olá, Roberto</h1>
     <${PainelFinanceiro} estado=${estado} agora=${agora} />
@@ -69,7 +82,7 @@ function SInicio({ estado, agora }) {
       : html`<ul class="atencao">
           ${pendCobranca.map((p) => html`<li key=${p.chave}><a href=${p.href}>${p.texto}</a></li>`)}
           ${pendentes.map((r) => html`<li key=${r.id}><a href="#sindico.reservas">Aprovar reserva: ${areaPorId(estado, r.areaId).nome}, apto ${r.unidade}, ${fmtDia(r.data)}</a></li>`)}
-          ${vencidas.map((o) => html`<li key=${o.id}><a href=${`#sindico.ocorrencias.${o.id}`}>Prazo vencido: ${o.id} · ${CATEGORIAS[o.categoria].nome}</a></li>`)}
+          ${pendOperacao.map((p) => html`<li key=${p.chave}><a href=${p.href}>${p.texto}</a></li>`)}
           ${paradas.map((e) => html`<li key=${e.id}><a href="#sindico.encomendas">Encomenda parada: apto ${e.unidade}, chegou ${haQuanto(e.chegadaEm, agora)}</a></li>`)}
           ${alertas.map((a) => html`<li key=${a.documento.id}><a href="#sindico.documentos">${textoAlerta(a)}: ${a.documento.titulo}</a></li>`)}
           ${vendedoresPendentes.map((p) => html`<li key=${`v${p.unidade}`}><a href="#sindico.vendas">Aprovar vendedor: ${p.nome}, apto ${p.unidade}</a></li>`)}
@@ -269,75 +282,161 @@ function SNovoComunicado({ executar }) {
   </section>`;
 }
 
+const ETQ_PRIORIDADE = { urgente: 'perigo', alta: 'alerta', normal: 'info', baixa: 'neutro' };
+const FILTROS_TIPO = [['todos', 'Todos'], ...Object.entries(TIPOS_NOTIFICACAO)];
+const FILTROS_PRIORIDADE = [['todas', 'Todas'], ...ORDEM_PRIORIDADE.map((p) => [p, PRIORIDADES[p].nome])];
+
+function fmtLimite(iso) {
+  const d = new Date(iso);
+  return `até ${fmtDataCurta(isoDia(d))} ${String(d.getHours()).padStart(2, '0')}h`;
+}
+
+function CelulaPrazo({ prazo, atraso }) {
+  if (!prazo) return 'Sem prazo';
+  if (atraso !== null) return html`<${Etiqueta} tipo="perigo">vencida há ${textoAtraso(atraso)}<//>`;
+  if (prazo.em) return html`<${Etiqueta} tipo="ok">${prazo.em <= prazo.limite ? 'no prazo' : 'fora do prazo'}<//>`;
+  return fmtLimite(prazo.limite);
+}
+
 function SOcorrencias(props) {
   const { estado, rota, agora } = props;
   const [filtro, setFiltro] = useState('ativas');
+  const [tipo, setTipo] = useState('todos');
+  const [prioridade, setPrioridade] = useState('todas');
+  const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
   const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id) : null;
-  if (oc) return html`<${SDetalheOcorrencia} executar=${props.executar} agora=${agora} oc=${oc} />`;
-  const lista = estado.ocorrencias
-    .filter((o) => {
-      if (filtro === 'arquivadas') return o.arquivada;
-      if (o.arquivada) return false;
-      if (filtro === 'todas') return true;
-      if (filtro === 'ativas') return !['resolvida', 'fechada'].includes(o.status);
-      return o.status === filtro;
-    })
-    .sort((a, b) => b.criadaEm.localeCompare(a.criadaEm));
+  if (oc) return html`<${SDetalheOcorrencia} estado=${estado} executar=${props.executar} agora=${agora} oc=${oc} />`;
+  const lista = comPrazo
+    ? caixaDeEntrada(estado, agora, { status: filtro, tipo, prioridade })
+    : estado.ocorrencias
+      .filter((o) => {
+        if (filtro === 'arquivadas') return o.arquivada;
+        if (o.arquivada) return false;
+        if (filtro === 'todas') return true;
+        if (filtro === 'ativas') return !['resolvida', 'fechada'].includes(o.status);
+        return o.status === filtro;
+      })
+      .sort((a, b) => b.criadaEm.localeCompare(a.criadaEm));
   return html`<section>
-    <h1>Ocorrências</h1>
-    <div class="formulario"><${Campo} rotulo="Mostrar"><select id="ocorrencias-filtro" value=${filtro} onChange=${(ev) => setFiltro(ev.target.value)}>${FILTROS_OCORRENCIA.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//></div>
+    <h1>Notificações</h1>
+    <div class="edicao-anuncio filtros-notificacao">
+      <${Campo} rotulo="Mostrar"><select id="notificacoes-status" value=${filtro} onChange=${(ev) => setFiltro(ev.target.value)}>${FILTROS_OCORRENCIA.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>
+      ${comPrazo && html`<${Campo} rotulo="Tipo"><select id="notificacoes-tipo" value=${tipo} onChange=${(ev) => setTipo(ev.target.value)}>${FILTROS_TIPO.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>`}
+      ${comPrazo && html`<${Campo} rotulo="Prioridade"><select id="notificacoes-prioridade" value=${prioridade} onChange=${(ev) => setPrioridade(ev.target.value)}>${FILTROS_PRIORIDADE.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>`}
+    </div>
     <div class="tabela-rolagem"><table class="tabela">
-      <thead><tr><th>Protocolo</th><th>Categoria</th><th>Unidade</th><th>Status</th><th>Prazo</th><th>Aberta</th></tr></thead>
-      <tbody>${lista.map((o) => html`<tr key=${o.id} class="clicavel" onClick=${() => ir('sindico', 'ocorrencias', o.id)}>
-        <td><a href=${`#sindico.ocorrencias.${o.id}`}>${o.id}</a></td>
-        <td>${CATEGORIAS[o.categoria].nome}${o.publica && html` <${Etiqueta}>Pública<//>`}</td>
-        <td>${o.anonima ? 'Anônima' : o.unidade}</td>
-        <td><${EtqOcorrencia} status=${o.status} arquivada=${o.arquivada} /></td>
-        <td>${slaVencido(o, agora) ? html`<${Etiqueta} tipo="perigo">Vencido<//>` : textoPrazo(o)}</td>
-        <td>${haQuanto(o.criadaEm, agora)}</td>
-      </tr>`)}</tbody>
+      <thead><tr><th>Protocolo</th><th>Categoria</th><th>Unidade</th>${comPrazo && html`<th>Prioridade</th><th>1ª resposta</th><th>Solução</th>`}<th>Status</th><th>Aberta</th></tr></thead>
+      <tbody>${lista.map((o) => {
+        const p = comPrazo ? prazosDe(o) : null;
+        const v = comPrazo ? prazosVencidos(o, agora) : null;
+        return html`<tr key=${o.id} class="clicavel" onClick=${() => ir('sindico', 'ocorrencias', o.id)}>
+          <td><a href=${`#sindico.ocorrencias.${o.id}`}>${o.id}</a></td>
+          <td>${CATEGORIAS[o.categoria].nome}${o.publica && html` <${Etiqueta}>Pública<//>`}${comPrazo && html`<br /><small class="sub">${TIPOS_NOTIFICACAO[CATEGORIAS[o.categoria].tipo]}</small>`}</td>
+          <td>${o.anonima ? 'Anônima' : o.unidade}</td>
+          ${comPrazo && html`<td><${Etiqueta} tipo=${ETQ_PRIORIDADE[o.prioridade]}>${PRIORIDADES[o.prioridade].nome}<//></td>
+            <td><${CelulaPrazo} prazo=${p.resposta} atraso=${v.resposta} /></td>
+            <td><${CelulaPrazo} prazo=${p.solucao} atraso=${v.solucao} /></td>`}
+          <td><${EtqOcorrencia} status=${o.status} arquivada=${o.arquivada} /></td>
+          <td>${haQuanto(o.criadaEm, agora)}</td>
+        </tr>`;
+      })}</tbody>
     </table></div>
-    ${!lista.length && html`<${Vazio} texto="Nenhuma ocorrência neste filtro." />`}
+    ${!lista.length && html`<${Vazio} texto="Nenhuma notificação neste filtro." />`}
+    ${comPrazo && html`<details class="composicao"><summary>Prazos por prioridade</summary>
+      <div class="tabela-rolagem"><table class="tabela">
+        <thead><tr><th>Prioridade</th><th>1ª resposta</th><th>Solução</th></tr></thead>
+        <tbody>${ORDEM_PRIORIDADE.map((id) => html`<tr key=${id}><td>${PRIORIDADES[id].nome}</td><td>${PRIORIDADES[id].resposta} h</td><td>${PRIORIDADES[id].solucao ? (PRIORIDADES[id].solucao >= 48 ? `${PRIORIDADES[id].solucao / 24} dias` : `${PRIORIDADES[id].solucao} h`) : 'Sem prazo'}</td></tr>`)}</tbody>
+      </table></div>
+      <small class="sub">A 1ª resposta conta a partir da primeira ação do síndico: mudar o status, comentar, pedir informação ou gerar OS.</small>
+    </details>`}
   </section>`;
 }
 
-function SDetalheOcorrencia({ executar, agora, oc }) {
+function SDetalheOcorrencia({ estado, executar, agora, oc }) {
   const [texto, setTexto] = useState('');
   const [erro, setErro] = useState(null);
-  const acoes = acoesOcorrencia(oc);
+  const [mensagem, setMensagem] = useState(null);
+  const [responsavel, setResponsavel] = useState('zelador');
+  const [prestador, setPrestador] = useState('');
+  const [unidade, setUnidade] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
+  const encerrada = ['resolvida', 'fechada'].includes(oc.status);
+  const irregularidade = CATEGORIAS[oc.categoria].tipo === 'irregularidade';
+  const acoes = acoesOcorrencia(oc).filter((a) => !comPrazo || a.id !== 'arquivar');
+  const v = comPrazo ? prazosVencidos(oc, agora) : null;
 
-  function fazer(acao) {
-    const r = executar((e) => {
-      if (acao === 'avancar') return avancarOcorrencia(e, oc.id, new Date(), texto);
-      if (acao === 'comentar') return comentarOcorrencia(e, oc.id, texto, new Date());
-      return arquivarOcorrencia(e, oc.id);
-    });
+  function rodar(acao, sucesso, limpar) {
+    const r = executar(acao);
     if (r.erro) {
       setErro(r.erro);
+      setMensagem(null);
       return;
     }
     setErro(null);
-    setTexto('');
+    setMensagem(sucesso);
+    if (limpar) limpar();
+  }
+
+  function fazer(acao) {
+    rodar((e) => {
+      if (acao === 'avancar') return avancarOcorrencia(e, oc.id, new Date(), texto);
+      if (acao === 'comentar') return comentarOcorrencia(e, oc.id, texto, new Date());
+      return arquivarOcorrencia(e, oc.id);
+    }, null, () => setTexto(''));
   }
 
   return html`<section>
-    <a class="voltar" href="#sindico.ocorrencias">‹ Ocorrências</a>
+    <a class="voltar" href="#sindico.ocorrencias">‹ Notificações</a>
     <p class="protocolo">Protocolo ${oc.id}</p>
     <div class="linha-entre"><h1>${CATEGORIAS[oc.categoria].nome}</h1><${EtqOcorrencia} status=${oc.status} arquivada=${oc.arquivada} /></div>
-    <p class="sub">${oc.anonima ? 'Autor anônimo' : `Apto ${oc.unidade}`}${oc.local ? ` · ${oc.local}` : ''} · aberta ${haQuanto(oc.criadaEm, agora)}${slaVencido(oc, agora) ? ' · prazo vencido' : ''}</p>
+    <p class="sub">${TIPOS_NOTIFICACAO[CATEGORIAS[oc.categoria].tipo]} · ${oc.anonima ? 'autor anônimo' : `apto ${oc.unidade}`}${oc.local ? ` · ${oc.local}` : ''} · aberta ${haQuanto(oc.criadaEm, agora)}</p>
+    ${comPrazo && (v.resposta !== null || v.solucao !== null) && html`<p class="erro">${v.resposta !== null ? `1ª resposta vencida há ${textoAtraso(v.resposta)}` : `Solução vencida há ${textoAtraso(v.solucao)}`}</p>`}
     <p class="texto-longo">${oc.descricao}</p>
     ${oc.foto && html`<${FotoFalsa} rotulo="Foto enviada pelo morador" />`}
     ${oc.publica && html`<p class="sub">Pública · ${oc.eutambem.length} moradores marcaram "eu também"</p>`}
+    ${!oc.publica && oc.eutambem.length > 0 && html`<p class="sub">${oc.eutambem.length} moradores apoiaram ("eu também")</p>`}
     ${oc.avaliacao && html`<div><span class="sub">Avaliação do morador</span><${Estrelas} valor=${oc.avaliacao} /></div>`}
+    ${oc.os && html`<p class="cartao"><span>Ordem de serviço <a href=${`#sindico.manutencao.${oc.os}`}>${oc.os}</a></span></p>`}
+    ${oc.motivoArquivamento && html`<p class="sub">Arquivada: ${oc.motivoArquivamento}</p>`}
     <h2>Linha do tempo</h2>
     <${LinhaTempo} linha=${oc.linha} />
-    ${acoes.length
-      ? html`<div class="cartao">
-          <${Campo} rotulo="Mensagem ao morador" dica="Opcional ao mudar o status; obrigatória para comentar."><textarea id="ocorrencia-mensagem" rows="2" value=${texto} onInput=${(ev) => setTexto(ev.target.value)}></textarea><//>
+    ${oc.arquivada
+      ? html`<p class="sub">Notificação arquivada. O histórico fica guardado para auditoria e não pode ser apagado.</p>`
+      : html`<div class="pilha">
+          ${comPrazo && html`<div class="cartao">
+            <${Campo} rotulo="Prioridade"><select id="notificacao-prioridade" value=${oc.prioridade} onChange=${(ev) => rodar((e) => definirPrioridade(e, oc.id, ev.target.value, 'sindico', new Date()), 'Prioridade atualizada.')}>${ORDEM_PRIORIDADE.map((p) => html`<option key=${p} value=${p}>${PRIORIDADES[p].nome} · resposta ${PRIORIDADES[p].resposta} h</option>`)}</select><//>
+          </div>`}
+          <div class="cartao">
+            <${Campo} rotulo="Mensagem ao morador" dica="Opcional ao mudar o status; obrigatória para comentar ou pedir informação."><textarea id="ocorrencia-mensagem" rows="2" value=${texto} onInput=${(ev) => setTexto(ev.target.value)}></textarea><//>
+            <div class="acoes">
+              ${acoes.map((a) => html`<button type="button" key=${a.id} class=${a.id === 'avancar' ? 'btn primario' : 'btn secundario'} onClick=${() => fazer(a.id)}>${a.rotulo}</button>`)}
+              ${comPrazo && html`<button type="button" class="btn secundario" onClick=${() => rodar((e) => pedirInformacao(e, oc.id, texto, 'sindico', new Date()), 'Pedido enviado ao morador.', () => setTexto(''))}>Pedir mais informações</button>`}
+            </div>
+          </div>
+          ${comPrazo && !oc.os && !encerrada && html`<div class="cartao">
+            <strong>Gerar OS</strong>
+            <div class="edicao-anuncio">
+              <${Campo} rotulo="Responsável"><select id="os-responsavel" value=${responsavel} onChange=${(ev) => setResponsavel(ev.target.value)}><option value="zelador">Zelador (${ZELADOR})</option><option value="prestador">Prestador externo</option></select><//>
+              ${responsavel === 'prestador' && html`<${Campo} rotulo="Prestador"><input id="os-prestador" value=${prestador} onInput=${(ev) => setPrestador(ev.target.value)} placeholder="Ex.: Elevadores Atlas" /><//>`}
+            </div>
+            <button type="button" class="btn primario" data-acao="gerar-os" onClick=${() => rodar((e) => gerarOS(e, oc.id, { responsavel, prestador }, 'sindico', new Date()), 'OS aberta.')}>Gerar OS</button>
+          </div>`}
+          ${comPrazo && irregularidade && html`<div class="cartao">
+            <strong>Gerar advertência</strong>
+            ${oc.advertencia
+              ? html`<span class="sub">Advertência enviada ao apto ${oc.advertencia.unidade}. Quem denunciou nunca é revelado.</span>`
+              : html`<${Campo} rotulo="Unidade advertida" dica="O aviso não revela quem enviou a notificação."><input id="advertencia-unidade" value=${unidade} onInput=${(ev) => setUnidade(ev.target.value)} placeholder="Ex.: 503" /><//>
+                <button type="button" class="btn secundario" onClick=${() => rodar((e) => gerarAdvertencia(e, oc.id, unidade, 'sindico', new Date()), 'Advertência enviada.')}>Gerar advertência</button>`}
+          </div>`}
+          ${comPrazo && html`<div class="cartao">
+            <strong>Arquivar com justificativa</strong>
+            <${Campo} rotulo="Motivo do arquivamento"><input id="arquivar-motivo" value=${motivo} onInput=${(ev) => setMotivo(ev.target.value)} placeholder="Ex.: improcedente, duplicada da OC-0042" /><//>
+            <button type="button" class="btn secundario" onClick=${() => rodar((e) => arquivarComJustificativa(e, oc.id, motivo, 'sindico', new Date()), 'Notificação arquivada.')}>Arquivar</button>
+          </div>`}
           <${Erro} texto=${erro} />
-          <div class="acoes">${acoes.map((a) => html`<button type="button" key=${a.id} class=${a.id === 'avancar' ? 'btn primario' : 'btn secundario'} onClick=${() => fazer(a.id)}>${a.rotulo}</button>`)}</div>
-        </div>`
-      : html`<p class="sub">Ocorrência arquivada. O histórico fica guardado para auditoria e não pode ser apagado.</p>`}
+          <${Sucesso} texto=${mensagem} />
+        </div>`}
   </section>`;
 }
 
