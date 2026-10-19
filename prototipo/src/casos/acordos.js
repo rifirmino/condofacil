@@ -1,7 +1,8 @@
 import { dadosIniciais } from '../dados.js';
 import { liberado, planoMinimo } from '../planos.js';
-import { rotuloCobranca } from '../cobranca/regras.js';
-import { debitosParaAcordo, simularAcordo } from '../cobranca/acordos.js';
+import { rotuloCobranca, devedores } from '../cobranca/regras.js';
+import { debitosParaAcordo, simularAcordo, proporAcordo, cancelarProposta, marcarTermoLido, aceitarAcordo, alertasAcordos, acordoDaUnidade, cobrancasDoAcordo } from '../cobranca/acordos.js';
+import { confirmarPagamentoAsaas } from '../cobranca/acoes.js';
 import { igual, AGORA_FASE2 } from './afirmar.js';
 
 const HOJE_ACORDO = '2026-10-19';
@@ -74,6 +75,73 @@ export const CASOS_ACORDOS = [
       igual([simular704({ parcelas: 0 }).motivo, simular704({ parcelas: 13 }).motivo], ['Escolha de 1 a 12 parcelas', 'Escolha de 1 a 12 parcelas']);
       igual([simular704({ entrada: 177845 }).motivo, simular704({ entrada: -1 }).motivo], ['A entrada precisa ser menor que o total do acordo', 'A entrada precisa ser menor que o total do acordo']);
       igual(simular704({ originais: [OUT_704], entrada: 85000, parcelas: 12 }).motivo, 'Cada parcela precisa ter no mínimo R$ 50,00');
+    },
+  },
+  {
+    nome: 'acordos: proposta só pelo síndico, com auditoria do desconto',
+    rodar() {
+      const e = estadoAcordo();
+      const dados = { unidade: '704', originais: [SET_704, OUT_704], perdoaMulta: true, jurosPerdoadosPct: 0, entrada: 30000, parcelas: 3 };
+      igual(proporAcordo(e, dados, 'morador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      igual(proporAcordo({ ...e, plano: 'basico' }, dados, 'sindico', AGORA_FASE2).erro, 'Disponível no plano Intermediário');
+      const r = proporAcordo(e, dados, 'sindico', AGORA_FASE2);
+      const a = r.estado.financeiro.acordos.find((x) => x.id === r.id);
+      igual([r.id, a.situacao, a.total, a.desconto, r.notificacao.texto], ['AC-002', 'aguardando', 174385, 3460, 'Proposta AC-002 enviada a Vicente Moraes']);
+      igual(r.estado.financeiro.cobrancas.filter((c) => [SET_704, OUT_704].includes(c.id)).map((c) => c.status), ['aberta', 'aberta']);
+      igual(r.estado.financeiro.auditoria.slice(-2).map((x) => x.acao), ['Proposta de acordo', 'Desconto em acordo']);
+      igual(acordoDaUnidade(r.estado, '704'), 'aguardando');
+      igual(alertasAcordos(r.estado, HOJE_ACORDO).map((x) => x.texto).includes('Proposta AC-002 aguarda aceite de Vicente Moraes'), true);
+      igual(simularAcordo(r.estado, { ...dados, originais: [SET_704] }, HOJE_ACORDO).motivo, 'Este débito já está no acordo AC-002');
+    },
+  },
+  {
+    nome: 'acordos: cancelar proposta libera os débitos',
+    rodar() {
+      const r = proporAcordo(estadoAcordo(), { unidade: '704', originais: [SET_704], entrada: 0, parcelas: 2 }, 'sindico', AGORA_FASE2);
+      igual(cancelarProposta(r.estado, 'AC-002', 'morador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      const c = cancelarProposta(r.estado, 'AC-002', 'sindico', AGORA_FASE2);
+      igual([c.estado.financeiro.acordos.find((x) => x.id === 'AC-002').situacao, debitosParaAcordo(c.estado, '704', HOJE_ACORDO).length], ['cancelado', 2]);
+      igual(cancelarProposta(c.estado, 'AC-002', 'sindico', AGORA_FASE2).erro, 'Só propostas aguardando aceite podem ser canceladas');
+    },
+  },
+  {
+    nome: 'acordos: aceite cancela as originais e cria entrada e parcelas',
+    rodar() {
+      const p = proporAcordo(estadoAcordo(), { unidade: '704', originais: [SET_704, OUT_704], perdoaMulta: true, entrada: 30000, parcelas: 3 }, 'sindico', AGORA_FASE2).estado;
+      igual(aceitarAcordo(p, 'AC-002', { quem: 'Ana Souza', ciente: true }, AGORA_FASE2).erro, 'Só o responsável financeiro pode aceitar o acordo');
+      igual(aceitarAcordo(p, 'AC-002', { quem: 'Vicente Moraes', ciente: false }, AGORA_FASE2).erro, 'Marque que leu e aceita as condições');
+      igual(aceitarAcordo({ ...p, plano: 'basico' }, 'AC-002', { quem: 'Vicente Moraes', ciente: true }, AGORA_FASE2).erro, 'Disponível no plano Intermediário');
+      const r = aceitarAcordo(p, 'AC-002', { quem: 'Vicente Moraes', ciente: true }, AGORA_FASE2);
+      const fin = r.estado.financeiro;
+      igual(fin.cobrancas.filter((c) => [SET_704, OUT_704].includes(c.id)).map((c) => [c.status, c.substituidaPor]), [['cancelada', 'AC-002'], ['cancelada', 'AC-002']]);
+      igual(cobrancasDoAcordo(r.estado, 'AC-002').map((c) => [c.id, c.vencimento, c.valor, c.itens[0].descricao]), [
+        ['AC-002-E', '2026-10-22', 30000, 'Acordo AC-002 · entrada'],
+        ['AC-002-P1', '2026-11-10', 48128, 'Acordo AC-002 · parcela 1/3'],
+        ['AC-002-P2', '2026-12-10', 48128, 'Acordo AC-002 · parcela 2/3'],
+        ['AC-002-P3', '2027-01-10', 48129, 'Acordo AC-002 · parcela 3/3'],
+      ]);
+      igual([fin.acordos.find((a) => a.id === 'AC-002').situacao, fin.acordos.find((a) => a.id === 'AC-002').aceitoPor, r.notificacao.texto], ['ativo', 'Vicente Moraes', 'Acordo AC-002 aceito. A entrada vence em 22/10/2026.']);
+      igual(devedores(r.estado, HOJE_ACORDO).some((d) => d.unidade === '704'), false);
+      igual(aceitarAcordo(r.estado, 'AC-002', { quem: 'Vicente Moraes', ciente: true }, AGORA_FASE2).erro, 'Esta proposta não está aguardando aceite');
+    },
+  },
+  {
+    nome: 'acordos: termo de confissão obrigatório no Avançado',
+    rodar() {
+      const avancado = { ...estadoAcordo(), plano: 'avancado' };
+      const p = proporAcordo(avancado, { unidade: '704', originais: [OUT_704], entrada: 0, parcelas: 2 }, 'sindico', AGORA_FASE2).estado;
+      igual(aceitarAcordo(p, 'AC-002', { quem: 'Vicente Moraes', ciente: true }, AGORA_FASE2).erro, 'Leia o termo de confissão antes de aceitar');
+      const lido = marcarTermoLido(p, 'AC-002', AGORA_FASE2).estado;
+      igual(aceitarAcordo(lido, 'AC-002', { quem: 'Vicente Moraes', ciente: true }, AGORA_FASE2).estado.financeiro.acordos.find((a) => a.id === 'AC-002').situacao, 'ativo');
+    },
+  },
+  {
+    nome: 'acordos: pagar a última parcela quita o acordo',
+    rodar() {
+      const p = proporAcordo(estadoAcordo(), { unidade: '704', originais: [OUT_704], entrada: 0, parcelas: 1 }, 'sindico', AGORA_FASE2).estado;
+      const a = aceitarAcordo(p, 'AC-002', { quem: 'Vicente Moraes', ciente: true }, AGORA_FASE2).estado;
+      const r = confirmarPagamentoAsaas(a, 'AC-002-P1', 'evt-q', 'pix', AGORA_FASE2);
+      igual([r.estado.financeiro.acordos.find((x) => x.id === 'AC-002').situacao, r.notificacao.texto.endsWith('· acordo AC-002 quitado')], ['quitado', true]);
     },
   },
 ];

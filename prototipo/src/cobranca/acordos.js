@@ -1,6 +1,8 @@
+import { SINDICO } from '../dados.js';
 import { liberado, planoMinimo } from '../planos.js';
-import { somarDias, somarMes } from '../datas.js';
-import { situacaoCobranca, valorAtualizado } from './regras.js';
+import { isoDia, somarDias, somarMes, fmtDataCurta } from '../datas.js';
+import { situacaoCobranca, valorAtualizado, fmtReais, podeOperar, rotuloCobranca } from './regras.js';
+import { SO_SINDICO, comFinanceiro, comAuditoria, nomeResponsavel } from './acoes.js';
 
 // Acordos de inadimplência: o acordo junta débitos vencidos; cada entrada ou parcela vira uma cobrança comum marcada com o acordo.
 export const PARCELA_MINIMA = 5000;
@@ -106,4 +108,82 @@ export function alertasAcordos(estado, hoje) {
     }
   }
   return itens;
+}
+
+function erroAcordo(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function cobrancaDoAcordo(acordo, linha) {
+  const marca = { id: acordo.id, numero: linha.numero, de: acordo.parcelas };
+  return {
+    id: `${acordo.id}-${linha.numero ? `P${linha.numero}` : 'E'}`, unidade: acordo.unidade, competencia: linha.vencimento.slice(0, 7), vencimento: linha.vencimento,
+    itens: [{ tipo: 'acordo', descricao: rotuloCobranca({ acordo: marca }), valor: linha.valor }], valor: linha.valor,
+    status: 'aberta', pagaEm: null, valorPago: null, forma: null, baixaManual: null, eventosAsaas: [], regua: [], substituiu: null, acordo: marca,
+  };
+}
+
+export function proporAcordo(estado, dados, perfil, agora) {
+  if (!podeOperar(perfil)) return erroAcordo(estado, SO_SINDICO);
+  if (!liberado(estado.plano, 'acordos')) return erroAcordo(estado, planoInsuficiente('acordos'));
+  const s = simularAcordo(estado, dados, isoDia(agora));
+  if (!s.ok) return erroAcordo(estado, s.motivo);
+  const fin = estado.financeiro;
+  const id = `AC-${String(fin.acordos.length + 1).padStart(3, '0')}`;
+  const entrada = dados.entrada || 0;
+  const acordo = {
+    id, unidade: dados.unidade, originais: [...dados.originais], valorOriginal: s.valorOriginal, multa: s.multa, juros: s.juros,
+    perdoaMulta: !!dados.perdoaMulta, jurosPerdoadosPct: dados.jurosPerdoadosPct || 0, desconto: s.desconto, total: s.total,
+    entrada, parcelas: dados.parcelas, valorParcela: s.valorParcela, situacao: 'aguardando',
+    criadoEm: agora.toISOString(), criadoPor: SINDICO, aceitoEm: null, aceitoPor: null, termoLidoEm: null,
+  };
+  let auditoria = comAuditoria(estado, agora, 'Proposta de acordo', `${id} · apto ${dados.unidade} · ${fmtReais(s.total)} em ${entrada ? 'entrada + ' : ''}${dados.parcelas}x`);
+  if (s.desconto) auditoria = [...auditoria, { em: agora.toISOString(), quem: SINDICO, acao: 'Desconto em acordo', detalhe: `${id} · ${fmtReais(s.desconto)} perdoados de multa e juros` }];
+  const nome = nomeResponsavel(estado, dados.unidade);
+  return {
+    estado: comFinanceiro(estado, { acordos: [...fin.acordos, acordo], auditoria }),
+    id,
+    notificacao: { canal: 'App + e-mail + WhatsApp', para: nome, texto: `Proposta ${id} enviada a ${nome}` },
+  };
+}
+
+export function cancelarProposta(estado, id, perfil, agora) {
+  if (!podeOperar(perfil)) return erroAcordo(estado, SO_SINDICO);
+  const fin = estado.financeiro;
+  const acordo = fin.acordos.find((a) => a.id === id);
+  if (!acordo || acordo.situacao !== 'aguardando') return erroAcordo(estado, 'Só propostas aguardando aceite podem ser canceladas');
+  return {
+    estado: comFinanceiro(estado, {
+      acordos: fin.acordos.map((a) => (a.id === id ? { ...a, situacao: 'cancelado' } : a)),
+      auditoria: comAuditoria(estado, agora, 'Proposta cancelada', `${id} · apto ${acordo.unidade}`),
+    }),
+  };
+}
+
+export function marcarTermoLido(estado, id, agora) {
+  const fin = estado.financeiro;
+  if (!fin.acordos.some((a) => a.id === id)) return erroAcordo(estado, 'Acordo não encontrado');
+  return { estado: comFinanceiro(estado, { acordos: fin.acordos.map((a) => (a.id === id ? { ...a, termoLidoEm: a.termoLidoEm || agora.toISOString() } : a)) }) };
+}
+
+export function aceitarAcordo(estado, id, { quem, ciente }, agora) {
+  const fin = estado.financeiro;
+  const acordo = fin.acordos.find((a) => a.id === id);
+  if (!acordo || acordo.situacao !== 'aguardando') return erroAcordo(estado, 'Esta proposta não está aguardando aceite');
+  if (!liberado(estado.plano, 'acordos')) return erroAcordo(estado, planoInsuficiente('acordos'));
+  const responsavel = fin.unidades[acordo.unidade].responsavel;
+  if (!responsavel || responsavel.nome !== quem) return erroAcordo(estado, 'Só o responsável financeiro pode aceitar o acordo');
+  if (!ciente) return erroAcordo(estado, 'Marque que leu e aceita as condições');
+  if (liberado(estado.plano, 'termoConfissao') && !acordo.termoLidoEm) return erroAcordo(estado, 'Leia o termo de confissão antes de aceitar');
+  const cronograma = cronogramaDoAcordo(estado, acordo, isoDia(agora));
+  const novas = cronograma.map((linha) => cobrancaDoAcordo(acordo, linha));
+  const primeira = cronograma[0];
+  return {
+    estado: comFinanceiro(estado, {
+      cobrancas: [...fin.cobrancas.map((c) => (acordo.originais.includes(c.id) ? { ...c, status: 'cancelada', substituidaPor: id } : c)), ...novas],
+      acordos: fin.acordos.map((a) => (a.id === id ? { ...a, situacao: 'ativo', aceitoEm: agora.toISOString(), aceitoPor: quem } : a)),
+      auditoria: [...fin.auditoria, { em: agora.toISOString(), quem, acao: 'Acordo aceito', detalhe: `${id} · apto ${acordo.unidade} · ${acordo.originais.length} débitos substituídos` }],
+    }),
+    notificacao: { canal: 'App', para: SINDICO, texto: `Acordo ${id} aceito. ${primeira.numero ? 'A parcela 1' : 'A entrada'} vence em ${fmtDataCurta(primeira.vencimento)}.` },
+  };
 }

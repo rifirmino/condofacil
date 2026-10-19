@@ -1,7 +1,7 @@
 import { SINDICO } from '../dados.js';
 import { PLANOS } from '../planos.js';
 import { isoDia } from '../datas.js';
-import { validarParametros, previaCompetencia, valorAtualizado, pendentesDaRegua, podeOperar, fmtReais, mesExtenso } from './regras.js';
+import { validarParametros, previaCompetencia, valorAtualizado, pendentesDaRegua, podeOperar, fmtReais, mesExtenso, rotuloCobranca } from './regras.js';
 
 // Cada ação devolve { estado, notificacao?, erro? } sem mutar nada; ações financeiras entram na auditoria.
 export const SO_SINDICO = 'Somente o síndico pode fazer isso';
@@ -25,6 +25,18 @@ function trocarCobranca(cobrancas, id, mudanca) {
 export function nomeResponsavel(estado, unidade) {
   const r = estado.financeiro.unidades[unidade].responsavel;
   return r ? r.nome : `Apto ${unidade}`;
+}
+
+function nomeCurtoCobranca(cobranca) {
+  return cobranca.acordo ? rotuloCobranca(cobranca) : mesExtenso(cobranca.competencia);
+}
+
+function comQuitacao(estado, cobranca) {
+  if (!cobranca.acordo) return { estado, quitado: null };
+  const id = cobranca.acordo.id;
+  const fin = estado.financeiro;
+  if (fin.cobrancas.some((c) => c.acordo && c.acordo.id === id && c.status === 'aberta')) return { estado, quitado: null };
+  return { estado: comFinanceiro(estado, { acordos: fin.acordos.map((x) => (x.id === id && x.situacao === 'ativo' ? { ...x, situacao: 'quitado' } : x)) }), quitado: id };
 }
 
 export function salvarParametros(estado, parametros, perfil, agora) {
@@ -74,12 +86,14 @@ export function confirmarPagamentoAsaas(estado, idCobranca, idEvento, forma, ago
   if (c.eventosAsaas.includes(idEvento)) return { estado };
   if (c.status !== 'aberta') return erroCobranca(estado, 'Cobrança não está em aberto');
   const { total } = valorAtualizado(c, fin.parametros, isoDia(agora));
+  const pago = comFinanceiro(estado, {
+    cobrancas: trocarCobranca(fin.cobrancas, idCobranca, { status: 'paga', pagaEm: agora.toISOString(), valorPago: total, forma, eventosAsaas: [...c.eventosAsaas, idEvento] }),
+    saldo: fin.saldo + total,
+  });
+  const q = comQuitacao(pago, c);
   return {
-    estado: comFinanceiro(estado, {
-      cobrancas: trocarCobranca(fin.cobrancas, idCobranca, { status: 'paga', pagaEm: agora.toISOString(), valorPago: total, forma, eventosAsaas: [...c.eventosAsaas, idEvento] }),
-      saldo: fin.saldo + total,
-    }),
-    notificacao: { canal: 'Asaas', para: nomeResponsavel(estado, c.unidade), texto: `Pagamento recebido: ${fmtReais(total)} · recibo enviado` },
+    estado: q.estado,
+    notificacao: { canal: 'Asaas', para: nomeResponsavel(estado, c.unidade), texto: `Pagamento recebido: ${fmtReais(total)} · recibo enviado${q.quitado ? ` · acordo ${q.quitado} quitado` : ''}` },
   };
 }
 
@@ -91,13 +105,15 @@ export function baixaManual(estado, idCobranca, { data, comprovante }, perfil, a
   if (!c || c.status !== 'aberta') return erroCobranca(estado, 'Cobrança não está em aberto');
   const dia = data || isoDia(agora);
   const { total } = valorAtualizado(c, fin.parametros, dia);
+  const pago = comFinanceiro(estado, {
+    cobrancas: trocarCobranca(fin.cobrancas, idCobranca, { status: 'paga', pagaEm: agora.toISOString(), valorPago: total, forma: 'manual', baixaManual: { por: SINDICO, comprovante, em: dia } }),
+    saldo: fin.saldo + total,
+    auditoria: comAuditoria(estado, agora, 'Baixa manual', `Apto ${c.unidade} · ${nomeCurtoCobranca(c)} · ${fmtReais(total)} · ${comprovante}`),
+  });
+  const q = comQuitacao(pago, c);
   return {
-    estado: comFinanceiro(estado, {
-      cobrancas: trocarCobranca(fin.cobrancas, idCobranca, { status: 'paga', pagaEm: agora.toISOString(), valorPago: total, forma: 'manual', baixaManual: { por: SINDICO, comprovante, em: dia } }),
-      saldo: fin.saldo + total,
-      auditoria: comAuditoria(estado, agora, 'Baixa manual', `Apto ${c.unidade} · ${mesExtenso(c.competencia)} · ${fmtReais(total)} · ${comprovante}`),
-    }),
-    notificacao: { canal: 'App', para: nomeResponsavel(estado, c.unidade), texto: `Pagamento de ${mesExtenso(c.competencia)} registrado pelo síndico` },
+    estado: q.estado,
+    notificacao: { canal: 'App', para: nomeResponsavel(estado, c.unidade), texto: `Pagamento de ${nomeCurtoCobranca(c)} registrado pelo síndico${q.quitado ? ` · acordo ${q.quitado} quitado` : ''}` },
   };
 }
 
@@ -113,7 +129,7 @@ export function cancelarEReemitir(estado, idCobranca, perfil, agora) {
       auditoria: comAuditoria(estado, agora, 'Cancelamento e reemissão', `${c.id} substituída por ${nova.id}`),
     }),
     id: nova.id,
-    notificacao: { canal: 'App + e-mail', para: nomeResponsavel(estado, c.unidade), texto: `Nova cobrança de ${mesExtenso(c.competencia)} enviada (a anterior foi cancelada)` },
+    notificacao: { canal: 'App + e-mail', para: nomeResponsavel(estado, c.unidade), texto: `Nova cobrança de ${nomeCurtoCobranca(c)} enviada (a anterior foi cancelada)` },
   };
 }
 
@@ -122,7 +138,7 @@ export function enviarSegundaVia(estado, idCobranca, agora) {
   const c = fin.cobrancas.find((x) => x.id === idCobranca);
   if (!c || c.status !== 'aberta') return erroCobranca(estado, 'Cobrança não está em aberto');
   const { total } = valorAtualizado(c, fin.parametros, isoDia(agora));
-  return { estado, notificacao: { canal: 'App + WhatsApp', para: nomeResponsavel(estado, c.unidade), texto: `2ª via de ${mesExtenso(c.competencia)} com valor atualizado: ${fmtReais(total)}` } };
+  return { estado, notificacao: { canal: 'App + WhatsApp', para: nomeResponsavel(estado, c.unidade), texto: `2ª via de ${nomeCurtoCobranca(c)} com valor atualizado: ${fmtReais(total)}` } };
 }
 
 export function executarRegua(estado, agora) {
@@ -137,7 +153,7 @@ export function executarRegua(estado, agora) {
   const etapas = [...new Set(pendentes.map((p) => p.etapa.nome))].join(', ');
   return {
     estado: comFinanceiro(estado, { cobrancas, auditoria: comAuditoria(estado, agora, 'Régua executada', `${pendentes.length} avisos para ${unidades} unidades`) }),
-    resumo: pendentes.map((p) => ({ unidade: p.cobranca.unidade, competencia: p.cobranca.competencia, etapa: p.etapa })),
+    resumo: pendentes.map((p) => ({ unidade: p.cobranca.unidade, competencia: p.cobranca.competencia, rotulo: rotuloCobranca(p.cobranca), etapa: p.etapa })),
     notificacao: { canal: 'Régua de cobrança', para: `${unidades} responsáveis`, texto: `${pendentes.length} avisos enviados: ${etapas}` },
   };
 }
