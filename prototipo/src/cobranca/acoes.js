@@ -4,17 +4,17 @@ import { isoDia } from '../datas.js';
 import { validarParametros, previaCompetencia, valorAtualizado, pendentesDaRegua, podeOperar, fmtReais, mesExtenso } from './regras.js';
 
 // Cada ação devolve { estado, notificacao?, erro? } sem mutar nada; ações financeiras entram na auditoria.
-const SO_SINDICO = 'Somente o síndico pode fazer isso';
+export const SO_SINDICO = 'Somente o síndico pode fazer isso';
 
 function erroCobranca(estado, mensagem) {
   return { estado, erro: mensagem };
 }
 
-function comFinanceiro(estado, mudanca) {
+export function comFinanceiro(estado, mudanca) {
   return { ...estado, financeiro: { ...estado.financeiro, ...mudanca } };
 }
 
-function comAuditoria(estado, agora, acao, detalhe) {
+export function comAuditoria(estado, agora, acao, detalhe) {
   return [...estado.financeiro.auditoria, { em: agora.toISOString(), quem: SINDICO, acao, detalhe }];
 }
 
@@ -22,7 +22,7 @@ function trocarCobranca(cobrancas, id, mudanca) {
   return cobrancas.map((c) => (c.id === id ? { ...c, ...mudanca } : c));
 }
 
-function nomeResponsavel(estado, unidade) {
+export function nomeResponsavel(estado, unidade) {
   const r = estado.financeiro.unidades[unidade].responsavel;
   return r ? r.nome : `Apto ${unidade}`;
 }
@@ -53,7 +53,7 @@ export function emitirCompetencia(estado, competencia, perfil, agora) {
   const previa = previaCompetencia(estado, competencia);
   const novas = previa.linhas.filter((l) => !l.bloqueada).map((l) => ({
     id: `CB-${competencia}-${l.unidade}`, unidade: l.unidade, competencia, vencimento: previa.vencimento, itens: l.itens, valor: l.total,
-    status: 'aberta', pagaEm: null, valorPago: null, forma: null, baixaManual: null, eventosAsaas: [], regua: [], substituiu: null,
+    status: 'aberta', pagaEm: null, valorPago: null, forma: null, baixaManual: null, eventosAsaas: [], regua: [], substituiu: null, acordo: null,
   }));
   const bloqueadas = previa.linhas.filter((l) => l.bloqueada).map((l) => l.unidade);
   return {

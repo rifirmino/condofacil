@@ -71,7 +71,7 @@ export function financeiroInicial(hoje, em, pessoas, unidades) {
   const novaCobranca = (unidade, competencia, vencimento, status, extras = {}) => {
     const itens = itensBase(composicao, unidadesFinanceiro[unidade].tipo, competencia);
     const valor = itens.reduce((soma, i) => soma + i.valor, 0);
-    return { id: `CB-${competencia}-${unidade}`, unidade, competencia, vencimento, itens, valor, status, pagaEm: null, valorPago: status === 'paga' ? valor : null, forma: null, baixaManual: null, eventosAsaas: [], regua: [], substituiu: null, ...extras };
+    return { id: `CB-${competencia}-${unidade}`, unidade, competencia, vencimento, itens, valor, status, pagaEm: null, valorPago: status === 'paga' ? valor : null, forma: null, baixaManual: null, eventosAsaas: [], regua: [], substituiu: null, acordo: null, ...extras };
   };
   const enviadas = (ids) => ids.map((etapa) => ({ etapa, em: em(-30, 9) }));
   const cobrancas = [];
@@ -99,6 +99,7 @@ export function financeiroInicial(hoje, em, pessoas, unidades) {
     vencimentoVigente,
     emitidas: [vigente],
     cobrancas,
+    acordos: [],
     historico: HISTORICO_RECEITAS.map((receitas, i) => ({ mes: somarMes(vigente, i - 11), receitas, despesas: HISTORICO_DESPESAS[i] })),
     despesasMes: { pessoal: 980000, concessionarias: 390000, manutencao: 230000, administracao: 120000, seguro: 90000 },
     orcamento: { pessoal: 950000, concessionarias: 420000, manutencao: 200000, administracao: 120000, seguro: 100000 },

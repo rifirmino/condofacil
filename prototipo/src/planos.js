@@ -14,6 +14,8 @@ const RECURSOS_PLANO = {
   notificacaoFormal: 'avancado',
   dashboardCompleto: 'intermediario',
   orcadoRealizado: 'avancado',
+  acordos: 'intermediario',
+  termoConfissao: 'avancado',
 };
 
 const ORDEM_PLANOS = ['basico', 'intermediario', 'avancado'];

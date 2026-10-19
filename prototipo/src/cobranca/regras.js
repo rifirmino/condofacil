@@ -29,6 +29,12 @@ export function mesExtenso(anoMes) {
   return nomeMes(anoMes).split(' de ')[0];
 }
 
+export function rotuloCobranca(cobranca) {
+  const a = cobranca.acordo;
+  if (!a) return nomeMes(cobranca.competencia);
+  return `Acordo ${a.id} · ${a.numero ? `parcela ${a.numero}/${a.de}` : 'entrada'}`;
+}
+
 export function situacaoCobranca(cobranca, hoje) {
   if (cobranca.status !== 'aberta') return cobranca.status;
   return cobranca.vencimento < hoje ? 'vencida' : 'aberta';
