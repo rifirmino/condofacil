@@ -6,3 +6,5 @@ export function igual(obtido, esperado, contexto = '') {
   const b = JSON.stringify(esperado);
   if (a !== b) throw new Error(`${contexto ? `${contexto}: ` : ''}esperado ${b}, obtido ${a}`);
 }
+
+export const AGORA_FASE2 = new Date(2026, 9, 19, 10, 0);

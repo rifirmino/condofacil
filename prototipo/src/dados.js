@@ -1,5 +1,6 @@
 import { isoDia, somarDias, momento, fmtDia } from './datas.js';
 import { vendasIniciais, perfilVenda } from './vendas/dados.js';
+import { financeiroInicial } from './cobranca/dados.js';
 
 export const UNIDADES = Array.from({ length: 32 }, (_, i) => `${Math.floor(i / 4) + 1}0${(i % 4) + 1}`);
 export const UNIDADE_ANA = '302';
@@ -64,12 +65,14 @@ export function dadosIniciais(agora = new Date()) {
   const periodos = [{ id: 'tarde', nome: 'Tarde', inicio: 13, fim: 18 }, { id: 'noite', nome: 'Noite', inicio: 18, fim: 23 }];
   const canaisPadrao = ['push', 'email', 'whatsapp'];
 
+  const pessoas = MORADORES.map(([unidade, nome]) => ({ id: `p${unidade}`, nome, unidade, ...perfilVenda(unidade, em) }));
+
   return {
-    versao: 2,
+    versao: 3,
     geradoEm: hoje,
     proximoProtocolo: 43,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
-    pessoas: MORADORES.map(([unidade, nome]) => ({ id: `p${unidade}`, nome, unidade, ...perfilVenda(unidade, em) })),
+    pessoas,
     areas: [
       { id: 'salao', nome: 'Salão de festas', tipo: 'periodo', periodos, taxa: 150, aprovacao: 'manual', antecedenciaMin: 2, antecedenciaMax: 60, limiteMes: 2, vinculadas: ['churrasqueira'], capacidade: 80, itens: '10 mesas, 60 cadeiras, geladeira e fogão', regulamento: 'Som até as 22h. Limpeza por conta do morador. Vistoria na entrada e na saída.' },
       { id: 'churrasqueira', nome: 'Churrasqueira', tipo: 'periodo', periodos, taxa: 50, aprovacao: 'automatica', antecedenciaMin: 1, antecedenciaMax: 60, limiteMes: 2, vinculadas: ['salao'], capacidade: 25, itens: 'Grelha, 4 mesas, 24 cadeiras e pia', regulamento: 'Traga o carvão e deixe a grelha limpa.' },
@@ -141,5 +144,7 @@ export function dadosIniciais(agora = new Date()) {
     moradorAtual: UNIDADE_ANA,
     sacola: [],
     ...vendasIniciais(em),
+    plano: 'intermediario',
+    financeiro: financeiroInicial(hoje, em, pessoas, UNIDADES),
   };
 }
