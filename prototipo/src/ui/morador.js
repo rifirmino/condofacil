@@ -1,5 +1,7 @@
 import { html, useState } from '../vendor.js';
-import { CATEGORIAS, TIPOS_COMUNICADO } from '../dados.js';
+import { CATEGORIAS, PRIORIDADES, TIPOS_NOTIFICACAO, TIPOS_COMUNICADO } from '../dados.js';
+import { liberado } from '../planos.js';
+import { parecidas, prazosDe } from '../notificacoes/regras.js';
 import { MORADORES_DEMO } from '../vendas/dados.js';
 import { pessoaDaUnidade, anunciosVisiveis } from '../vendas/regras.js';
 import { trocarMorador, alternarOfertas } from '../vendas/acoes.js';
@@ -258,26 +260,27 @@ function MAvisos({ estado, rota, executar, eu }) {
 function MOcorrencias(props) {
   const { estado, rota, eu } = props;
   if (rota.id === 'nova') return html`<${MNovaOcorrencia} ...${props} />`;
-  const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id && (o.unidade === eu || o.publica)) : null;
-  if (oc) return html`<${MDetalheOcorrencia} executar=${props.executar} oc=${oc} eu=${eu} />`;
+  const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id && (o.unidade === eu || o.publica || o.eutambem.includes(eu))) : null;
+  if (oc) return html`<${MDetalheOcorrencia} estado=${estado} executar=${props.executar} oc=${oc} eu=${eu} />`;
   const minhas = estado.ocorrencias.filter((o) => o.unidade === eu);
   const publicas = estado.ocorrencias.filter((o) => o.publica && o.unidade !== eu);
   const item = (o) => html`<li key=${o.id}><a class="cartao link" href=${`#morador.ocorrencias.${o.id}`}>
     <div class="linha-entre"><strong>${CATEGORIAS[o.categoria].nome}</strong><${EtqOcorrencia} status=${o.status} arquivada=${o.arquivada} /></div>
     <span>${o.descricao}</span>
-    <small class="sub">${o.id}${o.publica ? ` · ${o.eutambem.length} "eu também"` : ''}</small>
+    <small class="sub">${o.id} · ${TIPOS_NOTIFICACAO[CATEGORIAS[o.categoria].tipo]}${o.publica ? ` · ${o.eutambem.length} "eu também"` : ''}</small>
   </a></li>`;
   return html`<section class="m-pagina">
-    <h1 class="m-titulo">Ocorrências</h1>
-    <a class="btn primario bloco" href="#morador.ocorrencias.nova">Abrir ocorrência</a>
+    <h1 class="m-titulo">Notificações</h1>
+    <a class="btn primario bloco" href="#morador.ocorrencias.nova">Abrir notificação</a>
     <h2>Minhas</h2>
-    ${minhas.length ? html`<ul class="m-lista">${minhas.map(item)}</ul>` : html`<${Vazio} texto="Você não abriu ocorrências." />`}
+    ${minhas.length ? html`<ul class="m-lista">${minhas.map(item)}</ul>` : html`<${Vazio} texto="Você não abriu notificações." />`}
     <h2>Públicas do condomínio</h2>
-    ${publicas.length ? html`<ul class="m-lista">${publicas.map(item)}</ul>` : html`<${Vazio} texto="Nenhuma ocorrência pública." />`}
+    ${publicas.length ? html`<ul class="m-lista">${publicas.map(item)}</ul>` : html`<${Vazio} texto="Nenhuma notificação pública." />`}
   </section>`;
 }
 
-function MNovaOcorrencia({ executar, eu }) {
+function MNovaOcorrencia({ estado, executar, eu }) {
+  const [tipo, setTipo] = useState('');
   const [categoria, setCategoria] = useState('');
   const [local, setLocal] = useState('');
   const [descricao, setDescricao] = useState('');
@@ -285,6 +288,14 @@ function MNovaOcorrencia({ executar, eu }) {
   const [anonima, setAnonima] = useState(false);
   const [publica, setPublica] = useState(false);
   const [erro, setErro] = useState(null);
+  const categorias = Object.entries(CATEGORIAS).filter(([, c]) => c.tipo === tipo);
+  const iguais = categoria ? parecidas(estado, categoria, eu) : [];
+
+  function escolherTipo(t) {
+    setTipo(t);
+    setCategoria('');
+    if (t !== 'irregularidade') setAnonima(false);
+  }
 
   function enviar() {
     const r = executar((e) => abrirOcorrencia(e, { categoria, local, descricao, foto, anonima, publica, unidade: eu }, new Date()));
@@ -296,29 +307,40 @@ function MNovaOcorrencia({ executar, eu }) {
   }
 
   return html`<section class="m-pagina">
-    <a class="voltar" href="#morador.ocorrencias">‹ Ocorrências</a>
-    <h1 class="m-titulo">Abrir ocorrência</h1>
-    <${Campo} rotulo="Categoria"><select id="ocorrencia-categoria" value=${categoria} onChange=${(ev) => setCategoria(ev.target.value)}>
+    <a class="voltar" href="#morador.ocorrencias">‹ Notificações</a>
+    <h1 class="m-titulo">Abrir notificação</h1>
+    <div class="acoes" role="group" aria-label="Tipo">
+      ${Object.entries(TIPOS_NOTIFICACAO).map(([id, nome]) => html`<button type="button" key=${id} class=${tipo === id ? 'btn primario' : 'btn secundario'} aria-pressed=${tipo === id} onClick=${() => escolherTipo(id)}>${nome}</button>`)}
+    </div>
+    ${tipo && html`<${Campo} rotulo="Categoria"><select id="ocorrencia-categoria" value=${categoria} onChange=${(ev) => setCategoria(ev.target.value)}>
       <option value="">Escolha…</option>
-      ${Object.entries(CATEGORIAS).map(([id, c]) => html`<option key=${id} value=${id}>${c.nome}</option>`)}
-    </select><//>
+      ${categorias.map(([id, c]) => html`<option key=${id} value=${id}>${c.nome}</option>`)}
+    </select><//>`}
+    ${iguais.length > 0 && html`<div class="cartao">
+      <strong>Já avisaram sobre isso</strong>
+      <small class="sub">Se for o mesmo problema, apoie em vez de abrir outra.</small>
+      ${iguais.map((o) => html`<div key=${o.id} class="linha-entre"><span>${o.id} · ${o.local || CATEGORIAS[o.categoria].nome}</span><button type="button" class="btn secundario" data-eutambem=${o.id} aria-pressed=${o.eutambem.includes(eu)} onClick=${() => executar((e) => euTambem(e, o.id, eu))}>Eu também · ${o.eutambem.length}</button></div>`)}
+    </div>`}
     <${Campo} rotulo="Local"><input id="ocorrencia-local" value=${local} onInput=${(ev) => setLocal(ev.target.value)} placeholder="Ex.: garagem, 5º andar, salão" /><//>
     <${Campo} rotulo="Descrição"><textarea id="ocorrencia-descricao" rows="4" value=${descricao} onInput=${(ev) => setDescricao(ev.target.value)}></textarea><//>
     ${foto ? html`<${FotoFalsa} rotulo="Foto anexada" />` : html`<button type="button" class="btn secundario" onClick=${() => setFoto(true)}>Anexar foto</button>`}
-    <label class="check"><input id="ocorrencia-anonima" type="checkbox" checked=${anonima} onChange=${(ev) => setAnonima(ev.target.checked)} /><span>Enviar como anônima</span></label>
-    <small class="m-ajuda">O síndico vê o conteúdo, mas não quem enviou.</small>
+    ${tipo === 'irregularidade' && html`<label class="check"><input id="ocorrencia-anonima" type="checkbox" checked=${anonima} onChange=${(ev) => setAnonima(ev.target.checked)} /><span>Não me identificar para os outros</span></label>
+      <small class="m-ajuda">O síndico sempre vê quem enviou, para evitar abuso.</small>`}
     <label class="check"><input id="ocorrencia-publica" type="checkbox" checked=${publica} onChange=${(ev) => setPublica(ev.target.checked)} /><span>Tornar pública</span></label>
     <small class="m-ajuda">Todos os moradores veem e podem marcar "eu também".</small>
     <${Erro} texto=${erro} />
-    <button type="button" class="btn primario bloco" onClick=${enviar}>Enviar ocorrência</button>
+    <button type="button" class="btn primario bloco" onClick=${enviar}>Enviar notificação</button>
   </section>`;
 }
 
-function MDetalheOcorrencia({ executar, oc, eu }) {
+function MDetalheOcorrencia({ estado, executar, oc, eu }) {
   const [nota, setNota] = useState(0);
   const [erro, setErro] = useState(null);
   const minha = oc.unidade === eu;
   const podeAvaliar = minha && ['resolvida', 'fechada'].includes(oc.status) && !oc.avaliacao;
+  const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
+  const solucao = prazosDe(oc).solucao;
+  const reparo = oc.linha.some((l) => l.texto.startsWith('Reparo concluído'));
 
   function avaliar() {
     const r = executar((e) => avaliarOcorrencia(e, oc.id, nota));
@@ -326,14 +348,17 @@ function MDetalheOcorrencia({ executar, oc, eu }) {
   }
 
   return html`<section class="m-pagina">
-    <a class="voltar" href="#morador.ocorrencias">‹ Ocorrências</a>
+    <a class="voltar" href="#morador.ocorrencias">‹ Notificações</a>
     <p class="protocolo">Protocolo ${oc.id}</p>
     <h1 class="m-titulo">${CATEGORIAS[oc.categoria].nome}</h1>
-    <div><${EtqOcorrencia} status=${oc.status} arquivada=${oc.arquivada} /></div>
+    <div class="etq-linha"><${EtqOcorrencia} status=${oc.status} arquivada=${oc.arquivada} /><span class="sub">${TIPOS_NOTIFICACAO[CATEGORIAS[oc.categoria].tipo]}${comPrazo ? ` · prioridade ${PRIORIDADES[oc.prioridade].nome.toLowerCase()}` : ''}</span></div>
+    ${comPrazo && solucao && !solucao.em && !oc.arquivada && html`<p class="m-sub">Previsão de solução: até ${fmtDataCurta(isoDia(new Date(solucao.limite)))}, ${new Date(solucao.limite).getHours()}h</p>`}
     <p class="m-texto">${oc.descricao}</p>
     ${oc.local && html`<p class="m-sub">Local: ${oc.local}</p>`}
     ${oc.foto && html`<${FotoFalsa} rotulo="Foto enviada" />`}
-    ${oc.publica && html`<button type="button" class="btn secundario" aria-pressed=${oc.eutambem.includes(eu)} onClick=${() => executar((e) => euTambem(e, oc.id, eu))}>Eu também · ${oc.eutambem.length}</button>`}
+    ${oc.os && html`<p class="m-sub">Ordem de serviço ${oc.os} com o zelador</p>`}
+    ${reparo && html`<div class="fotos-reparo"><${FotoFalsa} rotulo="Antes" /><${FotoFalsa} rotulo="Depois" /></div>`}
+    ${(oc.publica || !minha) && html`<button type="button" class="btn secundario" aria-pressed=${oc.eutambem.includes(eu)} onClick=${() => executar((e) => euTambem(e, oc.id, eu))}>Eu também · ${oc.eutambem.length}</button>`}
     <h2>Andamento</h2>
     <${LinhaTempo} linha=${oc.linha} />
     ${podeAvaliar && html`<div class="cartao">

@@ -146,16 +146,17 @@ const ROTEIROS = {
 
   async ocorrencia() {
     await irPara('#morador.ocorrencias.nova');
+    await clicar('Manutenção');
     await preencher('Categoria', 'vazamento');
     await preencher('Descrição', 'Infiltração no teto do banheiro');
-    await clicar('Enviar ocorrência');
-    await esperarTexto('Protocolo OC-0043');
-    await irPara('#sindico.ocorrencias.OC-0043');
-    for (const status of ['Em análise', 'Em andamento', 'Resolvida']) {
+    await clicar('Enviar notificação');
+    await esperarTexto('Protocolo OC-0044');
+    await irPara('#sindico.ocorrencias.OC-0044');
+    for (const status of ['Em análise', 'Em atendimento', 'Resolvida']) {
       await clicar(`Mover para "${status}"`);
       await esperarTexto(`Status alterado para ${status}`);
     }
-    await irPara('#morador.ocorrencias.OC-0043');
+    await irPara('#morador.ocorrencias.OC-0044');
     await clicarSeletor('[data-estrela="5"]');
     await clicar('Enviar avaliação');
     await esperarTexto('Sua avaliação');
