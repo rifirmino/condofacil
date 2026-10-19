@@ -1,11 +1,13 @@
 import { html, useState } from '../vendor.js';
 import { NOMES_FORMA, NOMES_RELACAO } from '../cobranca/dados.js';
-import { fmtReais, mesExtenso, situacaoCobranca, valorAtualizado } from '../cobranca/regras.js';
+import { fmtReais, mesExtenso, situacaoCobranca, valorAtualizado, rotuloCobranca } from '../cobranca/regras.js';
+import { propostaPendente, acordoAtivo } from '../cobranca/acordos.js';
 import { confirmarPagamentoAsaas } from '../cobranca/acoes.js';
 import { pessoaDaUnidade } from '../vendas/regras.js';
 import { isoDia, nomeMes, fmtDataCurta } from '../datas.js';
 import { Sucesso, Vazio, QrFalso, PrevDoc } from './comum.js';
 import { EtqCobranca } from './financeiro-sindico.js';
+import { PropostaAcordo, MeuAcordo } from './acordos.js';
 
 function responsavelDaPessoa(estado, eu) {
   const responsavel = estado.financeiro.unidades[eu].responsavel;
@@ -13,11 +15,22 @@ function responsavelDaPessoa(estado, eu) {
   return { responsavel, souResponsavel: !!responsavel && !!pessoa && responsavel.nome === pessoa.nome };
 }
 
-function cobrancasDaUnidade(estado, eu) {
+function cobrancasDaUnidade(estado, eu, hoje) {
   const minhas = estado.financeiro.cobrancas.filter((c) => c.unidade === eu);
+  const todas = minhas.filter((c) => c.status === 'aberta').sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+  // Do acordo, só as vencidas ou, se nenhuma venceu, a próxima: o cronograma completo fica em "Meu acordo".
+  const comVencida = new Set(todas.filter((c) => c.acordo && c.vencimento < hoje).map((c) => c.acordo.id));
+  const vistos = new Set();
+  const abertas = todas.filter((c) => {
+    if (!c.acordo || c.vencimento < hoje) return true;
+    if (comVencida.has(c.acordo.id) || vistos.has(c.acordo.id)) return false;
+    vistos.add(c.acordo.id);
+    return true;
+  });
   return {
-    abertas: minhas.filter((c) => c.status === 'aberta').sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
+    abertas,
     pagas: minhas.filter((c) => c.status === 'paga').sort((a, b) => b.pagaEm.localeCompare(a.pagaEm)),
+    substituidas: minhas.filter((c) => c.status === 'cancelada' && c.substituidaPor),
   };
 }
 
@@ -34,13 +47,15 @@ function linhaDigitavel(cobranca, total) {
 export function CartaoCobrancaInicio({ estado, eu, agora }) {
   const hoje = isoDia(agora);
   if (!responsavelDaPessoa(estado, eu).souResponsavel) return null;
-  const { abertas } = cobrancasDaUnidade(estado, eu);
+  const proposta = propostaPendente(estado, eu);
+  if (proposta) return html`<a class="cartao link cobranca-inicio" href="#morador.financeiro"><strong>Proposta de acordo do síndico</strong><span class="preco grande">${fmtReais(proposta.total)}</span><small class="sub">${proposta.entrada ? `Entrada de ${fmtReais(proposta.entrada)} + ` : ''}${proposta.parcelas} parcelas · toque para ver e aceitar</small><span class="btn primario">Ver proposta</span></a>`;
+  const { abertas } = cobrancasDaUnidade(estado, eu, hoje);
   if (!abertas.length) return html`<a class="cartao link" href="#morador.financeiro"><strong>Financeiro em dia</strong><span class="sub">Nenhuma cobrança em aberto.</span></a>`;
   const c = abertas[0];
   const situacao = situacaoCobranca(c, hoje);
   const v = valorAtualizado(c, estado.financeiro.parametros, hoje);
   return html`<a class=${`cartao link cobranca-inicio${situacao === 'vencida' ? ' vencida' : ''}`} href="#morador.financeiro">
-    <div class="linha-entre"><strong>Sua cobrança de ${mesExtenso(c.competencia)}</strong><${EtqCobranca} situacao=${situacao} /></div>
+    <div class="linha-entre"><strong>${c.acordo ? `Sua cobrança: ${rotuloCobranca(c)}` : `Sua cobrança de ${mesExtenso(c.competencia)}`}</strong><${EtqCobranca} situacao=${situacao} /></div>
     <span class="preco grande">${fmtReais(v.total)}</span>
     <small class="sub">${situacao === 'vencida' ? `Venceu em ${fmtDataCurta(c.vencimento)} · valor com multa e juros` : `Vence em ${fmtDataCurta(c.vencimento)}`}</small>
     <span class="btn primario">Pagar</span>
@@ -75,7 +90,7 @@ function CartaoCobranca({ estado, cobranca, executar, hoje }) {
   }
 
   return html`<article class=${`cartao cobranca${situacao === 'vencida' ? ' vencida' : ''}`}>
-    <div class="linha-entre"><strong>${nomeMes(cobranca.competencia)}</strong><${EtqCobranca} situacao=${situacao} /></div>
+    <div class="linha-entre"><strong>${rotuloCobranca(cobranca)}</strong><${EtqCobranca} situacao=${situacao} /></div>
     <span class="preco grande">${fmtReais(v.total)}</span>
     <small class="sub">${situacao === 'vencida'
       ? `Venceu em ${fmtDataCurta(cobranca.vencimento)} · ${fmtReais(cobranca.valor)} + multa ${fmtReais(v.multa)} + juros ${fmtReais(v.juros)} (${v.dias} dias)`
@@ -106,6 +121,7 @@ export function MFinanceiro({ estado, eu, executar, agora }) {
   const hoje = isoDia(agora);
   const [documento, setDocumento] = useState(null);
   const { responsavel, souResponsavel } = responsavelDaPessoa(estado, eu);
+  const pessoa = pessoaDaUnidade(estado, eu);
   if (documento) return html`<section class="m-pagina"><${PrevDoc} documento=${documento} aoFechar=${() => setDocumento(null)} /></section>`;
   if (!souResponsavel) {
     return html`<section class="m-pagina">
@@ -117,24 +133,31 @@ export function MFinanceiro({ estado, eu, executar, agora }) {
       </div>
     </section>`;
   }
-  const { abertas, pagas } = cobrancasDaUnidade(estado, eu);
+  const { abertas, pagas, substituidas } = cobrancasDaUnidade(estado, eu, hoje);
+  const proposta = propostaPendente(estado, eu);
+  const ativo = acordoAtivo(estado, eu);
+  const vencidaSemAcordo = abertas.some((c) => !c.acordo && situacaoCobranca(c, hoje) === 'vencida');
   const ano = hoje.slice(0, 4);
-  const recibo = (c) => ({ titulo: `Recibo · ${nomeMes(c.competencia)} · apto ${eu}`, pasta: 'Financeiro', versoes: [{ versao: 1, data: isoDia(new Date(c.pagaEm)) }] });
+  const recibo = (c) => ({ titulo: `Recibo · ${rotuloCobranca(c)} · apto ${eu}`, pasta: 'Financeiro', versoes: [{ versao: 1, data: isoDia(new Date(c.pagaEm)) }] });
   const temVencida = abertas.some((c) => situacaoCobranca(c, hoje) === 'vencida');
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Financeiro</h1>
-    <p class="m-sub">Responsável financeiro: ${responsavel.nome} · apto ${eu}</p>
+    <p class="m-sub">Responsável financeiro: ${responsavel.nome} · ${pessoa && pessoa.naoResidente ? 'proprietário não residente' : `apto ${eu}`}</p>
+    ${proposta && html`<${PropostaAcordo} key=${proposta.id} estado=${estado} executar=${executar} acordo=${proposta} hoje=${hoje} eu=${eu} />`}
+    ${ativo && html`<${MeuAcordo} estado=${estado} acordo=${ativo} hoje=${hoje} />`}
     <h2>Em aberto</h2>
     ${abertas.length
       ? abertas.map((c) => html`<${CartaoCobranca} key=${c.id} estado=${estado} cobranca=${c} executar=${executar} hoje=${hoje} />`)
       : html`<${Vazio} texto="Nenhuma cobrança em aberto. Tudo em dia!" />`}
+    ${!proposta && !ativo && vencidaSemAcordo && html`<small class="sub">Quer parcelar? Fale com o síndico para propor um acordo.</small>`}
     <h2>Histórico</h2>
-    ${pagas.length
+    ${pagas.length || substituidas.length
       ? html`<ul class="m-lista">${pagas.map((c) => html`<li key=${c.id} class="cartao">
-          <div class="linha-entre"><strong>${nomeMes(c.competencia)}</strong><span>${fmtReais(c.valorPago)}</span></div>
+          <div class="linha-entre"><strong>${rotuloCobranca(c)}</strong><span>${fmtReais(c.valorPago)}</span></div>
           <small class="sub">Pago em ${fmtDataCurta(isoDia(new Date(c.pagaEm)))} · ${NOMES_FORMA[c.forma]}</small>
           <button type="button" class="btn-link" onClick=${() => setDocumento(recibo(c))}>Ver recibo</button>
-        </li>`)}</ul>`
+        </li>`)}
+          ${substituidas.map((c) => html`<li key=${c.id} class="cartao"><div class="linha-entre"><strong>${nomeMes(c.competencia)}</strong><${EtqCobranca} situacao="cancelada" /></div><small class="sub">Substituída pelo acordo ${c.substituidaPor}</small></li>`)}</ul>`
       : html`<${Vazio} texto="Nenhum pagamento registrado." />`}
     ${temVencida
       ? html`<small class="sub">A declaração de quitação fica disponível quando não houver débitos vencidos.</small>`
