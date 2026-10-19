@@ -360,10 +360,109 @@ const ROTEIROS = {
     await clicar('Intermediário');
   },
 
+  async notificacaoOS() {
+    await clicar('Reiniciar demonstração');
+    await irPara('#morador.ocorrencias.nova');
+    await clicar('Manutenção');
+    await preencher('Categoria', 'vazamento');
+    await esperarTexto('Já avisaram sobre isso');
+    await preencher('Local', 'Hall do 3º andar');
+    await preencher('Descrição', 'Água descendo pela parede do hall');
+    await clicar('Enviar notificação');
+    await esperarTexto('Protocolo OC-0044');
+    await irPara('#portaria.hoje');
+    await esperarTexto('Notificação urgente: OC-0044');
+    await irPara('#sindico.ocorrencias.OC-0044');
+    await clicarSeletor('[data-acao="gerar-os"]');
+    await esperarTexto('OS-004');
+    await irPara('#zelador.os.OS-004');
+    await clicar('Iniciar');
+    await clicar('Concluir');
+    await preencher('Horas gastas', '1');
+    await clicarSeletor('[data-acao="concluir-os"]');
+    await esperarTexto('Anexe a foto do depois');
+    await clicar('Anexar foto do depois');
+    await clicarSeletor('[data-acao="concluir-os"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Seu chamado OC-0044 foi resolvido')`, 'o aviso ao morador');
+    await irPara('#morador.ocorrencias.OC-0044');
+    await esperarTexto('Reparo concluído pelo zelador');
+    await clicarSeletor('[data-estrela="5"]');
+    await clicar('Enviar avaliação');
+    await esperarTexto('Sua avaliação');
+    await irPara('#sindico.manutencao.OS-004');
+    await clicarSeletor('[data-acao="validar-os"]');
+    await esperarTexto('Validada pelo síndico');
+  },
+
+  async compraAprovacao() {
+    await irPara('#zelador.compras.nova');
+    await preencher('Item', 'Lâmpadas LED 9 W (caixa com 10)');
+    await preencher('Quantidade', '1');
+    await preencher('Valor estimado (R$)', '250,00');
+    await clicar('Pedir compra');
+    await esperarTexto('CP-003');
+    await irPara('#sindico.manutencao.CP-003');
+    await clicarSeletor('[data-acao="aprovar-compra"]');
+    await esperarTexto('Compra aprovada');
+    await irPara('#zelador.compras');
+    await clicarSeletor('[data-compra-receber="CP-003"]');
+    await preencher('Valor final (R$)', '240,00');
+    await clicar('Confirmar recebimento');
+    await esperarTexto('Anexe a nota fiscal (obrigatória acima de R$ 200,00)');
+    await clicar('Anexar nota fiscal');
+    await clicar('Confirmar recebimento');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('lançado em despesas')`, 'o lançamento');
+    await irPara('#sindico.inicio');
+    await esperarTexto('R$ 18.340');
+  },
+
+  async zeladorAvancado() {
+    await clicar('Avançado');
+    await irPara('#zelador.compras.nova');
+    await preencher('Item', 'Bomba reserva');
+    await preencher('Quantidade', '1');
+    await preencher('Valor estimado (R$)', '2.500,00');
+    await preencher('Fornecedor', 'Hidro Bombas');
+    await preencher('Valor da cotação (R$)', '2.500,00');
+    await clicar('Pedir compra');
+    await esperarTexto('CP-004');
+    await irPara('#sindico.manutencao.CP-004');
+    await clicarSeletor('[data-acao="aprovar-compra"]');
+    await esperarTexto('Anexe 3 cotações para compras acima de R$ 2.000,00');
+    await irPara('#zelador.caixa');
+    await clicar('Novo gasto');
+    await preencher('Descrição', 'Fusíveis');
+    await preencher('Valor (R$)', '25,00');
+    await clicar('Registrar gasto');
+    await esperarTexto('Anexe a foto do cupom');
+    await clicar('Anexar foto do cupom');
+    await clicar('Registrar gasto');
+    await esperarTexto('R$ 214,50');
+    await clicar('Intermediário');
+  },
+
+  async advertencia() {
+    await irPara('#sindico.ocorrencias.OC-0043');
+    await preencher('Unidade advertida', '503');
+    await clicar('Gerar advertência');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Apto 503') && !document.querySelector('.selo').innerText.includes('Sônia')`, 'a advertência sem o denunciante');
+    await esperarTexto('Advertência enviada ao apto 503');
+  },
+
+  async planosManutencao() {
+    await clicar('Básico');
+    await irPara('#zelador.os');
+    await esperarTexto('Módulo do zelador disponível no plano Intermediário');
+    await irPara('#sindico.ocorrencias');
+    await esperarTexto('Notificações');
+    await esperar(`!document.body.innerText.includes('1ª resposta')`, 'a caixa sem prazos no Básico');
+    await clicar('Intermediário');
+  },
+
   async larguraCelular() {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await pausa(300);
-    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo']) {
+    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova']) {
       await irPara(hash);
       const largura = await js('document.documentElement.scrollWidth');
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);

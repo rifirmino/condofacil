@@ -464,6 +464,12 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 .proposta-acordo { border-left: 4px solid var(--laranja); }
 .cartao > .resumo, .cartao.simulacao .resumo { padding: 0; border: 0; background: none; }
 
+/* Fase 2: notificações e manutenção */
+.filtros-notificacao { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); max-width: 680px; }
+.fotos-reparo { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; max-width: 520px; }
+.faixa-urgente { margin: 0 0 12px; padding: 10px 14px; background: var(--perigo-bg); color: var(--perigo); font-weight: 600; border-left: 3px solid var(--perigo); border-radius: var(--raio); }
+.cel-abas.zelador { grid-template-columns: repeat(3, 1fr); }
+
 </style>
 <div id="app"></div>
 <script type="module">
@@ -571,6 +577,11 @@ const RECURSOS_PLANO = {
   orcadoRealizado: 'avancado',
   acordos: 'intermediario',
   termoConfissao: 'avancado',
+  notificacoesPrazo: 'intermediario',
+  zelador: 'intermediario',
+  indicadorAtendimento: 'avancado',
+  cotacoes: 'avancado',
+  caixaPequeno: 'avancado',
 };
 
 const ORDEM_PLANOS = ['basico', 'intermediario', 'avancado'];
@@ -1302,20 +1313,32 @@ const SINDICO = 'Síndico Roberto Lima';
 const PORTEIRO_DIA = 'Seu José';
 
 const CATEGORIAS = {
-  barulho: { nome: 'Barulho', sla: 48 },
-  vazamento: { nome: 'Vazamento', sla: 24 },
-  vaga: { nome: 'Vaga ocupada', sla: 24 },
-  lampada: { nome: 'Lâmpada queimada', sla: 72 },
-  seguranca: { nome: 'Segurança', sla: 24 },
-  limpeza: { nome: 'Limpeza', sla: 72 },
-  sugestao: { nome: 'Sugestão', sla: null },
-  vizinho: { nome: 'Reclamação de vizinho', sla: 72 },
-  pet: { nome: 'Pet', sla: 72 },
-  elogio: { nome: 'Elogio', sla: null },
+  vazamento: { nome: 'Vazamento', tipo: 'manutencao', prioridade: 'urgente' },
+  eletrica: { nome: 'Elétrica/iluminação', tipo: 'manutencao', prioridade: 'alta' },
+  elevador: { nome: 'Elevador', tipo: 'manutencao', prioridade: 'alta' },
+  portao: { nome: 'Portão/garagem', tipo: 'manutencao', prioridade: 'alta' },
+  interfone: { nome: 'Interfone', tipo: 'manutencao', prioridade: 'normal' },
+  limpeza: { nome: 'Limpeza', tipo: 'manutencao', prioridade: 'normal' },
+  piscina: { nome: 'Piscina', tipo: 'manutencao', prioridade: 'normal' },
+  outros: { nome: 'Outros', tipo: 'manutencao', prioridade: 'normal' },
+  jardim: { nome: 'Jardim', tipo: 'manutencao', prioridade: 'baixa' },
+  seguranca: { nome: 'Segurança', tipo: 'irregularidade', prioridade: 'alta' },
+  barulho: { nome: 'Barulho', tipo: 'irregularidade', prioridade: 'normal' },
+  vaga: { nome: 'Vaga ocupada', tipo: 'irregularidade', prioridade: 'normal' },
+  lixo: { nome: 'Lixo fora do lugar', tipo: 'irregularidade', prioridade: 'normal' },
+  pet: { nome: 'Pet', tipo: 'irregularidade', prioridade: 'normal' },
+  obra: { nome: 'Obra fora do horário', tipo: 'irregularidade', prioridade: 'normal' },
+  area_comum: { nome: 'Uso indevido de área comum', tipo: 'irregularidade', prioridade: 'normal' },
+  sugestao: { nome: 'Sugestão', tipo: 'outro', prioridade: 'baixa' },
+  elogio: { nome: 'Elogio', tipo: 'outro', prioridade: 'baixa' },
 };
 
+const TIPOS_NOTIFICACAO = { manutencao: 'Manutenção', irregularidade: 'Irregularidade', outro: 'Sugestão ou elogio' };
+const PRIORIDADES = { urgente: { nome: 'Urgente', resposta: 1, solucao: 24 }, alta: { nome: 'Alta', resposta: 4, solucao: 72 }, normal: { nome: 'Normal', resposta: 24, solucao: 168 }, baixa: { nome: 'Baixa', resposta: 72, solucao: null } };
+const ORDEM_PRIORIDADE = ['urgente', 'alta', 'normal', 'baixa'];
+
 const FLUXO_OCORRENCIA = ['aberta', 'em_analise', 'em_andamento', 'resolvida', 'fechada'];
-const NOMES_STATUS = { aberta: 'Aberta', em_analise: 'Em análise', em_andamento: 'Em andamento', resolvida: 'Resolvida', fechada: 'Fechada' };
+const NOMES_STATUS = { aberta: 'Recebida', em_analise: 'Em análise', em_andamento: 'Em atendimento', resolvida: 'Resolvida', fechada: 'Fechada' };
 const NOMES_STATUS_RESERVA = { pendente: 'Pendente', confirmada: 'Confirmada', recusada: 'Recusada', cancelada: 'Cancelada' };
 
 const TIPOS_COMUNICADO = {
@@ -1365,9 +1388,9 @@ function dadosIniciais(agora = new Date()) {
   ];
 
   return comAcordoInicial({
-    versao: 4,
+    versao: 5,
     geradoEm: hoje,
-    proximoProtocolo: 43,
+    proximoProtocolo: 44,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
     pessoas,
     areas: [
@@ -1391,7 +1414,7 @@ function dadosIniciais(agora = new Date()) {
       { id: 'c5', tipo: 'urgente', titulo: 'Elevador 2 parado', texto: 'O elevador 2 está parado aguardando o técnico. Use o elevador 1 ou a escada. Avisaremos assim que voltar a funcionar.', publico: { tipo: 'todos' }, canais: [...canaisPadrao, 'sms'], fixado: false, anexo: null, publicadoEm: em(-1, 21), leituras: leramSemAna(22), reacoes: { util: ['702', '703'], duvida: [] } },
     ],
     ocorrencias: [
-      { id: 'OC-0037', categoria: 'lampada', descricao: 'Lâmpada do hall do 5º andar queimada.', local: '5º andar', unidade: '502', anonima: false, publica: false, foto: false, status: 'resolvida', eutambem: [], linha: [
+      { id: 'OC-0037', os: 'OS-002', categoria: 'eletrica', descricao: 'Lâmpada do hall do 5º andar queimada.', local: '5º andar', unidade: '502', anonima: false, publica: false, foto: false, status: 'resolvida', eutambem: [], linha: [
         { em: em(-9, 19), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Larissa Moura' },
         { em: em(-8, 9), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
         { em: em(-8, 10), status: 'em_andamento', texto: 'Zelador vai trocar hoje à tarde', autor: 'Síndico' },
@@ -1401,12 +1424,12 @@ function dadosIniciais(agora = new Date()) {
         { em: em(-6, 11), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Lucas Martins' },
         { em: em(-6, 14), status: 'fechada', texto: 'Agradecemos o elogio! Repassado ao Seu José.', autor: 'Síndico' },
       ], avaliacao: null, arquivada: false, criadaEm: em(-6, 11) },
-      { id: 'OC-0039', categoria: 'vazamento', descricao: 'Água pingando do teto da garagem, perto da vaga 12.', local: 'Garagem, vaga 12', unidade: '101', anonima: false, publica: false, foto: true, status: 'em_andamento', eutambem: [], linha: [
+      { id: 'OC-0039', os: 'OS-003', categoria: 'vazamento', descricao: 'Água pingando do teto da garagem, perto da vaga 12.', local: 'Garagem, vaga 12', unidade: '101', anonima: false, publica: false, foto: true, status: 'em_andamento', eutambem: [], linha: [
         { em: em(-3, 8), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Carla Mendes' },
         { em: em(-3, 10), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
         { em: em(-2, 9), status: 'em_andamento', texto: 'Encanador agendado para avaliar a prumada', autor: 'Síndico' },
       ], avaliacao: null, arquivada: false, criadaEm: em(-3, 8) },
-      { id: 'OC-0040', categoria: 'seguranca', descricao: 'Elevador 2 parado entre o 3º e o 4º andar.', local: 'Elevador 2', unidade: '702', anonima: false, publica: true, foto: false, status: 'em_andamento', eutambem: ['101', '104', '201', '404', '501', '603', '703'], linha: [
+      { id: 'OC-0040', categoria: 'elevador', descricao: 'Elevador 2 parado entre o 3º e o 4º andar.', local: 'Elevador 2', unidade: '702', anonima: false, publica: true, foto: false, status: 'em_andamento', eutambem: ['101', '104', '201', '404', '501', '603', '703'], linha: [
         { em: em(-1, 20), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Sônia Araújo' },
         { em: em(-1, 20, 30), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
         { em: em(-1, 21), status: 'em_andamento', texto: 'Técnico da empresa de elevadores acionado', autor: 'Síndico' },
@@ -1418,7 +1441,10 @@ function dadosIniciais(agora = new Date()) {
       { id: 'OC-0042', categoria: 'vaga', descricao: 'Carro desconhecido parado na minha vaga (G1-18) desde ontem.', local: 'Garagem G1, vaga 18', unidade: UNIDADE_ANA, anonima: false, publica: false, foto: true, status: 'aberta', eutambem: [], linha: [
         { em: em(-2, 7), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Ana Souza' },
       ], avaliacao: null, arquivada: false, criadaEm: em(-2, 7) },
-    ],
+      { id: 'OC-0043', categoria: 'obra', descricao: 'Furadeira no domingo às 8h no 5º andar, parece ser no 503.', local: '5º andar', unidade: '702', anonima: false, publica: false, foto: false, status: 'aberta', eutambem: [], linha: [
+        { em: em(0, 5), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Sônia Araújo' },
+      ], avaliacao: null, arquivada: false, criadaEm: em(0, 5) },
+    ].map((o) => ({ prioridade: CATEGORIAS[o.categoria].prioridade, os: null, advertencia: null, motivoArquivamento: null, ...o })),
     documentos: [
       { id: 'd1', pasta: 'Convenção', titulo: 'Convenção do condomínio', versoes: [{ versao: 1, data: '2019-03-10' }], visibilidade: 'todos' },
       { id: 'd2', pasta: 'Regimento interno', titulo: 'Regimento interno', versoes: [{ versao: 1, data: '2019-03-10' }, { versao: 2, data: '2024-05-20' }], visibilidade: 'todos' },
@@ -1441,6 +1467,7 @@ function dadosIniciais(agora = new Date()) {
     moradorAtual: UNIDADE_ANA,
     sacola: [],
     ...vendasIniciais(em),
+    manutencao: manutencaoInicial(em),
     plano: 'intermediario',
     financeiro: financeiroInicial(hoje, em, pessoas, UNIDADES),
   });
@@ -1543,9 +1570,8 @@ function alertasDocumentos(documentos, hoje) {
 }
 
 function slaVencido(oc, agora) {
-  const sla = CATEGORIAS[oc.categoria] && CATEGORIAS[oc.categoria].sla;
-  if (!sla || oc.status !== 'aberta') return false;
-  return horasEntre(new Date(oc.criadaEm), agora) > sla;
+  const v = prazosVencidos(oc, agora);
+  return v.resposta !== null || v.solucao !== null;
 }
 
 function statusDia(estado, areaId, data) {
@@ -1605,6 +1631,89 @@ function indicadoresSindico(estado, agora) {
     vencendo: alertasDocumentos(estado.documentos, isoDia(agora)).length,
     adesao: { com: new Set(estado.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, total: estado.condominio.unidades.length },
   };
+}
+
+// ---- src/notificacoes/regras.js ----
+
+// Prazos derivados da linha do tempo: 1ª resposta = primeira entrada do síndico; solução = entrada com status "resolvida".
+const HORA_MS = 3600000;
+const ENCERRADAS = ['resolvida', 'fechada'];
+
+function instanteMais(iso, horas) {
+  return new Date(new Date(iso).getTime() + horas * HORA_MS).toISOString();
+}
+
+function prazosDe(oc) {
+  const p = PRIORIDADES[oc.prioridade];
+  const respondida = oc.linha.find((l) => l.autor === 'Síndico');
+  const resolvida = oc.linha.find((l) => l.status === 'resolvida');
+  return {
+    resposta: { limite: instanteMais(oc.criadaEm, p.resposta), em: respondida ? respondida.em : null },
+    solucao: p.solucao === null ? null : { limite: instanteMais(oc.criadaEm, p.solucao), em: resolvida ? resolvida.em : null },
+  };
+}
+
+function prazosVencidos(oc, agora) {
+  if (oc.arquivada) return { resposta: null, solucao: null };
+  const p = prazosDe(oc);
+  const atraso = (prazo, encerrou) => (prazo && !encerrou && agora > new Date(prazo.limite) ? Math.floor(horasEntre(new Date(prazo.limite), agora)) : null);
+  return { resposta: atraso(p.resposta, !!p.resposta.em), solucao: atraso(p.solucao, !p.solucao || !!p.solucao.em || ENCERRADAS.includes(oc.status)) };
+}
+
+function textoAtraso(horas) {
+  return horas < 48 ? `${horas} h` : `${Math.floor(horas / 24)} dias`;
+}
+
+function proximoLimite(oc) {
+  const p = prazosDe(oc);
+  if (!p.resposta.em) return p.resposta.limite;
+  return p.solucao && !p.solucao.em ? p.solucao.limite : '9999';
+}
+
+function caixaDeEntrada(estado, agora, filtros = {}) {
+  const { status = 'ativas', tipo = 'todos', prioridade = 'todas' } = filtros;
+  return estado.ocorrencias
+    .filter((o) => {
+      if (status === 'arquivadas') return o.arquivada;
+      if (o.arquivada) return false;
+      if (status === 'ativas' && ENCERRADAS.includes(o.status)) return false;
+      if (!['ativas', 'todas'].includes(status) && o.status !== status) return false;
+      if (tipo !== 'todos' && CATEGORIAS[o.categoria].tipo !== tipo) return false;
+      return prioridade === 'todas' || o.prioridade === prioridade;
+    })
+    .sort((a, b) => Number(ENCERRADAS.includes(a.status)) - Number(ENCERRADAS.includes(b.status))
+      || ORDEM_PRIORIDADE.indexOf(a.prioridade) - ORDEM_PRIORIDADE.indexOf(b.prioridade)
+      || proximoLimite(a).localeCompare(proximoLimite(b))
+      || b.criadaEm.localeCompare(a.criadaEm));
+}
+
+function parecidas(estado, categoria, unidade) {
+  return estado.ocorrencias.filter((o) => o.categoria === categoria && o.unidade !== unidade && !o.arquivada && !ENCERRADAS.includes(o.status));
+}
+
+function alertasNotificacoes(estado, agora) {
+  const itens = [];
+  for (const o of caixaDeEntrada(estado, agora, { status: 'ativas' })) {
+    const v = prazosVencidos(o, agora);
+    if (v.resposta !== null) itens.push({ chave: `resp-${o.id}`, texto: `${o.id}: 1ª resposta vencida há ${textoAtraso(v.resposta)}`, href: `#sindico.ocorrencias.${o.id}` });
+    if (v.solucao !== null) itens.push({ chave: `sol-${o.id}`, texto: `${o.id}: solução vencida há ${textoAtraso(v.solucao)}`, href: `#sindico.ocorrencias.${o.id}` });
+  }
+  return itens;
+}
+
+function indicadorAtendimento(estado) {
+  const ativas = estado.ocorrencias.filter((o) => !o.arquivada && !ENCERRADAS.includes(o.status));
+  const encerradas = estado.ocorrencias.filter((o) => ENCERRADAS.includes(o.status) && prazosDe(o).solucao);
+  const noPrazo = encerradas.filter((o) => {
+    const s = prazosDe(o).solucao;
+    return s.em && s.em <= s.limite;
+  }).length;
+  const pct = encerradas.length ? Math.round((noPrazo / encerradas.length) * 100) : 100;
+  return { abertas: ativas.length, noPrazo, comPrazo: encerradas.length, pct, alerta: pct < 80 };
+}
+
+function urgentesAbertas(estado) {
+  return estado.ocorrencias.filter((o) => o.prioridade === 'urgente' && !o.arquivada && !ENCERRADAS.includes(o.status));
 }
 
 // ---- src/acoes.js ----
@@ -1746,12 +1855,12 @@ function reagir(estado, id, unidade, tipo) {
 }
 
 function abrirOcorrencia(estado, dados, agora) {
-  if (!CATEGORIAS[dados.categoria]) return erroAcao(estado, 'Escolha a categoria');
+  if (!CATEGORIAS[dados.categoria]) return erroAcao(estado, 'Escolha o tipo e a categoria');
   const descricao = String(dados.descricao || '').trim();
   if (!descricao) return erroAcao(estado, 'Descreva a ocorrência');
   const id = `OC-${String(estado.proximoProtocolo).padStart(4, '0')}`;
   const em = agora.toISOString();
-  const ocorrencia = { id, categoria: dados.categoria, descricao, local: String(dados.local || '').trim(), unidade: dados.unidade, anonima: !!dados.anonima, publica: !!dados.publica, foto: !!dados.foto, status: 'aberta', eutambem: [], linha: [{ em, status: 'aberta', texto: 'Ocorrência aberta', autor: dados.anonima ? 'Anônimo' : nomesDaUnidade(estado, dados.unidade) }], avaliacao: null, arquivada: false, criadaEm: em };
+  const ocorrencia = { id, categoria: dados.categoria, descricao, local: String(dados.local || '').trim(), unidade: dados.unidade, anonima: !!dados.anonima, publica: !!dados.publica, foto: !!dados.foto, status: 'aberta', eutambem: [], linha: [{ em, status: 'aberta', texto: 'Ocorrência aberta', autor: dados.anonima ? 'Anônimo' : nomesDaUnidade(estado, dados.unidade) }], avaliacao: null, arquivada: false, criadaEm: em, prioridade: CATEGORIAS[dados.categoria].prioridade, os: null, advertencia: null, motivoArquivamento: null };
   return {
     estado: { ...estado, ocorrencias: [ocorrencia, ...estado.ocorrencias], proximoProtocolo: estado.proximoProtocolo + 1 },
     id,
@@ -1806,9 +1915,350 @@ function avaliarOcorrencia(estado, id, nota) {
 function euTambem(estado, id, unidade) {
   const oc = estado.ocorrencias.find((x) => x.id === id);
   if (!oc) return erroAcao(estado, 'Ocorrência não encontrada');
-  if (!oc.publica) return erroAcao(estado, 'Ocorrência não é pública');
+  if (!oc.publica && oc.unidade === unidade) return erroAcao(estado, 'Ocorrência não é pública');
   const eutambem = oc.eutambem.includes(unidade) ? oc.eutambem.filter((u) => u !== unidade) : [...oc.eutambem, unidade];
   return { estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { eutambem }) } };
+}
+
+// ---- src/notificacoes/acoes.js ----
+
+// Ações do síndico na caixa de notificações (Intermediário em diante). Cada uma entra na linha do tempo como "Síndico".
+const SO_SINDICO_NOTIF = 'Somente o síndico pode fazer isso';
+
+function erroNotif(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function guardaNotif(estado, id, perfil) {
+  if (perfil !== 'sindico') return SO_SINDICO_NOTIF;
+  if (!liberado(estado.plano, 'notificacoesPrazo')) return 'Disponível no plano Intermediário';
+  if (!estado.ocorrencias.some((o) => o.id === id)) return 'Ocorrência não encontrada';
+  return null;
+}
+
+function comEntrada(estado, id, mudanca, entrada) {
+  const oc = estado.ocorrencias.find((o) => o.id === id);
+  return { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { ...mudanca, linha: [...oc.linha, entrada] }) };
+}
+
+function definirPrioridade(estado, id, prioridade, perfil, agora) {
+  const falha = guardaNotif(estado, id, perfil);
+  if (falha) return erroNotif(estado, falha);
+  if (!PRIORIDADES[prioridade]) return erroNotif(estado, 'Prioridade inválida');
+  return { estado: comEntrada(estado, id, { prioridade }, { em: agora.toISOString(), status: null, texto: `Prioridade definida como ${PRIORIDADES[prioridade].nome}`, autor: 'Síndico' }) };
+}
+
+function pedirInformacao(estado, id, texto, perfil, agora) {
+  const falha = guardaNotif(estado, id, perfil);
+  if (falha) return erroNotif(estado, falha);
+  const mensagem = String(texto || '').trim();
+  if (!mensagem) return erroNotif(estado, 'Escreva o que precisa saber');
+  const oc = estado.ocorrencias.find((o) => o.id === id);
+  const status = oc.status === 'aberta' ? 'em_analise' : oc.status;
+  return {
+    estado: comEntrada(estado, id, { status }, { em: agora.toISOString(), status: status !== oc.status ? status : null, texto: `Pedido de informação: ${mensagem}`, autor: 'Síndico' }),
+    notificacao: { canal: 'Push', para: `Apto ${oc.unidade}`, texto: `${id}: o síndico pediu mais informações` },
+  };
+}
+
+function gerarAdvertencia(estado, id, unidade, perfil, agora) {
+  const falha = guardaNotif(estado, id, perfil);
+  if (falha) return erroNotif(estado, falha);
+  const oc = estado.ocorrencias.find((o) => o.id === id);
+  if (CATEGORIAS[oc.categoria].tipo !== 'irregularidade') return erroNotif(estado, 'Advertência só vale para irregularidades');
+  const alvo = String(unidade || '').trim();
+  if (!alvo) return erroNotif(estado, 'Informe a unidade advertida');
+  return {
+    estado: comEntrada(estado, id, { advertencia: { unidade: alvo, em: agora.toISOString() } }, { em: agora.toISOString(), status: null, texto: `Advertência enviada ao apto ${alvo}`, autor: 'Síndico' }),
+    notificacao: { canal: 'App + e-mail', para: `Apto ${alvo}`, texto: `Advertência do condomínio: ${CATEGORIAS[oc.categoria].nome.toLowerCase()} (regimento interno). Responda ao síndico pelo app.` },
+  };
+}
+
+function arquivarComJustificativa(estado, id, motivo, perfil, agora) {
+  if (perfil !== 'sindico') return erroNotif(estado, SO_SINDICO_NOTIF);
+  const texto = String(motivo || '').trim();
+  if (!texto) return erroNotif(estado, 'Informe o motivo do arquivamento');
+  if (!estado.ocorrencias.some((o) => o.id === id)) return erroNotif(estado, 'Ocorrência não encontrada');
+  return { estado: comEntrada(estado, id, { arquivada: true, motivoArquivamento: texto }, { em: agora.toISOString(), status: null, texto: `Arquivada: ${texto}`, autor: 'Síndico' }) };
+}
+
+// ---- src/manutencao/dados.js ----
+// Dados iniciais do zelador: OS, compras e caixa pequeno (fase 2, parte 3).
+const ZELADOR = 'Seu Antônio';
+const NOMES_STATUS_OS = { aberta: 'Aberta', em_execucao: 'Em execução', aguardando_material: 'Aguardando material', aguardando_prestador: 'Aguardando prestador', concluida: 'Concluída', validada: 'Validada' };
+const CATEGORIAS_COMPRA = { manutencao: 'Manutenção', administracao: 'Administração', seguro: 'Seguro e outros' };
+
+function manutencaoInicial(em) {
+  const os = [
+    { id: 'OS-001', origem: 'sindico', notificacao: null, local: 'Casa de bombas', descricao: 'Manutenção preventiva da bomba d’água (troca do selo mecânico)', prioridade: 'normal', prazo: em(-8, 18), responsavel: 'zelador', prestador: null, status: 'validada', fotoAntes: true, fotoDepois: true, materiais: 'Selo mecânico', horas: 1.5, observacoes: 'Sem vazamento após a troca', linha: [
+      { em: em(-12, 9), status: 'aberta', texto: 'OS aberta pelo síndico', autor: 'Síndico' },
+      { em: em(-11, 8), status: 'em_execucao', texto: 'Iniciada', autor: ZELADOR },
+      { em: em(-11, 10), status: 'concluida', texto: 'Concluída com fotos do depois', autor: ZELADOR },
+      { em: em(-10, 16), status: 'validada', texto: 'Validada pelo síndico', autor: 'Síndico' },
+    ], criadaEm: em(-12, 9), iniciadaEm: em(-11, 8), concluidaEm: em(-11, 10), validadaEm: em(-10, 16) },
+    { id: 'OS-002', origem: 'notificacao', notificacao: 'OC-0037', local: '5º andar', descricao: 'Lâmpada do hall do 5º andar queimada.', prioridade: 'alta', prazo: em(-6, 19), responsavel: 'zelador', prestador: null, status: 'concluida', fotoAntes: true, fotoDepois: true, materiais: '2 lâmpadas LED 9 W', horas: 0.5, observacoes: '', linha: [
+      { em: em(-8, 10), status: 'aberta', texto: 'OS aberta a partir da OC-0037', autor: 'Síndico' },
+      { em: em(-7, 14), status: 'em_execucao', texto: 'Iniciada', autor: ZELADOR },
+      { em: em(-7, 15), status: 'concluida', texto: 'Concluída com fotos do depois', autor: ZELADOR },
+    ], criadaEm: em(-8, 10), iniciadaEm: em(-7, 14), concluidaEm: em(-7, 15), validadaEm: null },
+    { id: 'OS-003', origem: 'notificacao', notificacao: 'OC-0039', local: 'Garagem, vaga 12', descricao: 'Água pingando do teto da garagem, perto da vaga 12.', prioridade: 'urgente', prazo: em(-2, 8), responsavel: 'zelador', prestador: null, status: 'em_execucao', fotoAntes: true, fotoDepois: false, materiais: '', horas: 0, observacoes: '', linha: [
+      { em: em(-2, 9), status: 'aberta', texto: 'OS aberta a partir da OC-0039', autor: 'Síndico' },
+      { em: em(-2, 10), status: 'em_execucao', texto: 'Iniciada', autor: ZELADOR },
+      { em: em(-2, 15), status: 'aguardando_material', texto: 'Aguardando material: registro de 3/4"', autor: ZELADOR },
+      { em: em(-1, 9), status: 'em_execucao', texto: 'Retomada', autor: ZELADOR },
+    ], criadaEm: em(-2, 9), iniciadaEm: em(-2, 10), concluidaEm: null, validadaEm: null },
+  ];
+  const compras = [
+    { id: 'CP-001', item: 'Registro de 3/4" e conexões', quantidade: 1, motivo: 'Trocar o registro que está vazando na garagem', valorEstimado: 38000, categoria: 'manutencao', os: 'OS-003', urgente: true, cotacoes: [{ fornecedor: 'Casa do Encanador', valor: 38000 }], status: 'solicitada', motivoRecusa: null, valorFinal: null, nota: null, viaCaixa: false, criadaEm: em(-1, 11), aprovadaEm: null, recebidaEm: null },
+    { id: 'CP-002', item: 'Produtos de limpeza (kit do mês)', quantidade: 1, motivo: 'Reposição mensal', valorEstimado: 14500, categoria: 'manutencao', os: null, urgente: false, cotacoes: [{ fornecedor: 'Atacadão Limpeza', valor: 14500 }], status: 'recebida', motivoRecusa: null, valorFinal: 14500, nota: 'nota-CP-002.pdf', viaCaixa: false, criadaEm: em(-9, 10), aprovadaEm: em(-8, 18), recebidaEm: em(-6, 11) },
+  ];
+  const caixa = { fundo: 30000, saldo: 23950, gastos: [
+    { id: 'G1', descricao: 'Fita veda-rosca e lâmpadas', valor: 4200, cupom: true, em: em(-5, 16) },
+    { id: 'G2', descricao: 'Sacos de lixo extras', valor: 1850, cupom: true, em: em(-2, 11) },
+  ], reposicoes: [] };
+  return { os, compras, caixa, proximaOS: 4, proximaCompra: 3 };
+}
+
+// ---- src/manutencao/regras.js ----
+
+// Regras do zelador: ordem das OS, cotações mínimas por faixa de valor e alertas ao síndico.
+const LIMITE_COTACAO_1 = 50000;
+const LIMITE_COTACAO_2 = 200000;
+const ATIVAS_OS = ['aberta', 'em_execucao', 'aguardando_material', 'aguardando_prestador'];
+
+function listaOS(estado) {
+  const fase = (o) => (ATIVAS_OS.includes(o.status) ? 0 : o.status === 'concluida' ? 1 : 2);
+  return [...estado.manutencao.os].sort((a, b) => fase(a) - fase(b) || ORDEM_PRIORIDADE.indexOf(a.prioridade) - ORDEM_PRIORIDADE.indexOf(b.prioridade) || a.prazo.localeCompare(b.prazo));
+}
+
+function osAtiva(os) {
+  return ATIVAS_OS.includes(os.status);
+}
+
+function cotacoesMinimas(valor) {
+  if (valor > LIMITE_COTACAO_2) return { minimo: 3, acimaDe: LIMITE_COTACAO_2 };
+  if (valor > LIMITE_COTACAO_1) return { minimo: 2, acimaDe: LIMITE_COTACAO_1 };
+  return { minimo: 1, acimaDe: 0 };
+}
+
+function textoCotacoes(valor) {
+  const r = cotacoesMinimas(valor);
+  return r.acimaDe ? `Anexe ${r.minimo} cotações para compras acima de ${fmtReais(r.acimaDe)}` : 'Anexe 1 cotação';
+}
+
+function alertasManutencao(estado, agora) {
+  const m = estado.manutencao;
+  const itens = [];
+  for (const o of m.os.filter((x) => x.prioridade === 'urgente' && x.status === 'aberta')) {
+    const h = Math.floor(horasEntre(new Date(o.criadaEm), agora));
+    if (h >= 2) itens.push({ chave: `osu-${o.id}`, texto: `${o.id} urgente sem início há ${h} h`, href: `#sindico.manutencao.${o.id}` });
+  }
+  for (const o of m.os.filter((x) => x.status === 'concluida')) itens.push({ chave: `osv-${o.id}`, texto: `${o.id} concluída: validar`, href: `#sindico.manutencao.${o.id}` });
+  for (const c of m.compras.filter((x) => x.status === 'solicitada')) itens.push({ chave: `cp-${c.id}`, texto: `${c.id} aguardando aprovação: ${c.item}, ${fmtReais(c.valorEstimado)}`, href: `#sindico.manutencao.${c.id}` });
+  return itens;
+}
+
+// ---- src/manutencao/acoes.js ----
+
+// Ações do zelador e do síndico sobre OS, compras e caixa pequeno. Cada uma devolve { estado, notificacao?, erro?, id? }.
+const SO_EQUIPE = 'Somente o zelador ou o síndico pode fazer isso';
+const SO_SINDICO_MAN = 'Somente o síndico pode fazer isso';
+const DIA_MS = 86400000;
+const LIMITE_CAIXA = 20000;
+
+function erroMan(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function guardaMan(estado, perfil, soSindico = false) {
+  if (soSindico ? perfil !== 'sindico' : !['sindico', 'zelador'].includes(perfil)) return soSindico ? SO_SINDICO_MAN : SO_EQUIPE;
+  if (!liberado(estado.plano, 'zelador')) return 'Disponível no plano Intermediário';
+  return null;
+}
+
+function comManutencao(estado, mudanca) {
+  return { ...estado, manutencao: { ...estado.manutencao, ...mudanca } };
+}
+
+function autorDe(perfil) {
+  return perfil === 'sindico' ? 'Síndico' : ZELADOR;
+}
+
+function novaOS(estado, campos, agora) {
+  const id = `OS-${String(estado.manutencao.proximaOS).padStart(3, '0')}`;
+  return { id, fotoAntes: true, fotoDepois: false, materiais: '', horas: 0, observacoes: '', prestador: null, criadaEm: agora.toISOString(), iniciadaEm: null, concluidaEm: null, validadaEm: null, status: 'aberta', ...campos };
+}
+
+function mudarOS(estado, id, mudanca, entrada) {
+  const os = estado.manutencao.os.find((o) => o.id === id);
+  return comManutencao(estado, { os: trocarItem(estado.manutencao.os, id, { ...mudanca, linha: [...os.linha, entrada] }) });
+}
+
+function gerarOS(estado, idNotificacao, { responsavel = 'zelador', prestador = null, prazo = null }, perfil, agora) {
+  const falha = guardaMan(estado, perfil, true);
+  if (falha) return erroMan(estado, falha);
+  const oc = estado.ocorrencias.find((o) => o.id === idNotificacao);
+  if (!oc) return erroMan(estado, 'Ocorrência não encontrada');
+  if (oc.os) return erroMan(estado, `Esta notificação já tem a ${oc.os}`);
+  if (responsavel === 'prestador' && !String(prestador || '').trim()) return erroMan(estado, 'Informe o prestador');
+  const limite = PRIORIDADES[oc.prioridade].solucao;
+  const prazoFinal = prazo || new Date(new Date(oc.criadaEm).getTime() + (limite || 168) * 3600000).toISOString();
+  const quem = responsavel === 'prestador' ? `o prestador ${prestador.trim()}` : 'o zelador';
+  const os = novaOS(estado, { origem: 'notificacao', notificacao: oc.id, local: oc.local || CATEGORIAS[oc.categoria].nome, descricao: oc.descricao, prioridade: oc.prioridade, prazo: prazoFinal, responsavel, prestador: responsavel === 'prestador' ? prestador.trim() : null, linha: [{ em: agora.toISOString(), status: 'aberta', texto: `OS aberta a partir da ${oc.id}`, autor: 'Síndico' }] }, agora);
+  const entrada = { em: agora.toISOString(), status: oc.status === 'em_andamento' ? null : 'em_andamento', texto: `${os.id} aberta para ${quem}`, autor: 'Síndico' };
+  return {
+    estado: {
+      ...comManutencao(estado, { os: [...estado.manutencao.os, os], proximaOS: estado.manutencao.proximaOS + 1 }),
+      ocorrencias: trocarItem(estado.ocorrencias, oc.id, { os: os.id, status: 'em_andamento', linha: [...oc.linha, entrada] }),
+    },
+    id: os.id,
+    notificacao: { canal: 'Push', para: responsavel === 'prestador' ? prestador.trim() : ZELADOR, texto: `Nova ${os.id}: ${os.local}` },
+  };
+}
+
+function abrirOS(estado, { local, descricao, prioridade = 'normal', prazo = null }, perfil, agora) {
+  const falha = guardaMan(estado, perfil);
+  if (falha) return erroMan(estado, falha);
+  if (!String(local || '').trim() || !String(descricao || '').trim()) return erroMan(estado, 'Informe o local e a descrição');
+  const os = novaOS(estado, { origem: perfil === 'sindico' ? 'sindico' : 'ronda', notificacao: null, local: local.trim(), descricao: descricao.trim(), prioridade, prazo: prazo || new Date(agora.getTime() + 7 * DIA_MS).toISOString(), responsavel: 'zelador', linha: [{ em: agora.toISOString(), status: 'aberta', texto: perfil === 'sindico' ? 'OS aberta pelo síndico' : 'OS aberta na ronda do zelador', autor: autorDe(perfil) }] }, agora);
+  return { estado: comManutencao(estado, { os: [...estado.manutencao.os, os], proximaOS: estado.manutencao.proximaOS + 1 }), id: os.id };
+}
+
+function iniciarOS(estado, id, perfil, agora) {
+  const falha = guardaMan(estado, perfil);
+  if (falha) return erroMan(estado, falha);
+  const os = estado.manutencao.os.find((o) => o.id === id);
+  if (!os || !['aberta', 'aguardando_material', 'aguardando_prestador'].includes(os.status)) return erroMan(estado, 'Esta OS não pode ser iniciada agora');
+  return { estado: mudarOS(estado, id, { status: 'em_execucao', iniciadaEm: os.iniciadaEm || agora.toISOString() }, { em: agora.toISOString(), status: 'em_execucao', texto: os.status === 'aberta' ? 'Iniciada' : 'Retomada', autor: autorDe(perfil) }) };
+}
+
+function pausarOS(estado, id, motivo, perfil, agora) {
+  const falha = guardaMan(estado, perfil);
+  if (falha) return erroMan(estado, falha);
+  const os = estado.manutencao.os.find((o) => o.id === id);
+  if (!os || os.status !== 'em_execucao' || !['aguardando_material', 'aguardando_prestador'].includes(motivo)) return erroMan(estado, 'Só OS em execução podem aguardar');
+  const texto = motivo === 'aguardando_material' ? 'Aguardando material' : 'Aguardando prestador';
+  return { estado: mudarOS(estado, id, { status: motivo }, { em: agora.toISOString(), status: motivo, texto, autor: autorDe(perfil) }) };
+}
+
+function concluirOS(estado, id, { fotoDepois, materiais = '', horas, observacoes = '' }, perfil, agora) {
+  const falha = guardaMan(estado, perfil);
+  if (falha) return erroMan(estado, falha);
+  const os = estado.manutencao.os.find((o) => o.id === id);
+  if (!os || !['em_execucao', 'aguardando_material', 'aguardando_prestador'].includes(os.status)) return erroMan(estado, 'Inicie a OS antes de concluir');
+  if (!fotoDepois) return erroMan(estado, 'Anexe a foto do depois');
+  if (!(horas > 0)) return erroMan(estado, 'Informe as horas gastas');
+  const em = agora.toISOString();
+  let novo = mudarOS(estado, id, { status: 'concluida', fotoDepois: true, materiais: String(materiais).trim(), horas, observacoes: String(observacoes).trim(), concluidaEm: em }, { em, status: 'concluida', texto: 'Concluída com fotos do depois', autor: autorDe(perfil) });
+  const oc = os.notificacao ? novo.ocorrencias.find((o) => o.id === os.notificacao) : null;
+  if (!oc || ['resolvida', 'fechada'].includes(oc.status)) return { estado: novo, notificacao: { canal: 'Push', para: 'Síndico', texto: `${id} concluída: validar` } };
+  // Em nome do condomínio: a entrada não cria autor novo e a 1ª resposta já existe (a OS foi gerada pelo síndico).
+  novo = { ...novo, ocorrencias: trocarItem(novo.ocorrencias, oc.id, { status: 'resolvida', linha: [...oc.linha, { em, status: 'resolvida', texto: 'Reparo concluído pelo zelador (fotos do antes e depois)', autor: 'Síndico' }] }) };
+  return { estado: novo, notificacao: { canal: 'Push', para: nomesDaUnidade(estado, oc.unidade), texto: `Seu chamado ${oc.id} foi resolvido` } };
+}
+
+function validarOS(estado, id, perfil, agora) {
+  const falha = guardaMan(estado, perfil, true);
+  if (falha) return erroMan(estado, falha);
+  const os = estado.manutencao.os.find((o) => o.id === id);
+  if (!os || os.status !== 'concluida') return erroMan(estado, 'Só OS concluídas podem ser validadas');
+  return { estado: mudarOS(estado, id, { status: 'validada', validadaEm: agora.toISOString() }, { em: agora.toISOString(), status: 'validada', texto: 'Validada pelo síndico', autor: 'Síndico' }) };
+}
+
+function compraPorId(estado, id) {
+  return estado.manutencao.compras.find((c) => c.id === id);
+}
+
+function lancarDespesa(estado, categoria, valor, agora, acao, detalhe) {
+  const fin = estado.financeiro;
+  return { ...estado, financeiro: { ...fin, despesasMes: { ...fin.despesasMes, [categoria]: fin.despesasMes[categoria] + valor }, saldo: fin.saldo - valor, auditoria: comAuditoria(estado, agora, acao, detalhe) } };
+}
+
+function solicitarCompra(estado, { item, quantidade, valorEstimado, motivo = '', categoria = 'manutencao', os = null, urgente = false, cotacoes = [] }, perfil, agora) {
+  const falha = guardaMan(estado, perfil);
+  if (falha) return erroMan(estado, falha);
+  if (!String(item || '').trim() || !(quantidade >= 1) || !(valorEstimado > 0)) return erroMan(estado, 'Informe item, quantidade e valor');
+  const id = `CP-${String(estado.manutencao.proximaCompra).padStart(3, '0')}`;
+  const compra = { id, item: item.trim(), quantidade, motivo: String(motivo).trim(), valorEstimado, categoria, os, urgente, cotacoes: [...cotacoes], status: 'solicitada', motivoRecusa: null, valorFinal: null, nota: null, viaCaixa: false, criadaEm: agora.toISOString(), aprovadaEm: null, recebidaEm: null };
+  return {
+    estado: comManutencao(estado, { compras: [...estado.manutencao.compras, compra], proximaCompra: estado.manutencao.proximaCompra + 1 }),
+    id,
+    notificacao: { canal: 'Push', para: 'Síndico', texto: `${id} aguardando aprovação: ${compra.item}, ${fmtReais(valorEstimado)}` },
+  };
+}
+
+function anexarCotacao(estado, id, { fornecedor, valor }, perfil) {
+  const falha = guardaMan(estado, perfil);
+  if (falha) return erroMan(estado, falha);
+  const c = compraPorId(estado, id);
+  if (!c || c.status !== 'solicitada') return erroMan(estado, 'Só compras aguardando aprovação recebem cotação');
+  if (!String(fornecedor || '').trim() || !(valor > 0)) return erroMan(estado, 'Informe fornecedor e valor da cotação');
+  return { estado: comManutencao(estado, { compras: trocarItem(estado.manutencao.compras, id, { cotacoes: [...c.cotacoes, { fornecedor: fornecedor.trim(), valor }] }) }) };
+}
+
+function aprovarCompra(estado, id, perfil, agora) {
+  const falha = guardaMan(estado, perfil, true);
+  if (falha) return erroMan(estado, falha);
+  const c = compraPorId(estado, id);
+  if (!c || c.status !== 'solicitada') return erroMan(estado, 'Esta compra não está aguardando aprovação');
+  if (liberado(estado.plano, 'cotacoes') && c.cotacoes.length < cotacoesMinimas(c.valorEstimado).minimo) return erroMan(estado, textoCotacoes(c.valorEstimado));
+  return {
+    estado: comManutencao(estado, { compras: trocarItem(estado.manutencao.compras, id, { status: 'aprovada', aprovadaEm: agora.toISOString() }) }),
+    notificacao: { canal: 'Push', para: ZELADOR, texto: `${id} aprovada: pode comprar` },
+  };
+}
+
+function recusarCompra(estado, id, motivo, perfil) {
+  const falha = guardaMan(estado, perfil, true);
+  if (falha) return erroMan(estado, falha);
+  const c = compraPorId(estado, id);
+  if (!c || c.status !== 'solicitada') return erroMan(estado, 'Esta compra não está aguardando aprovação');
+  if (!String(motivo || '').trim()) return erroMan(estado, 'Informe o motivo da recusa');
+  return {
+    estado: comManutencao(estado, { compras: trocarItem(estado.manutencao.compras, id, { status: 'recusada', motivoRecusa: motivo.trim() }) }),
+    notificacao: { canal: 'Push', para: ZELADOR, texto: `${id} recusada: ${motivo.trim()}` },
+  };
+}
+
+function receberCompra(estado, id, { valorFinal, nota }, perfil, agora) {
+  const falha = guardaMan(estado, perfil);
+  if (falha) return erroMan(estado, falha);
+  const c = compraPorId(estado, id);
+  if (!c || c.status !== 'aprovada') return erroMan(estado, 'Só compras aprovadas podem ser recebidas');
+  if (!(valorFinal > 0)) return erroMan(estado, 'Informe o valor final');
+  if (valorFinal > LIMITE_CAIXA && !String(nota || '').trim()) return erroMan(estado, 'Anexe a nota fiscal (obrigatória acima de R$ 200,00)');
+  const recebida = comManutencao(estado, { compras: trocarItem(estado.manutencao.compras, id, { status: 'recebida', valorFinal, nota: String(nota || '').trim() || null, recebidaEm: agora.toISOString() }) });
+  return {
+    estado: lancarDespesa(recebida, c.categoria, valorFinal, agora, 'Compra lançada', `${id} · ${c.item} · ${fmtReais(valorFinal)}`),
+    notificacao: { canal: 'App', para: 'Síndico', texto: `${id} recebida: ${fmtReais(valorFinal)} lançado em despesas` },
+  };
+}
+
+function gastoCaixa(estado, { descricao, valor, cupom }, perfil, agora) {
+  const falha = guardaMan(estado, perfil);
+  if (falha) return erroMan(estado, falha);
+  if (!liberado(estado.plano, 'caixaPequeno')) return erroMan(estado, 'Disponível no plano Avançado');
+  const caixa = estado.manutencao.caixa;
+  if (!String(descricao || '').trim() || !(valor > 0)) return erroMan(estado, 'Informe descrição e valor');
+  if (!cupom) return erroMan(estado, 'Anexe a foto do cupom');
+  if (valor > LIMITE_CAIXA) return erroMan(estado, 'Gasto acima de R$ 200,00: faça uma compra');
+  if (valor > caixa.saldo) return erroMan(estado, 'Saldo do caixa pequeno insuficiente');
+  const gasto = { id: `G${caixa.gastos.length + 1}`, descricao: descricao.trim(), valor, cupom: true, em: agora.toISOString() };
+  return { estado: comManutencao(estado, { caixa: { ...caixa, saldo: caixa.saldo - valor, gastos: [...caixa.gastos, gasto] } }) };
+}
+
+function reporCaixa(estado, perfil, agora) {
+  const falha = guardaMan(estado, perfil, true);
+  if (falha) return erroMan(estado, falha);
+  if (!liberado(estado.plano, 'caixaPequeno')) return erroMan(estado, 'Disponível no plano Avançado');
+  const caixa = estado.manutencao.caixa;
+  const valor = caixa.fundo - caixa.saldo;
+  if (!valor) return erroMan(estado, 'O caixa pequeno já está completo');
+  const reposto = comManutencao(estado, { caixa: { ...caixa, saldo: caixa.fundo, reposicoes: [...caixa.reposicoes, { em: agora.toISOString(), valor }] } });
+  return {
+    estado: lancarDespesa(reposto, 'manutencao', valor, agora, 'Caixa pequeno reposto', `${fmtReais(valor)} · ${caixa.gastos.length} gastos com cupom`),
+    notificacao: { canal: 'App', para: ZELADOR, texto: `Caixa pequeno reposto: saldo ${fmtReais(caixa.fundo)}` },
+  };
 }
 
 // ---- src/vendas/regras.js ----
@@ -2253,7 +2703,7 @@ const CASOS_DADOS = [
       const e = dadosIniciais(AGORA_TESTE);
       igual(new Set(e.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, 20);
       igual(e.pessoas.filter((p) => p.naoResidente).map((p) => [p.unidade, p.nome, p.recebeOfertas, p.vendedor]), [['704', 'Vicente Moraes', false, 'nao']]);
-      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [4, 'Ana Souza']);
+      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [5, 'Ana Souza']);
     },
   },
   {
@@ -2276,11 +2726,11 @@ const CASOS_DADOS = [
     },
   },
   {
-    nome: 'dados: 5 comunicados, 6 ocorrências e 8 documentos',
+    nome: 'dados: 5 comunicados, 7 ocorrências e 8 documentos',
     rodar() {
       const e = dadosIniciais(AGORA_TESTE);
-      igual([e.comunicados.length, e.ocorrencias.length, e.documentos.length], [5, 6, 8]);
-      igual(e.proximoProtocolo, 43);
+      igual([e.comunicados.length, e.ocorrencias.length, e.documentos.length], [5, 7, 8]);
+      igual(e.proximoProtocolo, 44);
     },
   },
   {
@@ -2447,7 +2897,7 @@ const CASOS_REGRAS = [
   {
     nome: 'indicadores do síndico',
     rodar() {
-      igual(indicadoresSindico(dadosIniciais(AGORA_TESTE), AGORA_TESTE), { pendentes: 1, abertas: 4, slaVencidas: 1, paradas: 1, vencendo: 3, adesao: { com: 20, total: 32 } });
+      igual(indicadoresSindico(dadosIniciais(AGORA_TESTE), AGORA_TESTE), { pendentes: 1, abertas: 5, slaVencidas: 2, paradas: 1, vencendo: 3, adesao: { com: 20, total: 32 } });
     },
   },
 ];
@@ -2539,19 +2989,19 @@ const CASOS_ACOES = [
     nome: 'roteiro ocorrência: protocolo, status, avaliação e arquivamento',
     rodar() {
       const r = abrirOcorrencia(dadosIniciais(AGORA_TESTE), { categoria: 'vazamento', descricao: 'Infiltração no teto', local: 'Banheiro', unidade: '302' }, AGORA_TESTE);
-      igual([r.id, r.estado.proximoProtocolo, r.notificacao.para], ['OC-0043', 44, SINDICO]);
+      igual([r.id, r.estado.proximoProtocolo, r.notificacao.para], ['OC-0044', 45, SINDICO]);
       let e = r.estado;
       for (const status of ['em_analise', 'em_andamento', 'resolvida', 'fechada']) {
-        const passo = avancarOcorrencia(e, 'OC-0043', AGORA_TESTE);
-        igual(acharPorId(passo.estado.ocorrencias, 'OC-0043').status, status);
+        const passo = avancarOcorrencia(e, 'OC-0044', AGORA_TESTE);
+        igual(acharPorId(passo.estado.ocorrencias, 'OC-0044').status, status);
         igual(passo.notificacao.para, 'Ana Souza');
         e = passo.estado;
       }
-      igual(avancarOcorrencia(e, 'OC-0043', AGORA_TESTE).erro, 'Ocorrência já está fechada');
-      const av = avaliarOcorrencia(e, 'OC-0043', 5);
-      igual(acharPorId(av.estado.ocorrencias, 'OC-0043').avaliacao, 5);
-      const arq = arquivarOcorrencia(av.estado, 'OC-0043');
-      const final = acharPorId(arq.estado.ocorrencias, 'OC-0043');
+      igual(avancarOcorrencia(e, 'OC-0044', AGORA_TESTE).erro, 'Ocorrência já está fechada');
+      const av = avaliarOcorrencia(e, 'OC-0044', 5);
+      igual(acharPorId(av.estado.ocorrencias, 'OC-0044').avaliacao, 5);
+      const arq = arquivarOcorrencia(av.estado, 'OC-0044');
+      const final = acharPorId(arq.estado.ocorrencias, 'OC-0044');
       igual([final.arquivada, final.linha.length], [true, 5]);
     },
   },
@@ -2565,7 +3015,7 @@ const CASOS_ACOES = [
     nome: 'ocorrência sem categoria ou descrição é recusada',
     rodar() {
       const e = dadosIniciais(AGORA_TESTE);
-      igual(abrirOcorrencia(e, { categoria: '', descricao: 'x', unidade: '302' }, AGORA_TESTE).erro, 'Escolha a categoria');
+      igual(abrirOcorrencia(e, { categoria: '', descricao: 'x', unidade: '302' }, AGORA_TESTE).erro, 'Escolha o tipo e a categoria');
       igual(abrirOcorrencia(e, { categoria: 'barulho', descricao: '  ', unidade: '302' }, AGORA_TESTE).erro, 'Descreva a ocorrência');
     },
   },
@@ -2594,7 +3044,7 @@ const CASOS_ACOES = [
       igual(acharPorId(um.estado.ocorrencias, 'OC-0040').eutambem.length, 8);
       const dois = euTambem(um.estado, 'OC-0040', '302');
       igual(acharPorId(dois.estado.ocorrencias, 'OC-0040').eutambem.length, 7);
-      igual(euTambem(dois.estado, 'OC-0039', '302').erro, 'Ocorrência não é pública');
+      igual(euTambem(dois.estado, 'OC-0042', '302').erro, 'Ocorrência não é pública');
     },
   },
   {
@@ -3367,6 +3817,243 @@ const CASOS_ACORDOS = [
   },
 ];
 
+// ---- src/casos/notificacoes.js ----
+
+function estadoNotif() {
+  return dadosIniciais(AGORA_FASE2);
+}
+
+function ocDe(e, id) {
+  return e.ocorrencias.find((o) => o.id === id);
+}
+
+const CASOS_NOTIFICACOES = [
+  {
+    nome: 'notificações: categorias por tipo com prioridade padrão',
+    rodar() {
+      igual([CATEGORIAS.vazamento.tipo, CATEGORIAS.vazamento.prioridade, CATEGORIAS.obra.tipo, CATEGORIAS.elogio.tipo, CATEGORIAS.jardim.prioridade], ['manutencao', 'urgente', 'irregularidade', 'outro', 'baixa']);
+      igual(Object.keys(CATEGORIAS).length, 18);
+      igual([liberado('basico', 'notificacoesPrazo'), liberado('intermediario', 'notificacoesPrazo'), liberado('intermediario', 'indicadorAtendimento'), liberado('avancado', 'caixaPequeno')], [false, true, false, true]);
+    },
+  },
+  {
+    nome: 'notificações: seed remapeado e OC-0043',
+    rodar() {
+      const e = estadoNotif();
+      igual(e.ocorrencias.map((o) => [o.id, o.categoria, o.prioridade]).sort(), [
+        ['OC-0037', 'eletrica', 'alta'], ['OC-0038', 'elogio', 'baixa'], ['OC-0039', 'vazamento', 'urgente'], ['OC-0040', 'elevador', 'alta'],
+        ['OC-0041', 'barulho', 'normal'], ['OC-0042', 'vaga', 'normal'], ['OC-0043', 'obra', 'normal'],
+      ]);
+      igual([e.proximoProtocolo, e.versao], [44, 5]);
+    },
+  },
+  {
+    nome: 'notificações: prazos de 1ª resposta e de solução',
+    rodar() {
+      const e = estadoNotif();
+      igual(prazosVencidos(ocDe(e, 'OC-0042'), AGORA_FASE2), { resposta: 27, solucao: null });
+      igual(prazosVencidos(ocDe(e, 'OC-0039'), AGORA_FASE2), { resposta: null, solucao: 50 });
+      igual(prazosVencidos(ocDe(e, 'OC-0041'), AGORA_FASE2), { resposta: null, solucao: null });
+      igual([textoAtraso(27), textoAtraso(50), textoAtraso(1)], ['27 h', '2 dias', '1 h']);
+      igual([slaVencido(ocDe(e, 'OC-0042'), AGORA_FASE2), slaVencido(ocDe(e, 'OC-0039'), AGORA_FASE2), slaVencido(ocDe(e, 'OC-0038'), AGORA_FASE2)], [true, true, false]);
+    },
+  },
+  {
+    nome: 'notificações: caixa de entrada por prioridade e prazo',
+    rodar() {
+      const e = estadoNotif();
+      igual(caixaDeEntrada(e, AGORA_FASE2, { status: 'ativas' }).map((o) => o.id), ['OC-0039', 'OC-0040', 'OC-0042', 'OC-0043', 'OC-0041']);
+      igual(caixaDeEntrada(e, AGORA_FASE2, { status: 'ativas', tipo: 'irregularidade' }).map((o) => o.id), ['OC-0042', 'OC-0043', 'OC-0041']);
+      igual(caixaDeEntrada(e, AGORA_FASE2, { status: 'todas', prioridade: 'alta' }).map((o) => o.id), ['OC-0040', 'OC-0037']);
+    },
+  },
+  {
+    nome: 'notificações: parecidas, alertas, urgentes e atendimento',
+    rodar() {
+      const e = estadoNotif();
+      igual(parecidas(e, 'vazamento', '302').map((o) => o.id), ['OC-0039']);
+      igual(parecidas(e, 'vazamento', '101'), []);
+      igual(alertasNotificacoes(e, AGORA_FASE2).map((a) => a.texto), ['OC-0039: solução vencida há 2 dias', 'OC-0042: 1ª resposta vencida há 27 h']);
+      igual(urgentesAbertas(e).map((o) => o.id), ['OC-0039']);
+      igual(indicadorAtendimento(e), { abertas: 5, noPrazo: 1, comPrazo: 1, pct: 100, alerta: false });
+    },
+  },
+  {
+    nome: 'notificações: abertura grava prioridade e exige categoria',
+    rodar() {
+      const e = estadoNotif();
+      igual(abrirOcorrencia(e, { categoria: '', descricao: 'x', unidade: '302' }, AGORA_FASE2).erro, 'Escolha o tipo e a categoria');
+      const r = abrirOcorrencia(e, { categoria: 'vazamento', descricao: 'Água descendo pela parede', local: 'Hall do 3º', unidade: '302' }, AGORA_FASE2);
+      igual([r.id, ocDe(r.estado, r.id).prioridade], ['OC-0044', 'urgente']);
+      igual(ocDe(euTambem(e, 'OC-0039', '302').estado, 'OC-0039').eutambem, ['302']);
+    },
+  },
+  {
+    nome: 'notificações: prioridade e pedido de informação contam como resposta',
+    rodar() {
+      const e = estadoNotif();
+      igual(definirPrioridade(e, 'OC-0042', 'alta', 'morador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      igual(definirPrioridade({ ...e, plano: 'basico' }, 'OC-0042', 'alta', 'sindico', AGORA_FASE2).erro, 'Disponível no plano Intermediário');
+      igual(ocDe(definirPrioridade(e, 'OC-0042', 'alta', 'sindico', AGORA_FASE2).estado, 'OC-0042').prioridade, 'alta');
+      const r = pedirInformacao(e, 'OC-0042', 'Qual a placa do carro?', 'sindico', AGORA_FASE2);
+      igual([ocDe(r.estado, 'OC-0042').status, prazosVencidos(ocDe(r.estado, 'OC-0042'), AGORA_FASE2).resposta], ['em_analise', null]);
+    },
+  },
+  {
+    nome: 'notificações: advertência só para irregularidade e sem expor o denunciante',
+    rodar() {
+      const e = estadoNotif();
+      igual(gerarAdvertencia(e, 'OC-0039', '503', 'sindico', AGORA_FASE2).erro, 'Advertência só vale para irregularidades');
+      igual(gerarAdvertencia(e, 'OC-0043', '', 'sindico', AGORA_FASE2).erro, 'Informe a unidade advertida');
+      const r = gerarAdvertencia(e, 'OC-0043', '503', 'sindico', AGORA_FASE2);
+      igual([ocDe(r.estado, 'OC-0043').advertencia.unidade, r.notificacao.para], ['503', 'Apto 503']);
+      igual([r.notificacao.texto.includes('702'), r.notificacao.texto.includes('Sônia')], [false, false]);
+      igual(ocDe(r.estado, 'OC-0043').linha.at(-1).texto, 'Advertência enviada ao apto 503');
+    },
+  },
+  {
+    nome: 'notificações: arquivar exige motivo',
+    rodar() {
+      const e = estadoNotif();
+      igual(arquivarComJustificativa(e, 'OC-0041', ' ', 'sindico', AGORA_FASE2).erro, 'Informe o motivo do arquivamento');
+      const r = arquivarComJustificativa(e, 'OC-0041', 'Duplicada da OC-0043', 'sindico', AGORA_FASE2);
+      igual([ocDe(r.estado, 'OC-0041').arquivada, ocDe(r.estado, 'OC-0041').motivoArquivamento], [true, 'Duplicada da OC-0043']);
+    },
+  },
+];
+
+// ---- src/casos/manutencao.js ----
+
+function estadoMan() {
+  return dadosIniciais(AGORA_FASE2);
+}
+
+function compraDe(e, id) {
+  return e.manutencao.compras.find((x) => x.id === id);
+}
+
+function osDe(e, id) {
+  return e.manutencao.os.find((o) => o.id === id);
+}
+
+const CASOS_MANUTENCAO = [
+  {
+    nome: 'manutenção: seed de OS, compras e caixa',
+    rodar() {
+      const e = estadoMan();
+      const m = e.manutencao;
+      igual(m.os.map((o) => [o.id, o.status, o.notificacao]), [['OS-001', 'validada', null], ['OS-002', 'concluida', 'OC-0037'], ['OS-003', 'em_execucao', 'OC-0039']]);
+      igual(m.compras.map((c) => [c.id, c.status, c.valorEstimado]), [['CP-001', 'solicitada', 38000], ['CP-002', 'recebida', 14500]]);
+      igual([m.caixa.fundo, m.caixa.saldo, m.caixa.gastos.length], [30000, 23950, 2]);
+      igual(listaOS(e).map((o) => o.id), ['OS-003', 'OS-002', 'OS-001']);
+      igual(['OC-0037', 'OC-0039'].map((id) => e.ocorrencias.find((o) => o.id === id).os), ['OS-002', 'OS-003']);
+    },
+  },
+  {
+    nome: 'manutenção: gerar OS a partir da notificação',
+    rodar() {
+      const e = estadoMan();
+      igual(gerarOS(e, 'OC-0039', { responsavel: 'zelador' }, 'sindico', AGORA_FASE2).erro, 'Esta notificação já tem a OS-003');
+      igual(gerarOS(e, 'OC-0040', { responsavel: 'zelador' }, 'zelador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      igual(gerarOS({ ...e, plano: 'basico' }, 'OC-0040', { responsavel: 'zelador' }, 'sindico', AGORA_FASE2).erro, 'Disponível no plano Intermediário');
+      const r = gerarOS(e, 'OC-0040', { responsavel: 'prestador', prestador: 'Elevadores Atlas' }, 'sindico', AGORA_FASE2);
+      const os = osDe(r.estado, 'OS-004');
+      igual([os.origem, os.notificacao, os.local, os.prioridade, os.responsavel, os.prestador, os.status], ['notificacao', 'OC-0040', 'Elevador 2', 'alta', 'prestador', 'Elevadores Atlas', 'aberta']);
+      const oc = r.estado.ocorrencias.find((o) => o.id === 'OC-0040');
+      igual([oc.os, oc.status, oc.linha.at(-1).texto], ['OS-004', 'em_andamento', 'OS-004 aberta para o prestador Elevadores Atlas']);
+    },
+  },
+  {
+    nome: 'manutenção: ronda do zelador e fluxo da OS',
+    rodar() {
+      const e = estadoMan();
+      igual(abrirOS(e, { local: '', descricao: 'x', prioridade: 'normal' }, 'zelador', AGORA_FASE2).erro, 'Informe o local e a descrição');
+      igual(abrirOS(e, { local: 'x', descricao: 'x', prioridade: 'normal' }, 'morador', AGORA_FASE2).erro, 'Somente o zelador ou o síndico pode fazer isso');
+      let r = abrirOS(e, { local: 'Piscina', descricao: 'Ralo solto', prioridade: 'normal' }, 'zelador', AGORA_FASE2);
+      igual([osDe(r.estado, 'OS-004').origem, osDe(r.estado, 'OS-004').prazo.slice(0, 10)], ['ronda', '2026-10-26']);
+      r = iniciarOS(r.estado, 'OS-004', 'zelador', AGORA_FASE2);
+      r = pausarOS(r.estado, 'OS-004', 'aguardando_material', 'zelador', AGORA_FASE2);
+      igual(osDe(r.estado, 'OS-004').status, 'aguardando_material');
+      igual(concluirOS(r.estado, 'OS-004', { fotoDepois: false, horas: 1 }, 'zelador', AGORA_FASE2).erro, 'Anexe a foto do depois');
+      igual(concluirOS(r.estado, 'OS-004', { fotoDepois: true, horas: 0 }, 'zelador', AGORA_FASE2).erro, 'Informe as horas gastas');
+      igual(validarOS(r.estado, 'OS-004', 'sindico', AGORA_FASE2).erro, 'Só OS concluídas podem ser validadas');
+      r = concluirOS(r.estado, 'OS-004', { fotoDepois: true, horas: 0.5, materiais: 'Parafusos', observacoes: '' }, 'zelador', AGORA_FASE2);
+      igual(validarOS(r.estado, 'OS-004', 'zelador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      igual(osDe(validarOS(r.estado, 'OS-004', 'sindico', AGORA_FASE2).estado, 'OS-004').status, 'validada');
+    },
+  },
+  {
+    nome: 'manutenção: concluir OS resolve a notificação e avisa o morador',
+    rodar() {
+      const r = concluirOS(estadoMan(), 'OS-003', { fotoDepois: true, horas: 2, materiais: 'Registro 3/4"', observacoes: 'Trocado' }, 'zelador', AGORA_FASE2);
+      const oc = r.estado.ocorrencias.find((o) => o.id === 'OC-0039');
+      igual([oc.status, oc.linha.at(-1).texto, r.notificacao.para, r.notificacao.texto], ['resolvida', 'Reparo concluído pelo zelador (fotos do antes e depois)', 'Carla Mendes', 'Seu chamado OC-0039 foi resolvido']);
+    },
+  },
+  {
+    nome: 'manutenção: alertas de OS e compras',
+    rodar() {
+      let e = estadoMan();
+      igual(alertasManutencao(e, AGORA_FASE2).map((a) => a.texto), ['OS-002 concluída: validar', 'CP-001 aguardando aprovação: Registro de 3/4" e conexões, R$ 380,00']);
+      e = abrirOS(e, { local: 'Portão', descricao: 'Portão não fecha', prioridade: 'urgente' }, 'sindico', new Date(2026, 9, 19, 7, 0)).estado;
+      igual(alertasManutencao(e, AGORA_FASE2)[0].texto, 'OS-004 urgente sem início há 3 h');
+    },
+  },
+  {
+    nome: 'compras: solicitação, recusa e aprovação',
+    rodar() {
+      const e = estadoMan();
+      igual(solicitarCompra(e, { item: '', quantidade: 1, valorEstimado: 100 }, 'zelador', AGORA_FASE2).erro, 'Informe item, quantidade e valor');
+      const s = solicitarCompra(e, { item: 'Bomba reserva', quantidade: 1, valorEstimado: 250000, categoria: 'manutencao' }, 'zelador', AGORA_FASE2);
+      igual(s.id, 'CP-003');
+      igual(aprovarCompra(s.estado, 'CP-003', 'zelador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      igual(recusarCompra(s.estado, 'CP-003', '', 'sindico', AGORA_FASE2).erro, 'Informe o motivo da recusa');
+      igual(compraDe(recusarCompra(s.estado, 'CP-003', 'Fora do orçamento', 'sindico', AGORA_FASE2).estado, 'CP-003').status, 'recusada');
+      igual(compraDe(aprovarCompra(s.estado, 'CP-003', 'sindico', AGORA_FASE2).estado, 'CP-003').status, 'aprovada');
+    },
+  },
+  {
+    nome: 'compras: cotações mínimas no Avançado',
+    rodar() {
+      const e = { ...estadoMan(), plano: 'avancado' };
+      igual([cotacoesMinimas(50000).minimo, cotacoesMinimas(50001).minimo, cotacoesMinimas(200001).minimo], [1, 2, 3]);
+      let s = solicitarCompra(e, { item: 'Bomba reserva', quantidade: 1, valorEstimado: 250000, categoria: 'manutencao', cotacoes: [{ fornecedor: 'A', valor: 250000 }] }, 'zelador', AGORA_FASE2);
+      igual(aprovarCompra(s.estado, 'CP-003', 'sindico', AGORA_FASE2).erro, 'Anexe 3 cotações para compras acima de R$ 2.000,00');
+      s = anexarCotacao(s.estado, 'CP-003', { fornecedor: 'B', valor: 240000 }, 'sindico', AGORA_FASE2);
+      s = anexarCotacao(s.estado, 'CP-003', { fornecedor: 'C', valor: 260000 }, 'zelador', AGORA_FASE2);
+      igual(compraDe(aprovarCompra(s.estado, 'CP-003', 'sindico', AGORA_FASE2).estado, 'CP-003').status, 'aprovada');
+      igual(aprovarCompra(estadoMan(), 'CP-001', 'sindico', AGORA_FASE2).erro, undefined);
+    },
+  },
+  {
+    nome: 'compras: recebimento com nota lança a despesa',
+    rodar() {
+      const a = aprovarCompra(estadoMan(), 'CP-001', 'sindico', AGORA_FASE2).estado;
+      igual(receberCompra(a, 'CP-001', { valorFinal: 39000, nota: '' }, 'zelador', AGORA_FASE2).erro, 'Anexe a nota fiscal (obrigatória acima de R$ 200,00)');
+      igual(receberCompra(estadoMan(), 'CP-001', { valorFinal: 39000, nota: 'n.pdf' }, 'zelador', AGORA_FASE2).erro, 'Só compras aprovadas podem ser recebidas');
+      const r = receberCompra(a, 'CP-001', { valorFinal: 39000, nota: 'nota-CP-001.pdf' }, 'zelador', AGORA_FASE2);
+      igual([compraDe(r.estado, 'CP-001').status, r.estado.financeiro.despesasMes.manutencao, r.estado.financeiro.saldo, r.estado.financeiro.auditoria.at(-1).acao], ['recebida', 269000, 4796000, 'Compra lançada']);
+    },
+  },
+  {
+    nome: 'caixa pequeno: cupom, limite, saldo e reposição',
+    rodar() {
+      const e = { ...estadoMan(), plano: 'avancado' };
+      igual(gastoCaixa(estadoMan(), { descricao: 'x', valor: 1000, cupom: true }, 'zelador', AGORA_FASE2).erro, 'Disponível no plano Avançado');
+      igual(gastoCaixa(e, { descricao: 'Fusíveis', valor: 1000, cupom: false }, 'zelador', AGORA_FASE2).erro, 'Anexe a foto do cupom');
+      igual(gastoCaixa(e, { descricao: 'Fusíveis', valor: 20001, cupom: true }, 'zelador', AGORA_FASE2).erro, 'Gasto acima de R$ 200,00: faça uma compra');
+      const g = gastoCaixa(e, { descricao: 'Fusíveis', valor: 2500, cupom: true }, 'zelador', AGORA_FASE2);
+      igual(g.estado.manutencao.caixa.saldo, 21450);
+      const sem = gastoCaixa(g.estado, { descricao: 'Ferramentas', valor: 19000, cupom: true }, 'zelador', AGORA_FASE2).estado;
+      igual(sem.manutencao.caixa.saldo, 2450);
+      igual(gastoCaixa(sem, { descricao: 'x', valor: 3000, cupom: true }, 'zelador', AGORA_FASE2).erro, 'Saldo do caixa pequeno insuficiente');
+      igual(reporCaixa(sem, 'zelador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      const r = reporCaixa(sem, 'sindico', AGORA_FASE2);
+      igual([r.estado.manutencao.caixa.saldo, r.estado.financeiro.despesasMes.manutencao, r.estado.financeiro.saldo, r.estado.manutencao.caixa.reposicoes[0].valor], [30000, 257550, 4807450, 27550]);
+    },
+  },
+];
+
 // ---- src/armazenamento.js ----
 const CHAVE_ESTADO = 'condofacil-demo-v1';
 
@@ -3375,7 +4062,7 @@ function carregarEstado() {
     const texto = localStorage.getItem(CHAVE_ESTADO);
     if (!texto) return null;
     const estado = JSON.parse(texto);
-    return estado && estado.versao === 4 ? estado : null;
+    return estado && estado.versao === 5 ? estado : null;
   } catch {
     return null;
   }
@@ -3403,6 +4090,7 @@ const PERFIS = [
   { id: 'sindico', nome: 'Síndico', inicial: 'inicio' },
   { id: 'morador', nome: 'Morador', inicial: 'inicio' },
   { id: 'portaria', nome: 'Portaria', inicial: 'registrar' },
+  { id: 'zelador', nome: 'Zelador', inicial: 'os' },
 ];
 
 // Rotas no formato #perfil.tela.id: o link compartilhado de um Artifact só repassa âncoras com letras, dígitos, ".", "_", "~" e "-".
@@ -3470,6 +4158,7 @@ const ICONES = {
   loja: 'M4 9l1-5h14l1 5M4 9v11h16V9M4 9h16M9 20v-6h6v6',
   etiqueta: 'M3 12V4h8l10 10-8 8zM7.5 7.5h.01',
   pessoa: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
+  ferramenta: 'M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.6 2.6-2.4-.6-.6-2.4z',
   cifrao: 'M12 3v18M17 7H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H6',
 };
 
@@ -3538,10 +4227,10 @@ function QrFalso({ texto, tamanho = 132 }) {
   </svg>`;
 }
 
-function LinhaTempo({ linha }) {
+function LinhaTempo({ linha, nomes = NOMES_STATUS }) {
   return html`<ol class="linha-tempo">${linha.map((p, i) => html`<li key=${i} class=${p.status ? 'marco' : 'comentario'}>
     <span class="lt-quando">${fmtDataHora(p.em)}</span>
-    <strong>${p.status ? NOMES_STATUS[p.status] : 'Comentário'}</strong>
+    <strong>${p.status ? nomes[p.status] : 'Comentário'}</strong>
     <span>${p.texto}${p.autor ? ` · ${p.autor}` : ''}</span>
   </li>`)}</ol>`;
 }
@@ -3588,7 +4277,10 @@ function TelaPortaria(props) {
       </nav>
       <span class="tab-turno">${PORTEIRO_DIA} · turno do dia</span>
     </header>
-    <div class="tab-conteudo"><${Conteudo} ...${props} /></div>
+    <div class="tab-conteudo">
+      ${urgentesAbertas(props.estado).map((o) => html`<p class="faixa-urgente" key=${o.id}>Notificação urgente: ${o.id} · ${CATEGORIAS[o.categoria].nome} · ${o.local}</p>`)}
+      <${Conteudo} ...${props} />
+    </div>
   </div>`;
 }
 
@@ -4320,6 +5012,227 @@ function MeuAcordo({ estado, acordo, hoje }) {
     <div class="barra" role="progressbar" aria-label="Parcelas pagas" aria-valuenow=${p.pagas} aria-valuemin="0" aria-valuemax=${p.total}><span style=${`width:${pct}%`}></span></div>
     <details class="composicao"><summary>Cronograma</summary><${Cronograma} estado=${estado} acordo=${acordo} hoje=${hoje} /></details>
   </article>`;
+}
+
+// ---- src/ui/manutencao-sindico.js ----
+
+const CORES_PRIORIDADE = { urgente: 'perigo', alta: 'alerta', normal: 'info', baixa: 'neutro' };
+const CORES_STATUS_OS = { aberta: 'info', em_execucao: 'alerta', aguardando_material: 'neutro', aguardando_prestador: 'neutro', concluida: 'ok', validada: 'ok' };
+const NOMES_STATUS_COMPRA = { solicitada: 'Aguardando aprovação', aprovada: 'Aprovada', recusada: 'Recusada', recebida: 'Recebida' };
+const CORES_STATUS_COMPRA = { solicitada: 'alerta', aprovada: 'info', recusada: 'neutro', recebida: 'ok' };
+const ABAS_MANUTENCAO = [['os', 'Ordens de serviço'], ['compras', 'Compras'], ['caixa', 'Caixa pequeno']];
+
+function EtqPrioridade({ prioridade }) {
+  return html`<${Etiqueta} tipo=${CORES_PRIORIDADE[prioridade]}>${PRIORIDADES[prioridade].nome}<//>`;
+}
+
+function EtqOS({ status }) {
+  return html`<${Etiqueta} tipo=${CORES_STATUS_OS[status]}>${NOMES_STATUS_OS[status]}<//>`;
+}
+
+function EtqCompra({ status }) {
+  return html`<${Etiqueta} tipo=${CORES_STATUS_COMPRA[status]}>${NOMES_STATUS_COMPRA[status]}<//>`;
+}
+
+function fmtPrazo(iso) {
+  const d = new Date(iso);
+  return `${fmtDataCurta(isoDia(d))} ${String(d.getHours()).padStart(2, '0')}h`;
+}
+
+function FotosOS({ os }) {
+  return html`<div class="fotos-reparo"><${FotoFalsa} rotulo="Foto do antes" />${os.fotoDepois && html`<${FotoFalsa} rotulo="Foto do depois" />`}</div>`;
+}
+
+function SManutencao(props) {
+  const { estado, rota } = props;
+  if (!liberado(estado.plano, 'zelador')) {
+    return html`<section><h1>Manutenção</h1><${Bloqueado} estado=${estado} recurso="zelador" titulo="Ordens de serviço, compras com aprovação e caixa pequeno do zelador" /></section>`;
+  }
+  const id = rota.id || '';
+  const os = id.startsWith('OS-') ? estado.manutencao.os.find((o) => o.id === id) : null;
+  const compra = id.startsWith('CP-') ? estado.manutencao.compras.find((c) => c.id === id) : null;
+  const aba = compra ? 'compras' : os || id === 'novaos' ? 'os' : ABAS_MANUTENCAO.some(([a]) => a === id) ? id : 'os';
+  let conteudo;
+  if (os) conteudo = html`<${MDetalheOSSindico} key=${os.id} ...${props} os=${os} />`;
+  else if (compra) conteudo = html`<${MDetalheCompraSindico} key=${compra.id} ...${props} compra=${compra} />`;
+  else if (id === 'novaos') conteudo = html`<${MNovaOSSindico} ...${props} />`;
+  else conteudo = { os: html`<${MListaOS} ...${props} />`, compras: html`<${MListaCompras} ...${props} />`, caixa: html`<${MCaixaSindico} ...${props} />` }[aba];
+  return html`<section>
+    <h1>Manutenção</h1>
+    <p class="sub">Ordens de serviço e compras do zelador (${ZELADOR}). Cada compra recebida entra sozinha nas despesas do mês.</p>
+    <nav class="chips" aria-label="Manutenção">${ABAS_MANUTENCAO.map(([a, nome]) => html`<a key=${a} class="chip" href=${`#sindico.manutencao.${a}`} aria-current=${aba === a ? 'page' : undefined}>${nome}</a>`)}</nav>
+    ${conteudo}
+  </section>`;
+}
+
+function MListaOS({ estado }) {
+  const lista = listaOS(estado);
+  return html`<div class="pilha">
+    <div class="linha-entre"><h2>Ordens de serviço</h2><a class="btn primario" href="#sindico.manutencao.novaos">Nova OS</a></div>
+    <div class="tabela-rolagem"><table class="tabela">
+      <thead><tr><th>OS</th><th>Local</th><th>Prioridade</th><th>Responsável</th><th>Prazo</th><th>Status</th><th>Ação</th></tr></thead>
+      <tbody>${lista.map((o) => html`<tr key=${o.id}>
+        <td>${o.id}${o.notificacao ? html`<br /><small class="sub">${o.notificacao}</small>` : ''}</td>
+        <td>${o.local}</td>
+        <td><${EtqPrioridade} prioridade=${o.prioridade} /></td>
+        <td>${o.responsavel === 'prestador' ? o.prestador : ZELADOR}</td>
+        <td>${fmtPrazo(o.prazo)}</td>
+        <td><${EtqOS} status=${o.status} /></td>
+        <td><a class="btn-link" data-os=${o.id} href=${`#sindico.manutencao.${o.id}`}>Abrir</a></td>
+      </tr>`)}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function MNovaOSSindico({ executar }) {
+  const [local, setLocal] = useState('');
+  const [descricao, setDescricao] = useState('');
+  const [prioridade, setPrioridade] = useState('normal');
+  const [erro, setErro] = useState(null);
+
+  function criar() {
+    const r = executar((e) => abrirOS(e, { local, descricao, prioridade }, 'sindico', new Date()));
+    if (r.erro) setErro(r.erro);
+    else ir('sindico', 'manutencao', r.id);
+  }
+
+  return html`<div class="pilha formulario">
+    <a class="voltar" href="#sindico.manutencao.os">‹ Ordens de serviço</a>
+    <h2>Nova OS</h2>
+    <${Campo} rotulo="Local"><input id="nova-os-local" value=${local} onInput=${(ev) => setLocal(ev.target.value)} placeholder="Ex.: casa de bombas, portão da garagem" /><//>
+    <${Campo} rotulo="Descrição"><textarea id="nova-os-descricao" rows="3" value=${descricao} onInput=${(ev) => setDescricao(ev.target.value)}></textarea><//>
+    <${Campo} rotulo="Prioridade"><select id="nova-os-prioridade" value=${prioridade} onChange=${(ev) => setPrioridade(ev.target.value)}>${ORDEM_PRIORIDADE.map((p) => html`<option key=${p} value=${p}>${PRIORIDADES[p].nome}</option>`)}</select><//>
+    <${Erro} texto=${erro} />
+    <button type="button" class="btn primario" onClick=${criar}>Criar OS</button>
+  </div>`;
+}
+
+function MDetalheOSSindico({ executar, os }) {
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+
+  function validar() {
+    const r = executar((e) => validarOS(e, os.id, 'sindico', new Date()));
+    setErro(r.erro || null);
+    setMensagem(r.erro ? null : 'OS validada.');
+  }
+
+  return html`<div class="pilha">
+    <a class="voltar" href="#sindico.manutencao.os">‹ Ordens de serviço</a>
+    <div class="linha-entre"><h2>${os.id} · ${os.local}</h2><${EtqOS} status=${os.status} /></div>
+    <p class="sub"><${EtqPrioridade} prioridade=${os.prioridade} /> · prazo ${fmtPrazo(os.prazo)} · ${os.responsavel === 'prestador' ? `prestador ${os.prestador}` : `zelador ${ZELADOR}`}${os.notificacao ? html` · notificação <a href=${`#sindico.ocorrencias.${os.notificacao}`}>${os.notificacao}</a>` : ''}</p>
+    <p class="texto-longo">${os.descricao}</p>
+    <${FotosOS} os=${os} />
+    ${(os.materiais || os.horas > 0 || os.observacoes) && html`<dl class="resumo">
+      <dt>Materiais</dt><dd>${os.materiais || '—'}</dd>
+      <dt>Horas</dt><dd>${String(os.horas).replace('.', ',')} h</dd>
+      <dt>Observações</dt><dd>${os.observacoes || '—'}</dd>
+    </dl>`}
+    <h2>Linha do tempo</h2>
+    <${LinhaTempo} linha=${os.linha} nomes=${NOMES_STATUS_OS} />
+    ${os.status === 'concluida' && html`<button type="button" class="btn primario" data-acao="validar-os" onClick=${validar}>Validar</button>`}
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+  </div>`;
+}
+
+function MListaCompras({ estado }) {
+  const ordem = { solicitada: 0, aprovada: 1, recebida: 2, recusada: 3 };
+  const lista = [...estado.manutencao.compras].sort((a, b) => ordem[a.status] - ordem[b.status] || b.criadaEm.localeCompare(a.criadaEm));
+  return html`<div class="pilha">
+    <h2>Compras</h2>
+    ${lista.length
+      ? html`<div class="tabela-rolagem"><table class="tabela">
+          <thead><tr><th>Compra</th><th>Item</th><th>Valor</th><th>Cotações</th><th>Status</th><th>Ação</th></tr></thead>
+          <tbody>${lista.map((c) => html`<tr key=${c.id}>
+            <td>${c.id}${c.urgente ? html` <${Etiqueta} tipo="perigo">Urgente<//>` : ''}</td>
+            <td>${c.item}</td>
+            <td>${fmtReais(c.valorFinal || c.valorEstimado)}</td>
+            <td>${c.cotacoes.length}</td>
+            <td><${EtqCompra} status=${c.status} /></td>
+            <td><a class="btn-link" data-compra=${c.id} href=${`#sindico.manutencao.${c.id}`}>Abrir</a></td>
+          </tr>`)}</tbody>
+        </table></div>`
+      : html`<${Vazio} texto="Nenhuma compra pedida." />`}
+  </div>`;
+}
+
+function MDetalheCompraSindico({ estado, executar, compra }) {
+  const [fornecedor, setFornecedor] = useState('');
+  const [valor, setValor] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const comCotacao = liberado(estado.plano, 'cotacoes');
+  const minimo = cotacoesMinimas(compra.valorEstimado).minimo;
+
+  function rodar(acao, sucesso, limpar) {
+    const r = executar(acao);
+    setErro(r.erro || null);
+    setMensagem(r.erro ? null : sucesso);
+    if (!r.erro && limpar) limpar();
+  }
+
+  return html`<div class="pilha">
+    <a class="voltar" href="#sindico.manutencao.compras">‹ Compras</a>
+    <div class="linha-entre"><h2>${compra.id} · ${compra.item}</h2><${EtqCompra} status=${compra.status} /></div>
+    <dl class="resumo">
+      <dt>Quantidade</dt><dd>${compra.quantidade}</dd>
+      <dt>Valor estimado</dt><dd>${fmtReais(compra.valorEstimado)}</dd>
+      <dt>Categoria</dt><dd>${CATEGORIAS_COMPRA[compra.categoria]}</dd>
+      <dt>Motivo</dt><dd>${compra.motivo || '—'}</dd>
+      <dt>OS</dt><dd>${compra.os ? html`<a href=${`#sindico.manutencao.${compra.os}`}>${compra.os}</a>` : '—'}</dd>
+    </dl>
+    <h2>Cotações${comCotacao ? ` · mínimo ${minimo}` : ''}</h2>
+    ${compra.cotacoes.length
+      ? html`<ul class="itens-sacola">${compra.cotacoes.map((q, n) => html`<li key=${n}><span>${q.fornecedor}</span><span>${fmtReais(q.valor)}</span></li>`)}</ul>`
+      : html`<${Vazio} texto="Nenhuma cotação anexada." />`}
+    ${comCotacao && compra.status === 'solicitada' && html`<div class="edicao-anuncio">
+      <${Campo} rotulo="Fornecedor"><input id="cotacao-fornecedor" value=${fornecedor} onInput=${(ev) => setFornecedor(ev.target.value)} /><//>
+      <${Campo} rotulo="Valor (R$)"><input id="cotacao-valor" inputmode="decimal" value=${valor} onInput=${(ev) => setValor(ev.target.value)} /><//>
+    </div>
+    <button type="button" class="btn secundario" onClick=${() => rodar((e) => anexarCotacao(e, compra.id, { fornecedor, valor: lerPreco(valor) }, 'sindico'), 'Cotação anexada.', () => { setFornecedor(''); setValor(''); })}>Anexar cotação</button>`}
+    ${compra.status === 'solicitada' && html`<div class="cartao">
+      <div class="acoes"><button type="button" class="btn primario" data-acao="aprovar-compra" onClick=${() => rodar((e) => aprovarCompra(e, compra.id, 'sindico', new Date()), 'Compra aprovada.')}>Aprovar</button></div>
+      <${Campo} rotulo="Motivo da recusa"><input id="compra-motivo-recusa" value=${motivo} onInput=${(ev) => setMotivo(ev.target.value)} /><//>
+      <div class="acoes"><button type="button" class="btn secundario" onClick=${() => rodar((e) => recusarCompra(e, compra.id, motivo, 'sindico'), 'Compra recusada.')}>Recusar</button></div>
+    </div>`}
+    ${compra.status === 'recusada' && html`<p class="sub">Recusada: ${compra.motivoRecusa}</p>`}
+    ${compra.status === 'recebida' && html`<p class="sucesso">Recebida em ${fmtDataHora(compra.recebidaEm)} · ${fmtReais(compra.valorFinal)} · nota ${compra.nota || '—'} · lançada em despesas</p>`}
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+  </div>`;
+}
+
+function ResumoCaixa({ caixa }) {
+  return html`<div class="pilha">
+    <div class="cartao"><span class="sub">Saldo do caixa pequeno</span><span class="preco grande">${fmtReais(caixa.saldo)}</span><small class="sub">Fundo de ${fmtReais(caixa.fundo)} por mês · gastos até R$ 200,00 com foto do cupom</small></div>
+    ${caixa.gastos.length
+      ? html`<ul class="itens-sacola">${[...caixa.gastos].reverse().map((g) => html`<li key=${g.id}><span>${g.descricao} · ${fmtDataHora(g.em)} · cupom anexado</span><span>${fmtReais(g.valor)}</span></li>`)}</ul>`
+      : html`<${Vazio} texto="Nenhum gasto no mês." />`}
+  </div>`;
+}
+
+function MCaixaSindico({ estado, executar }) {
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  if (!liberado(estado.plano, 'caixaPequeno')) return html`<${Bloqueado} estado=${estado} recurso="caixaPequeno" titulo="Caixa pequeno do zelador com cupom, saldo e reposição" />`;
+  const caixa = estado.manutencao.caixa;
+
+  function repor() {
+    const r = executar((e) => reporCaixa(e, 'sindico', new Date()));
+    setErro(r.erro || null);
+    setMensagem(r.erro ? null : 'Fundo reposto e lançado em despesas.');
+  }
+
+  return html`<div class="pilha">
+    <h2>Caixa pequeno</h2>
+    <${ResumoCaixa} caixa=${caixa} />
+    <button type="button" class="btn primario" onClick=${repor}>Repor fundo</button>
+    ${caixa.reposicoes.length > 0 && html`<small class="sub">Última reposição: ${fmtReais(caixa.reposicoes.at(-1).valor)} em ${fmtDataHora(caixa.reposicoes.at(-1).em)}</small>`}
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+  </div>`;
 }
 
 // ---- src/ui/financeiro-morador.js ----
@@ -5155,26 +6068,27 @@ function MAvisos({ estado, rota, executar, eu }) {
 function MOcorrencias(props) {
   const { estado, rota, eu } = props;
   if (rota.id === 'nova') return html`<${MNovaOcorrencia} ...${props} />`;
-  const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id && (o.unidade === eu || o.publica)) : null;
-  if (oc) return html`<${MDetalheOcorrencia} executar=${props.executar} oc=${oc} eu=${eu} />`;
+  const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id && (o.unidade === eu || o.publica || o.eutambem.includes(eu))) : null;
+  if (oc) return html`<${MDetalheOcorrencia} estado=${estado} executar=${props.executar} oc=${oc} eu=${eu} />`;
   const minhas = estado.ocorrencias.filter((o) => o.unidade === eu);
   const publicas = estado.ocorrencias.filter((o) => o.publica && o.unidade !== eu);
   const item = (o) => html`<li key=${o.id}><a class="cartao link" href=${`#morador.ocorrencias.${o.id}`}>
     <div class="linha-entre"><strong>${CATEGORIAS[o.categoria].nome}</strong><${EtqOcorrencia} status=${o.status} arquivada=${o.arquivada} /></div>
     <span>${o.descricao}</span>
-    <small class="sub">${o.id}${o.publica ? ` · ${o.eutambem.length} "eu também"` : ''}</small>
+    <small class="sub">${o.id} · ${TIPOS_NOTIFICACAO[CATEGORIAS[o.categoria].tipo]}${o.publica ? ` · ${o.eutambem.length} "eu também"` : ''}</small>
   </a></li>`;
   return html`<section class="m-pagina">
-    <h1 class="m-titulo">Ocorrências</h1>
-    <a class="btn primario bloco" href="#morador.ocorrencias.nova">Abrir ocorrência</a>
+    <h1 class="m-titulo">Notificações</h1>
+    <a class="btn primario bloco" href="#morador.ocorrencias.nova">Abrir notificação</a>
     <h2>Minhas</h2>
-    ${minhas.length ? html`<ul class="m-lista">${minhas.map(item)}</ul>` : html`<${Vazio} texto="Você não abriu ocorrências." />`}
+    ${minhas.length ? html`<ul class="m-lista">${minhas.map(item)}</ul>` : html`<${Vazio} texto="Você não abriu notificações." />`}
     <h2>Públicas do condomínio</h2>
-    ${publicas.length ? html`<ul class="m-lista">${publicas.map(item)}</ul>` : html`<${Vazio} texto="Nenhuma ocorrência pública." />`}
+    ${publicas.length ? html`<ul class="m-lista">${publicas.map(item)}</ul>` : html`<${Vazio} texto="Nenhuma notificação pública." />`}
   </section>`;
 }
 
-function MNovaOcorrencia({ executar, eu }) {
+function MNovaOcorrencia({ estado, executar, eu }) {
+  const [tipo, setTipo] = useState('');
   const [categoria, setCategoria] = useState('');
   const [local, setLocal] = useState('');
   const [descricao, setDescricao] = useState('');
@@ -5182,6 +6096,14 @@ function MNovaOcorrencia({ executar, eu }) {
   const [anonima, setAnonima] = useState(false);
   const [publica, setPublica] = useState(false);
   const [erro, setErro] = useState(null);
+  const categorias = Object.entries(CATEGORIAS).filter(([, c]) => c.tipo === tipo);
+  const iguais = categoria ? parecidas(estado, categoria, eu) : [];
+
+  function escolherTipo(t) {
+    setTipo(t);
+    setCategoria('');
+    if (t !== 'irregularidade') setAnonima(false);
+  }
 
   function enviar() {
     const r = executar((e) => abrirOcorrencia(e, { categoria, local, descricao, foto, anonima, publica, unidade: eu }, new Date()));
@@ -5193,29 +6115,40 @@ function MNovaOcorrencia({ executar, eu }) {
   }
 
   return html`<section class="m-pagina">
-    <a class="voltar" href="#morador.ocorrencias">‹ Ocorrências</a>
-    <h1 class="m-titulo">Abrir ocorrência</h1>
-    <${Campo} rotulo="Categoria"><select id="ocorrencia-categoria" value=${categoria} onChange=${(ev) => setCategoria(ev.target.value)}>
+    <a class="voltar" href="#morador.ocorrencias">‹ Notificações</a>
+    <h1 class="m-titulo">Abrir notificação</h1>
+    <div class="acoes" role="group" aria-label="Tipo">
+      ${Object.entries(TIPOS_NOTIFICACAO).map(([id, nome]) => html`<button type="button" key=${id} class=${tipo === id ? 'btn primario' : 'btn secundario'} aria-pressed=${tipo === id} onClick=${() => escolherTipo(id)}>${nome}</button>`)}
+    </div>
+    ${tipo && html`<${Campo} rotulo="Categoria"><select id="ocorrencia-categoria" value=${categoria} onChange=${(ev) => setCategoria(ev.target.value)}>
       <option value="">Escolha…</option>
-      ${Object.entries(CATEGORIAS).map(([id, c]) => html`<option key=${id} value=${id}>${c.nome}</option>`)}
-    </select><//>
+      ${categorias.map(([id, c]) => html`<option key=${id} value=${id}>${c.nome}</option>`)}
+    </select><//>`}
+    ${iguais.length > 0 && html`<div class="cartao">
+      <strong>Já avisaram sobre isso</strong>
+      <small class="sub">Se for o mesmo problema, apoie em vez de abrir outra.</small>
+      ${iguais.map((o) => html`<div key=${o.id} class="linha-entre"><span>${o.id} · ${o.local || CATEGORIAS[o.categoria].nome}</span><button type="button" class="btn secundario" data-eutambem=${o.id} aria-pressed=${o.eutambem.includes(eu)} onClick=${() => executar((e) => euTambem(e, o.id, eu))}>Eu também · ${o.eutambem.length}</button></div>`)}
+    </div>`}
     <${Campo} rotulo="Local"><input id="ocorrencia-local" value=${local} onInput=${(ev) => setLocal(ev.target.value)} placeholder="Ex.: garagem, 5º andar, salão" /><//>
     <${Campo} rotulo="Descrição"><textarea id="ocorrencia-descricao" rows="4" value=${descricao} onInput=${(ev) => setDescricao(ev.target.value)}></textarea><//>
     ${foto ? html`<${FotoFalsa} rotulo="Foto anexada" />` : html`<button type="button" class="btn secundario" onClick=${() => setFoto(true)}>Anexar foto</button>`}
-    <label class="check"><input id="ocorrencia-anonima" type="checkbox" checked=${anonima} onChange=${(ev) => setAnonima(ev.target.checked)} /><span>Enviar como anônima</span></label>
-    <small class="m-ajuda">O síndico vê o conteúdo, mas não quem enviou.</small>
+    ${tipo === 'irregularidade' && html`<label class="check"><input id="ocorrencia-anonima" type="checkbox" checked=${anonima} onChange=${(ev) => setAnonima(ev.target.checked)} /><span>Não me identificar para os outros</span></label>
+      <small class="m-ajuda">O síndico sempre vê quem enviou, para evitar abuso.</small>`}
     <label class="check"><input id="ocorrencia-publica" type="checkbox" checked=${publica} onChange=${(ev) => setPublica(ev.target.checked)} /><span>Tornar pública</span></label>
     <small class="m-ajuda">Todos os moradores veem e podem marcar "eu também".</small>
     <${Erro} texto=${erro} />
-    <button type="button" class="btn primario bloco" onClick=${enviar}>Enviar ocorrência</button>
+    <button type="button" class="btn primario bloco" onClick=${enviar}>Enviar notificação</button>
   </section>`;
 }
 
-function MDetalheOcorrencia({ executar, oc, eu }) {
+function MDetalheOcorrencia({ estado, executar, oc, eu }) {
   const [nota, setNota] = useState(0);
   const [erro, setErro] = useState(null);
   const minha = oc.unidade === eu;
   const podeAvaliar = minha && ['resolvida', 'fechada'].includes(oc.status) && !oc.avaliacao;
+  const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
+  const solucao = prazosDe(oc).solucao;
+  const reparo = oc.linha.some((l) => l.texto.startsWith('Reparo concluído'));
 
   function avaliar() {
     const r = executar((e) => avaliarOcorrencia(e, oc.id, nota));
@@ -5223,14 +6156,17 @@ function MDetalheOcorrencia({ executar, oc, eu }) {
   }
 
   return html`<section class="m-pagina">
-    <a class="voltar" href="#morador.ocorrencias">‹ Ocorrências</a>
+    <a class="voltar" href="#morador.ocorrencias">‹ Notificações</a>
     <p class="protocolo">Protocolo ${oc.id}</p>
     <h1 class="m-titulo">${CATEGORIAS[oc.categoria].nome}</h1>
-    <div><${EtqOcorrencia} status=${oc.status} arquivada=${oc.arquivada} /></div>
+    <div class="etq-linha"><${EtqOcorrencia} status=${oc.status} arquivada=${oc.arquivada} /><span class="sub">${TIPOS_NOTIFICACAO[CATEGORIAS[oc.categoria].tipo]}${comPrazo ? ` · prioridade ${PRIORIDADES[oc.prioridade].nome.toLowerCase()}` : ''}</span></div>
+    ${comPrazo && solucao && !solucao.em && !oc.arquivada && html`<p class="m-sub">Previsão de solução: até ${fmtDataCurta(isoDia(new Date(solucao.limite)))}, ${new Date(solucao.limite).getHours()}h</p>`}
     <p class="m-texto">${oc.descricao}</p>
     ${oc.local && html`<p class="m-sub">Local: ${oc.local}</p>`}
     ${oc.foto && html`<${FotoFalsa} rotulo="Foto enviada" />`}
-    ${oc.publica && html`<button type="button" class="btn secundario" aria-pressed=${oc.eutambem.includes(eu)} onClick=${() => executar((e) => euTambem(e, oc.id, eu))}>Eu também · ${oc.eutambem.length}</button>`}
+    ${oc.os && html`<p class="m-sub">Ordem de serviço ${oc.os} com o zelador</p>`}
+    ${reparo && html`<div class="fotos-reparo"><${FotoFalsa} rotulo="Antes" /><${FotoFalsa} rotulo="Depois" /></div>`}
+    ${(oc.publica || !minha) && html`<button type="button" class="btn secundario" aria-pressed=${oc.eutambem.includes(eu)} onClick=${() => executar((e) => euTambem(e, oc.id, eu))}>Eu também · ${oc.eutambem.length}</button>`}
     <h2>Andamento</h2>
     <${LinhaTempo} linha=${oc.linha} />
     ${podeAvaliar && html`<div class="cartao">
@@ -5311,8 +6247,8 @@ function MPreferencias({ estado, executar, eu }) {
 
 // ---- src/ui/sindico.js ----
 
-const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
-const EM_BREVE = ['Notificações e OS', 'Zelador', 'Escala de porteiros'];
+const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
+const EM_BREVE = [['Escala de porteiros', 'Intermediário'], ['Estoque, checklist e rondas', 'Avançado']];
 const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
 const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
 
@@ -5325,7 +6261,7 @@ function textoAlerta(alerta) {
 }
 
 function textoPrazo(oc) {
-  const sla = CATEGORIAS[oc.categoria].sla;
+  const sla = PRIORIDADES[oc.prioridade].solucao;
   if (!sla) return 'Sem prazo';
   return oc.status === 'aberta' ? `${sla} h para atender` : 'Atendida';
 }
@@ -5336,12 +6272,12 @@ function tipoEtiquetaComunicado(c) {
 
 function TelaSindico(props) {
   const tela = MENU_SINDICO.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'inicio';
-  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca }[tela];
+  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, manutencao: SManutencao }[tela];
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
       <p class="painel-usuario"><strong>Roberto Lima</strong><small>Síndico · apto 801</small></p>
       ${MENU_SINDICO.map(([id, nome, icone]) => html`<a key=${id} href=${`#sindico.${id}`} class=${id === tela ? 'ativa' : ''} aria-current=${id === tela ? 'page' : undefined}><${Icone} nome=${icone} tamanho=${20} />${nome}</a>`)}
-      ${EM_BREVE.map((nome) => html`<span key=${nome} class="em-breve" aria-disabled="true">${nome}<small>Em breve · Intermediário</small></span>`)}
+      ${EM_BREVE.map(([nome, plano]) => html`<span key=${nome} class="em-breve" aria-disabled="true">${nome}<small>Em breve · ${plano}</small></span>`)}
     </nav>
     <div class="painel-conteudo"><${Conteudo} ...${props} /></div>
   </div>`;
@@ -5350,19 +6286,26 @@ function TelaSindico(props) {
 function SInicio({ estado, agora }) {
   const ind = indicadoresSindico(estado, agora);
   const pendentes = estado.reservas.filter((r) => r.status === 'pendente');
-  const vencidas = estado.ocorrencias.filter((o) => slaVencido(o, agora));
   const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora));
   const alertas = alertasDocumentos(estado.documentos, isoDia(agora));
   const vendedoresPendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
   const pendCobranca = pendenciasCobranca(estado, isoDia(agora));
+  const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
+  const pendOperacao = comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : [];
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
   const cartoes = [
     ['Reservas pendentes', ind.pendentes, '#sindico.reservas', ind.pendentes ? 'alerta' : 'ok', 'Aguardando sua aprovação', 'calendario'],
-    ['Ocorrências abertas', ind.abertas, '#sindico.ocorrencias', ind.slaVencidas ? 'perigo' : 'info', ind.slaVencidas ? `${ind.slaVencidas} com prazo vencido` : 'Todas dentro do prazo', 'prancheta'],
+    comPrazo
+      ? ['Notificações abertas', ind.abertas, '#sindico.ocorrencias', ind.slaVencidas ? 'perigo' : 'info', ind.slaVencidas ? `${ind.slaVencidas} com prazo vencido` : 'Todas dentro do prazo', 'prancheta']
+      : ['Notificações abertas', ind.abertas, '#sindico.ocorrencias', 'info', 'Sem prazos no Básico', 'prancheta'],
     ['Encomendas paradas', ind.paradas, '#sindico.encomendas', ind.paradas ? 'alerta' : 'ok', 'Há mais de 3 dias na portaria', 'pacote'],
     ['Documentos vencendo', ind.vencendo, '#sindico.documentos', ind.vencendo ? 'perigo' : 'ok', 'Vencidos ou nos próximos 60 dias', 'documento'],
   ];
-  const semPendencias = !pendentes.length && !vencidas.length && !paradas.length && !alertas.length && !vendedoresPendentes.length && !pendCobranca.length;
+  if (liberado(estado.plano, 'indicadorAtendimento')) {
+    const a = indicadorAtendimento(estado);
+    cartoes.push(['Atendimento', `${a.pct}%`, '#sindico.ocorrencias', a.alerta ? 'perigo' : 'ok', `${a.abertas} abertas · ${a.noPrazo} de ${a.comPrazo} resolvidas no prazo`, 'prancheta']);
+  }
+  const semPendencias = !pendentes.length && !pendOperacao.length && !paradas.length && !alertas.length && !vendedoresPendentes.length && !pendCobranca.length;
   return html`<section>
     <h1>Olá, Roberto</h1>
     <${PainelFinanceiro} estado=${estado} agora=${agora} />
@@ -5372,7 +6315,7 @@ function SInicio({ estado, agora }) {
       : html`<ul class="atencao">
           ${pendCobranca.map((p) => html`<li key=${p.chave}><a href=${p.href}>${p.texto}</a></li>`)}
           ${pendentes.map((r) => html`<li key=${r.id}><a href="#sindico.reservas">Aprovar reserva: ${areaPorId(estado, r.areaId).nome}, apto ${r.unidade}, ${fmtDia(r.data)}</a></li>`)}
-          ${vencidas.map((o) => html`<li key=${o.id}><a href=${`#sindico.ocorrencias.${o.id}`}>Prazo vencido: ${o.id} · ${CATEGORIAS[o.categoria].nome}</a></li>`)}
+          ${pendOperacao.map((p) => html`<li key=${p.chave}><a href=${p.href}>${p.texto}</a></li>`)}
           ${paradas.map((e) => html`<li key=${e.id}><a href="#sindico.encomendas">Encomenda parada: apto ${e.unidade}, chegou ${haQuanto(e.chegadaEm, agora)}</a></li>`)}
           ${alertas.map((a) => html`<li key=${a.documento.id}><a href="#sindico.documentos">${textoAlerta(a)}: ${a.documento.titulo}</a></li>`)}
           ${vendedoresPendentes.map((p) => html`<li key=${`v${p.unidade}`}><a href="#sindico.vendas">Aprovar vendedor: ${p.nome}, apto ${p.unidade}</a></li>`)}
@@ -5572,75 +6515,161 @@ function SNovoComunicado({ executar }) {
   </section>`;
 }
 
+const ETQ_PRIORIDADE = { urgente: 'perigo', alta: 'alerta', normal: 'info', baixa: 'neutro' };
+const FILTROS_TIPO = [['todos', 'Todos'], ...Object.entries(TIPOS_NOTIFICACAO)];
+const FILTROS_PRIORIDADE = [['todas', 'Todas'], ...ORDEM_PRIORIDADE.map((p) => [p, PRIORIDADES[p].nome])];
+
+function fmtLimite(iso) {
+  const d = new Date(iso);
+  return `até ${fmtDataCurta(isoDia(d))} ${String(d.getHours()).padStart(2, '0')}h`;
+}
+
+function CelulaPrazo({ prazo, atraso }) {
+  if (!prazo) return 'Sem prazo';
+  if (atraso !== null) return html`<${Etiqueta} tipo="perigo">vencida há ${textoAtraso(atraso)}<//>`;
+  if (prazo.em) return html`<${Etiqueta} tipo="ok">${prazo.em <= prazo.limite ? 'no prazo' : 'fora do prazo'}<//>`;
+  return fmtLimite(prazo.limite);
+}
+
 function SOcorrencias(props) {
   const { estado, rota, agora } = props;
   const [filtro, setFiltro] = useState('ativas');
+  const [tipo, setTipo] = useState('todos');
+  const [prioridade, setPrioridade] = useState('todas');
+  const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
   const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id) : null;
-  if (oc) return html`<${SDetalheOcorrencia} executar=${props.executar} agora=${agora} oc=${oc} />`;
-  const lista = estado.ocorrencias
-    .filter((o) => {
-      if (filtro === 'arquivadas') return o.arquivada;
-      if (o.arquivada) return false;
-      if (filtro === 'todas') return true;
-      if (filtro === 'ativas') return !['resolvida', 'fechada'].includes(o.status);
-      return o.status === filtro;
-    })
-    .sort((a, b) => b.criadaEm.localeCompare(a.criadaEm));
+  if (oc) return html`<${SDetalheOcorrencia} estado=${estado} executar=${props.executar} agora=${agora} oc=${oc} />`;
+  const lista = comPrazo
+    ? caixaDeEntrada(estado, agora, { status: filtro, tipo, prioridade })
+    : estado.ocorrencias
+      .filter((o) => {
+        if (filtro === 'arquivadas') return o.arquivada;
+        if (o.arquivada) return false;
+        if (filtro === 'todas') return true;
+        if (filtro === 'ativas') return !['resolvida', 'fechada'].includes(o.status);
+        return o.status === filtro;
+      })
+      .sort((a, b) => b.criadaEm.localeCompare(a.criadaEm));
   return html`<section>
-    <h1>Ocorrências</h1>
-    <div class="formulario"><${Campo} rotulo="Mostrar"><select id="ocorrencias-filtro" value=${filtro} onChange=${(ev) => setFiltro(ev.target.value)}>${FILTROS_OCORRENCIA.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//></div>
+    <h1>Notificações</h1>
+    <div class="edicao-anuncio filtros-notificacao">
+      <${Campo} rotulo="Mostrar"><select id="notificacoes-status" value=${filtro} onChange=${(ev) => setFiltro(ev.target.value)}>${FILTROS_OCORRENCIA.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>
+      ${comPrazo && html`<${Campo} rotulo="Tipo"><select id="notificacoes-tipo" value=${tipo} onChange=${(ev) => setTipo(ev.target.value)}>${FILTROS_TIPO.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>`}
+      ${comPrazo && html`<${Campo} rotulo="Prioridade"><select id="notificacoes-prioridade" value=${prioridade} onChange=${(ev) => setPrioridade(ev.target.value)}>${FILTROS_PRIORIDADE.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>`}
+    </div>
     <div class="tabela-rolagem"><table class="tabela">
-      <thead><tr><th>Protocolo</th><th>Categoria</th><th>Unidade</th><th>Status</th><th>Prazo</th><th>Aberta</th></tr></thead>
-      <tbody>${lista.map((o) => html`<tr key=${o.id} class="clicavel" onClick=${() => ir('sindico', 'ocorrencias', o.id)}>
-        <td><a href=${`#sindico.ocorrencias.${o.id}`}>${o.id}</a></td>
-        <td>${CATEGORIAS[o.categoria].nome}${o.publica && html` <${Etiqueta}>Pública<//>`}</td>
-        <td>${o.anonima ? 'Anônima' : o.unidade}</td>
-        <td><${EtqOcorrencia} status=${o.status} arquivada=${o.arquivada} /></td>
-        <td>${slaVencido(o, agora) ? html`<${Etiqueta} tipo="perigo">Vencido<//>` : textoPrazo(o)}</td>
-        <td>${haQuanto(o.criadaEm, agora)}</td>
-      </tr>`)}</tbody>
+      <thead><tr><th>Protocolo</th><th>Categoria</th><th>Unidade</th>${comPrazo && html`<th>Prioridade</th><th>1ª resposta</th><th>Solução</th>`}<th>Status</th><th>Aberta</th></tr></thead>
+      <tbody>${lista.map((o) => {
+        const p = comPrazo ? prazosDe(o) : null;
+        const v = comPrazo ? prazosVencidos(o, agora) : null;
+        return html`<tr key=${o.id} class="clicavel" onClick=${() => ir('sindico', 'ocorrencias', o.id)}>
+          <td><a href=${`#sindico.ocorrencias.${o.id}`}>${o.id}</a></td>
+          <td>${CATEGORIAS[o.categoria].nome}${o.publica && html` <${Etiqueta}>Pública<//>`}${comPrazo && html`<br /><small class="sub">${TIPOS_NOTIFICACAO[CATEGORIAS[o.categoria].tipo]}</small>`}</td>
+          <td>${o.anonima ? 'Anônima' : o.unidade}</td>
+          ${comPrazo && html`<td><${Etiqueta} tipo=${ETQ_PRIORIDADE[o.prioridade]}>${PRIORIDADES[o.prioridade].nome}<//></td>
+            <td><${CelulaPrazo} prazo=${p.resposta} atraso=${v.resposta} /></td>
+            <td><${CelulaPrazo} prazo=${p.solucao} atraso=${v.solucao} /></td>`}
+          <td><${EtqOcorrencia} status=${o.status} arquivada=${o.arquivada} /></td>
+          <td>${haQuanto(o.criadaEm, agora)}</td>
+        </tr>`;
+      })}</tbody>
     </table></div>
-    ${!lista.length && html`<${Vazio} texto="Nenhuma ocorrência neste filtro." />`}
+    ${!lista.length && html`<${Vazio} texto="Nenhuma notificação neste filtro." />`}
+    ${comPrazo && html`<details class="composicao"><summary>Prazos por prioridade</summary>
+      <div class="tabela-rolagem"><table class="tabela">
+        <thead><tr><th>Prioridade</th><th>1ª resposta</th><th>Solução</th></tr></thead>
+        <tbody>${ORDEM_PRIORIDADE.map((id) => html`<tr key=${id}><td>${PRIORIDADES[id].nome}</td><td>${PRIORIDADES[id].resposta} h</td><td>${PRIORIDADES[id].solucao ? (PRIORIDADES[id].solucao >= 48 ? `${PRIORIDADES[id].solucao / 24} dias` : `${PRIORIDADES[id].solucao} h`) : 'Sem prazo'}</td></tr>`)}</tbody>
+      </table></div>
+      <small class="sub">A 1ª resposta conta a partir da primeira ação do síndico: mudar o status, comentar, pedir informação ou gerar OS.</small>
+    </details>`}
   </section>`;
 }
 
-function SDetalheOcorrencia({ executar, agora, oc }) {
+function SDetalheOcorrencia({ estado, executar, agora, oc }) {
   const [texto, setTexto] = useState('');
   const [erro, setErro] = useState(null);
-  const acoes = acoesOcorrencia(oc);
+  const [mensagem, setMensagem] = useState(null);
+  const [responsavel, setResponsavel] = useState('zelador');
+  const [prestador, setPrestador] = useState('');
+  const [unidade, setUnidade] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
+  const encerrada = ['resolvida', 'fechada'].includes(oc.status);
+  const irregularidade = CATEGORIAS[oc.categoria].tipo === 'irregularidade';
+  const acoes = acoesOcorrencia(oc).filter((a) => !comPrazo || a.id !== 'arquivar');
+  const v = comPrazo ? prazosVencidos(oc, agora) : null;
 
-  function fazer(acao) {
-    const r = executar((e) => {
-      if (acao === 'avancar') return avancarOcorrencia(e, oc.id, new Date(), texto);
-      if (acao === 'comentar') return comentarOcorrencia(e, oc.id, texto, new Date());
-      return arquivarOcorrencia(e, oc.id);
-    });
+  function rodar(acao, sucesso, limpar) {
+    const r = executar(acao);
     if (r.erro) {
       setErro(r.erro);
+      setMensagem(null);
       return;
     }
     setErro(null);
-    setTexto('');
+    setMensagem(sucesso);
+    if (limpar) limpar();
+  }
+
+  function fazer(acao) {
+    rodar((e) => {
+      if (acao === 'avancar') return avancarOcorrencia(e, oc.id, new Date(), texto);
+      if (acao === 'comentar') return comentarOcorrencia(e, oc.id, texto, new Date());
+      return arquivarOcorrencia(e, oc.id);
+    }, null, () => setTexto(''));
   }
 
   return html`<section>
-    <a class="voltar" href="#sindico.ocorrencias">‹ Ocorrências</a>
+    <a class="voltar" href="#sindico.ocorrencias">‹ Notificações</a>
     <p class="protocolo">Protocolo ${oc.id}</p>
     <div class="linha-entre"><h1>${CATEGORIAS[oc.categoria].nome}</h1><${EtqOcorrencia} status=${oc.status} arquivada=${oc.arquivada} /></div>
-    <p class="sub">${oc.anonima ? 'Autor anônimo' : `Apto ${oc.unidade}`}${oc.local ? ` · ${oc.local}` : ''} · aberta ${haQuanto(oc.criadaEm, agora)}${slaVencido(oc, agora) ? ' · prazo vencido' : ''}</p>
+    <p class="sub">${TIPOS_NOTIFICACAO[CATEGORIAS[oc.categoria].tipo]} · ${oc.anonima ? 'autor anônimo' : `apto ${oc.unidade}`}${oc.local ? ` · ${oc.local}` : ''} · aberta ${haQuanto(oc.criadaEm, agora)}</p>
+    ${comPrazo && (v.resposta !== null || v.solucao !== null) && html`<p class="erro">${v.resposta !== null ? `1ª resposta vencida há ${textoAtraso(v.resposta)}` : `Solução vencida há ${textoAtraso(v.solucao)}`}</p>`}
     <p class="texto-longo">${oc.descricao}</p>
     ${oc.foto && html`<${FotoFalsa} rotulo="Foto enviada pelo morador" />`}
     ${oc.publica && html`<p class="sub">Pública · ${oc.eutambem.length} moradores marcaram "eu também"</p>`}
+    ${!oc.publica && oc.eutambem.length > 0 && html`<p class="sub">${oc.eutambem.length} moradores apoiaram ("eu também")</p>`}
     ${oc.avaliacao && html`<div><span class="sub">Avaliação do morador</span><${Estrelas} valor=${oc.avaliacao} /></div>`}
+    ${oc.os && html`<p class="cartao"><span>Ordem de serviço <a href=${`#sindico.manutencao.${oc.os}`}>${oc.os}</a></span></p>`}
+    ${oc.motivoArquivamento && html`<p class="sub">Arquivada: ${oc.motivoArquivamento}</p>`}
     <h2>Linha do tempo</h2>
     <${LinhaTempo} linha=${oc.linha} />
-    ${acoes.length
-      ? html`<div class="cartao">
-          <${Campo} rotulo="Mensagem ao morador" dica="Opcional ao mudar o status; obrigatória para comentar."><textarea id="ocorrencia-mensagem" rows="2" value=${texto} onInput=${(ev) => setTexto(ev.target.value)}></textarea><//>
+    ${oc.arquivada
+      ? html`<p class="sub">Notificação arquivada. O histórico fica guardado para auditoria e não pode ser apagado.</p>`
+      : html`<div class="pilha">
+          ${comPrazo && html`<div class="cartao">
+            <${Campo} rotulo="Prioridade"><select id="notificacao-prioridade" value=${oc.prioridade} onChange=${(ev) => rodar((e) => definirPrioridade(e, oc.id, ev.target.value, 'sindico', new Date()), 'Prioridade atualizada.')}>${ORDEM_PRIORIDADE.map((p) => html`<option key=${p} value=${p}>${PRIORIDADES[p].nome} · resposta ${PRIORIDADES[p].resposta} h</option>`)}</select><//>
+          </div>`}
+          <div class="cartao">
+            <${Campo} rotulo="Mensagem ao morador" dica="Opcional ao mudar o status; obrigatória para comentar ou pedir informação."><textarea id="ocorrencia-mensagem" rows="2" value=${texto} onInput=${(ev) => setTexto(ev.target.value)}></textarea><//>
+            <div class="acoes">
+              ${acoes.map((a) => html`<button type="button" key=${a.id} class=${a.id === 'avancar' ? 'btn primario' : 'btn secundario'} onClick=${() => fazer(a.id)}>${a.rotulo}</button>`)}
+              ${comPrazo && html`<button type="button" class="btn secundario" onClick=${() => rodar((e) => pedirInformacao(e, oc.id, texto, 'sindico', new Date()), 'Pedido enviado ao morador.', () => setTexto(''))}>Pedir mais informações</button>`}
+            </div>
+          </div>
+          ${comPrazo && !oc.os && !encerrada && html`<div class="cartao">
+            <strong>Gerar OS</strong>
+            <div class="edicao-anuncio">
+              <${Campo} rotulo="Responsável"><select id="os-responsavel" value=${responsavel} onChange=${(ev) => setResponsavel(ev.target.value)}><option value="zelador">Zelador (${ZELADOR})</option><option value="prestador">Prestador externo</option></select><//>
+              ${responsavel === 'prestador' && html`<${Campo} rotulo="Prestador"><input id="os-prestador" value=${prestador} onInput=${(ev) => setPrestador(ev.target.value)} placeholder="Ex.: Elevadores Atlas" /><//>`}
+            </div>
+            <button type="button" class="btn primario" data-acao="gerar-os" onClick=${() => rodar((e) => gerarOS(e, oc.id, { responsavel, prestador }, 'sindico', new Date()), 'OS aberta.')}>Gerar OS</button>
+          </div>`}
+          ${comPrazo && irregularidade && html`<div class="cartao">
+            <strong>Gerar advertência</strong>
+            ${oc.advertencia
+              ? html`<span class="sub">Advertência enviada ao apto ${oc.advertencia.unidade}. Quem denunciou nunca é revelado.</span>`
+              : html`<${Campo} rotulo="Unidade advertida" dica="O aviso não revela quem enviou a notificação."><input id="advertencia-unidade" value=${unidade} onInput=${(ev) => setUnidade(ev.target.value)} placeholder="Ex.: 503" /><//>
+                <button type="button" class="btn secundario" onClick=${() => rodar((e) => gerarAdvertencia(e, oc.id, unidade, 'sindico', new Date()), 'Advertência enviada.')}>Gerar advertência</button>`}
+          </div>`}
+          ${comPrazo && html`<div class="cartao">
+            <strong>Arquivar com justificativa</strong>
+            <${Campo} rotulo="Motivo do arquivamento"><input id="arquivar-motivo" value=${motivo} onInput=${(ev) => setMotivo(ev.target.value)} placeholder="Ex.: improcedente, duplicada da OC-0042" /><//>
+            <button type="button" class="btn secundario" onClick=${() => rodar((e) => arquivarComJustificativa(e, oc.id, motivo, 'sindico', new Date()), 'Notificação arquivada.')}>Arquivar</button>
+          </div>`}
           <${Erro} texto=${erro} />
-          <div class="acoes">${acoes.map((a) => html`<button type="button" key=${a.id} class=${a.id === 'avancar' ? 'btn primario' : 'btn secundario'} onClick=${() => fazer(a.id)}>${a.rotulo}</button>`)}</div>
-        </div>`
-      : html`<p class="sub">Ocorrência arquivada. O histórico fica guardado para auditoria e não pode ser apagado.</p>`}
+          <${Sucesso} texto=${mensagem} />
+        </div>`}
   </section>`;
 }
 
@@ -5799,9 +6828,243 @@ function SVendas({ estado, executar, agora }) {
   </section>`;
 }
 
+// ---- src/ui/zelador.js ----
+
+// O zelador vê só as OS, as compras dele e o caixa pequeno: nada de receitas, inadimplência ou saldo do condomínio.
+const ABAS_ZELADOR = [['os', 'OS', 'prancheta'], ['compras', 'Compras', 'sacola'], ['caixa', 'Caixa', 'cifrao']];
+
+function relogioZelador(d) {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function TelaZelador(props) {
+  const { estado, rota } = props;
+  const tela = ABAS_ZELADOR.some(([id]) => id === rota.tela) ? rota.tela : 'os';
+  const liberadoZelador = liberado(estado.plano, 'zelador');
+  const Conteudo = { os: ZOS, compras: ZCompras, caixa: ZCaixa }[tela];
+  return html`<div class="celular">
+    <div class="cel-status" aria-hidden="true"><span>${relogioZelador(props.agora)}</span><span>CondoFácil</span></div>
+    <div class="cel-pessoa"><strong>${ZELADOR} · Zelador</strong></div>
+    <div class="cel-conteudo">${liberadoZelador
+      ? html`<${Conteudo} ...${props} />`
+      : html`<section class="m-pagina"><h1 class="m-titulo">Zelador</h1><div class="bloqueado"><strong>Ordens de serviço, compras e caixa pequeno</strong><span>Módulo do zelador disponível no plano Intermediário</span></div></section>`}</div>
+    <nav class="cel-abas zelador" aria-label="Navegação do zelador">
+      ${ABAS_ZELADOR.map(([id, nome, icone]) => html`<a key=${id} href=${`#zelador.${id}`} class=${id === tela ? 'ativa' : ''} aria-current=${id === tela ? 'page' : undefined}><${Icone} nome=${icone} />${nome}</a>`)}
+    </nav>
+  </div>`;
+}
+
+function ZOS(props) {
+  const { estado, rota } = props;
+  if (rota.id === 'nova') return html`<${ZNovaOS} ...${props} />`;
+  const os = rota.id ? estado.manutencao.os.find((o) => o.id === rota.id) : null;
+  if (os) return html`<${ZDetalheOS} key=${os.id} ...${props} os=${os} />`;
+  const lista = listaOS(estado).filter((o) => o.status !== 'validada');
+  return html`<section class="m-pagina">
+    <h1 class="m-titulo">Ordens de serviço</h1>
+    <a class="btn primario bloco" href="#zelador.os.nova">Nova OS</a>
+    ${lista.length
+      ? html`<ul class="m-lista">${lista.map((o) => html`<li key=${o.id}><a class="cartao link" href=${`#zelador.os.${o.id}`}>
+          <div class="linha-entre"><strong>${o.id} · ${o.local}</strong><${EtqPrioridade} prioridade=${o.prioridade} /></div>
+          <span>${o.descricao}</span>
+          <div class="linha-entre"><small class="sub">Prazo ${fmtPrazo(o.prazo)}</small><${EtqOS} status=${o.status} /></div>
+        </a></li>`)}</ul>`
+      : html`<${Vazio} texto="Nenhuma OS em aberto." />`}
+  </section>`;
+}
+
+function ZNovaOS({ executar }) {
+  const [local, setLocal] = useState('');
+  const [descricao, setDescricao] = useState('');
+  const [prioridade, setPrioridade] = useState('normal');
+  const [erro, setErro] = useState(null);
+
+  function registrar() {
+    const r = executar((e) => abrirOS(e, { local, descricao, prioridade }, 'zelador', new Date()));
+    if (r.erro) setErro(r.erro);
+    else ir('zelador', 'os', r.id);
+  }
+
+  return html`<section class="m-pagina">
+    <a class="voltar" href="#zelador.os">‹ OS</a>
+    <h1 class="m-titulo">Nova OS (ronda)</h1>
+    <${Campo} rotulo="Local"><input id="z-os-local" value=${local} onInput=${(ev) => setLocal(ev.target.value)} placeholder="Ex.: piscina, hall do 3º andar" /><//>
+    <${Campo} rotulo="Descrição"><textarea id="z-os-descricao" rows="3" value=${descricao} onInput=${(ev) => setDescricao(ev.target.value)}></textarea><//>
+    <${Campo} rotulo="Prioridade"><select id="z-os-prioridade" value=${prioridade} onChange=${(ev) => setPrioridade(ev.target.value)}>${ORDEM_PRIORIDADE.map((p) => html`<option key=${p} value=${p}>${PRIORIDADES[p].nome}</option>`)}</select><//>
+    <${Erro} texto=${erro} />
+    <button type="button" class="btn primario bloco" onClick=${registrar}>Registrar OS</button>
+  </section>`;
+}
+
+function ZDetalheOS({ executar, os }) {
+  const [concluindo, setConcluindo] = useState(false);
+  const [fotoDepois, setFotoDepois] = useState(false);
+  const [materiais, setMateriais] = useState('');
+  const [horas, setHoras] = useState('');
+  const [observacoes, setObservacoes] = useState('');
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const executando = ['em_execucao', 'aguardando_material', 'aguardando_prestador'].includes(os.status);
+
+  function rodar(acao, sucesso) {
+    const r = executar(acao);
+    setErro(r.erro || null);
+    setMensagem(r.erro ? null : sucesso);
+    return r;
+  }
+
+  function concluir() {
+    const r = rodar((e) => concluirOS(e, os.id, { fotoDepois, materiais, horas: Number(String(horas).replace(',', '.')), observacoes }, 'zelador', new Date()), 'OS concluída. O síndico vai validar.');
+    if (!r.erro) setConcluindo(false);
+  }
+
+  return html`<section class="m-pagina">
+    <a class="voltar" href="#zelador.os">‹ OS</a>
+    <p class="protocolo">${os.id}${os.notificacao ? ` · ${os.notificacao}` : ''}</p>
+    <h1 class="m-titulo">${os.local}</h1>
+    <div class="etq-linha"><${EtqPrioridade} prioridade=${os.prioridade} /><${EtqOS} status=${os.status} /></div>
+    <p class="m-texto">${os.descricao}</p>
+    <small class="sub">Prazo ${fmtPrazo(os.prazo)}</small>
+    <${FotosOS} os=${os} />
+    ${osAtiva(os) && html`<div class="acoes">
+      ${os.status !== 'em_execucao' && html`<button type="button" class="btn primario" onClick=${() => rodar((e) => iniciarOS(e, os.id, 'zelador', new Date()), 'OS em execução.')}>${os.status === 'aberta' ? 'Iniciar' : 'Retomar'}</button>`}
+      ${os.status === 'em_execucao' && html`<button type="button" class="btn secundario" onClick=${() => rodar((e) => pausarOS(e, os.id, 'aguardando_material', 'zelador', new Date()), 'Marcada como aguardando material.')}>Aguardando material</button>`}
+      ${os.status === 'em_execucao' && html`<button type="button" class="btn secundario" onClick=${() => rodar((e) => pausarOS(e, os.id, 'aguardando_prestador', 'zelador', new Date()), 'Marcada como aguardando prestador.')}>Aguardando prestador</button>`}
+      ${executando && !concluindo && html`<button type="button" class="btn primario" onClick=${() => setConcluindo(true)}>Concluir</button>`}
+    </div>`}
+    ${concluindo && html`<div class="cartao pilha">
+      <button type="button" class="btn secundario" aria-pressed=${fotoDepois} onClick=${() => setFotoDepois(true)}>${fotoDepois ? 'Foto do depois anexada' : 'Anexar foto do depois'}</button>
+      <${Campo} rotulo="Materiais usados"><input id="z-os-materiais" value=${materiais} onInput=${(ev) => setMateriais(ev.target.value)} /><//>
+      <${Campo} rotulo="Horas gastas"><input id="z-os-horas" type="number" step="0.5" min="0" value=${horas} onInput=${(ev) => setHoras(ev.target.value)} /><//>
+      <${Campo} rotulo="Observações"><textarea id="z-os-observacoes" rows="2" value=${observacoes} onInput=${(ev) => setObservacoes(ev.target.value)}></textarea><//>
+      <button type="button" class="btn primario bloco" data-acao="concluir-os" onClick=${concluir}>Concluir OS</button>
+    </div>`}
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+    <h2>Andamento</h2>
+    <${LinhaTempo} linha=${os.linha} nomes=${NOMES_STATUS_OS} />
+  </section>`;
+}
+
+function ZCompras(props) {
+  const { estado, executar, rota } = props;
+  const [recebendo, setRecebendo] = useState(null);
+  const [valorFinal, setValorFinal] = useState('');
+  const [nota, setNota] = useState('');
+  const [erro, setErro] = useState(null);
+  if (rota.id === 'nova') return html`<${ZNovaCompra} ...${props} />`;
+  const lista = [...estado.manutencao.compras].reverse();
+
+  function confirmar(id) {
+    const r = executar((e) => receberCompra(e, id, { valorFinal: lerPreco(valorFinal), nota }, 'zelador', new Date()));
+    setErro(r.erro || null);
+    if (!r.erro) {
+      setRecebendo(null);
+      setValorFinal('');
+      setNota('');
+    }
+  }
+
+  return html`<section class="m-pagina">
+    <h1 class="m-titulo">Compras</h1>
+    <a class="btn primario bloco" href="#zelador.compras.nova">Nova compra</a>
+    ${lista.length
+      ? html`<ul class="m-lista">${lista.map((c) => html`<li key=${c.id} class="cartao">
+          <div class="linha-entre"><strong>${c.id} · ${c.item}</strong><${EtqCompra} status=${c.status} /></div>
+          <small class="sub">${fmtReais(c.valorFinal || c.valorEstimado)}${c.os ? ` · ${c.os}` : ''}${c.motivoRecusa ? ` · recusada: ${c.motivoRecusa}` : ''}</small>
+          ${c.status === 'aprovada' && recebendo !== c.id && html`<button type="button" class="btn secundario" data-compra-receber=${c.id} onClick=${() => { setRecebendo(c.id); setErro(null); }}>Registrar recebimento</button>`}
+          ${recebendo === c.id && html`<div class="pilha">
+            <${Campo} rotulo="Valor final (R$)"><input id=${`z-valor-final-${c.id}`} inputmode="decimal" value=${valorFinal} onInput=${(ev) => setValorFinal(ev.target.value)} /><//>
+            <button type="button" class="btn secundario" onClick=${() => setNota(`nota-${c.id}.pdf`)}>${nota ? `Anexada: ${nota}` : 'Anexar nota fiscal'}</button>
+            <button type="button" class="btn primario" onClick=${() => confirmar(c.id)}>Confirmar recebimento</button>
+            <${Erro} texto=${erro} />
+          </div>`}
+        </li>`)}</ul>`
+      : html`<${Vazio} texto="Nenhuma compra pedida." />`}
+  </section>`;
+}
+
+function ZNovaCompra({ estado, executar }) {
+  const comCotacao = liberado(estado.plano, 'cotacoes');
+  const [item, setItem] = useState('');
+  const [quantidade, setQuantidade] = useState('1');
+  const [valor, setValor] = useState('');
+  const [categoria, setCategoria] = useState('manutencao');
+  const [os, setOs] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const [fornecedor, setFornecedor] = useState('');
+  const [valorCotacao, setValorCotacao] = useState('');
+  const [erro, setErro] = useState(null);
+  const ativas = estado.manutencao.os.filter(osAtiva);
+
+  function pedir() {
+    const cotacoes = comCotacao && fornecedor.trim() ? [{ fornecedor: fornecedor.trim(), valor: lerPreco(valorCotacao) }] : [];
+    const r = executar((e) => solicitarCompra(e, { item, quantidade: Number(quantidade), valorEstimado: lerPreco(valor), categoria, os: os || null, motivo, cotacoes }, 'zelador', new Date()));
+    if (r.erro) setErro(r.erro);
+    else ir('zelador', 'compras');
+  }
+
+  return html`<section class="m-pagina">
+    <a class="voltar" href="#zelador.compras">‹ Compras</a>
+    <h1 class="m-titulo">Nova compra</h1>
+    <${Campo} rotulo="Item"><input id="z-compra-item" value=${item} onInput=${(ev) => setItem(ev.target.value)} /><//>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Quantidade"><input id="z-compra-quantidade" type="number" min="1" value=${quantidade} onInput=${(ev) => setQuantidade(ev.target.value)} /><//>
+      <${Campo} rotulo="Valor estimado (R$)"><input id="z-compra-valor" inputmode="decimal" value=${valor} onInput=${(ev) => setValor(ev.target.value)} /><//>
+    </div>
+    <${Campo} rotulo="Categoria"><select id="z-compra-categoria" value=${categoria} onChange=${(ev) => setCategoria(ev.target.value)}>${Object.entries(CATEGORIAS_COMPRA).map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>
+    <${Campo} rotulo="OS vinculada"><select id="z-compra-os" value=${os} onChange=${(ev) => setOs(ev.target.value)}><option value="">Nenhuma</option>${ativas.map((o) => html`<option key=${o.id} value=${o.id}>${o.id} · ${o.local}</option>`)}</select><//>
+    <${Campo} rotulo="Motivo"><input id="z-compra-motivo" value=${motivo} onInput=${(ev) => setMotivo(ev.target.value)} /><//>
+    ${comCotacao && html`<div class="edicao-anuncio">
+      <${Campo} rotulo="Fornecedor"><input id="z-compra-fornecedor" value=${fornecedor} onInput=${(ev) => setFornecedor(ev.target.value)} /><//>
+      <${Campo} rotulo="Valor da cotação (R$)"><input id="z-compra-cotacao" inputmode="decimal" value=${valorCotacao} onInput=${(ev) => setValorCotacao(ev.target.value)} /><//>
+    </div>
+    <small class="m-ajuda">Cotações mínimas: 1 até R$ 500,00, 2 até R$ 2.000,00 e 3 acima disso.</small>`}
+    <${Erro} texto=${erro} />
+    <button type="button" class="btn primario bloco" onClick=${pedir}>Pedir compra</button>
+  </section>`;
+}
+
+function ZCaixa({ estado, executar }) {
+  const [novo, setNovo] = useState(false);
+  const [descricao, setDescricao] = useState('');
+  const [valor, setValor] = useState('');
+  const [cupom, setCupom] = useState(false);
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  if (!liberado(estado.plano, 'caixaPequeno')) return html`<section class="m-pagina"><h1 class="m-titulo">Caixa pequeno</h1><${Bloqueado} estado=${estado} recurso="caixaPequeno" titulo="Caixa pequeno com cupom e saldo" /></section>`;
+
+  function registrar() {
+    const r = executar((e) => gastoCaixa(e, { descricao, valor: lerPreco(valor), cupom }, 'zelador', new Date()));
+    setErro(r.erro || null);
+    if (!r.erro) {
+      setMensagem('Gasto registrado.');
+      setNovo(false);
+      setDescricao('');
+      setValor('');
+      setCupom(false);
+    }
+  }
+
+  return html`<section class="m-pagina">
+    <h1 class="m-titulo">Caixa pequeno</h1>
+    <${ResumoCaixa} caixa=${estado.manutencao.caixa} />
+    ${novo
+      ? html`<div class="cartao pilha">
+          <${Campo} rotulo="Descrição"><input id="z-gasto-descricao" value=${descricao} onInput=${(ev) => setDescricao(ev.target.value)} /><//>
+          <${Campo} rotulo="Valor (R$)"><input id="z-gasto-valor" inputmode="decimal" value=${valor} onInput=${(ev) => setValor(ev.target.value)} /><//>
+          <button type="button" class="btn secundario" aria-pressed=${cupom} onClick=${() => setCupom(true)}>${cupom ? 'Cupom anexado' : 'Anexar foto do cupom'}</button>
+          <button type="button" class="btn primario bloco" onClick=${registrar}>Registrar gasto</button>
+        </div>`
+      : html`<button type="button" class="btn primario bloco" onClick=${() => { setNovo(true); setMensagem(null); }}>Novo gasto</button>`}
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+  </section>`;
+}
+
 // ---- src/ui/app.js ----
 
-const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria };
+const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador };
 const ultimaRota = {};
 
 function estadoDeHoje() {
@@ -5888,7 +7151,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };
