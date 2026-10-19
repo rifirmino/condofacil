@@ -32,6 +32,7 @@ export const ORDEM = [
   'src/ui/portaria.js',
   'src/ui/vendas.js',
   'src/ui/morador.js',
+  'src/ui/financeiro-sindico.js',
   'src/ui/sindico.js',
   'src/ui/app.js',
 ];

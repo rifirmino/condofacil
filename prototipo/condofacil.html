@@ -28,6 +28,8 @@
   --ceu-3: #e6eaee;
   --nuvem: #ffffff8c;
   --horizonte: #5d6e812e;
+  --serie-receita: #2a78d6;
+  --serie-despesa: #eb6834;
   --ok: #1d7044; --ok-bg: #e2f3e8;
   --alerta: #835500; --alerta-bg: #fff1cc;
   --perigo: #b42318; --perigo-bg: #fde8e6;
@@ -45,7 +47,7 @@
     --fundo: #1c2229; --sup: #252d36; --sup-2: #2c3540; --texto: #c9d1da; --titulo: #eef2f6; --suave: #9aa5b2; --borda: #3a4552;
     --laranja: #f59a5a; --laranja-forte: #f59a5a; --laranja-escuro: #f8b07e; --laranja-tinta: #3a2a1f; --sobre-laranja: #1e1408;
     --ardosia: #36424f; --ardosia-escura: #2a343f; --ardosia-texto: #eef2f6; --ardosia-suave: #9aa8b6;
-    --ceu-1: #2b3644; --ceu-2: #222b35; --ceu-3: #1c2229; --nuvem: #ffffff10; --horizonte: #00000040;
+    --ceu-1: #2b3644; --ceu-2: #222b35; --ceu-3: #1c2229; --nuvem: #ffffff10; --horizonte: #00000040; --serie-receita: #3987e5; --serie-despesa: #d95926;
     --ok: #6fcf97; --ok-bg: #17301f; --alerta: #f2c14e; --alerta-bg: #3a2e0e;
     --perigo: #ff8a80; --perigo-bg: #3b1a17; --info: #8db4f0; --info-bg: #18263d;
     --neutro: #b5bdb9; --neutro-bg: #2e3640; --moldura: #0f1317;
@@ -57,7 +59,7 @@
   --fundo: #1c2229; --sup: #252d36; --sup-2: #2c3540; --texto: #c9d1da; --titulo: #eef2f6; --suave: #9aa5b2; --borda: #3a4552;
   --laranja: #f59a5a; --laranja-forte: #f59a5a; --laranja-escuro: #f8b07e; --laranja-tinta: #3a2a1f; --sobre-laranja: #1e1408;
   --ardosia: #36424f; --ardosia-escura: #2a343f; --ardosia-texto: #eef2f6; --ardosia-suave: #9aa8b6;
-  --ceu-1: #2b3644; --ceu-2: #222b35; --ceu-3: #1c2229; --nuvem: #ffffff10; --horizonte: #00000040;
+  --ceu-1: #2b3644; --ceu-2: #222b35; --ceu-3: #1c2229; --nuvem: #ffffff10; --horizonte: #00000040; --serie-receita: #3987e5; --serie-despesa: #d95926;
   --ok: #6fcf97; --ok-bg: #17301f; --alerta: #f2c14e; --alerta-bg: #3a2e0e;
   --perigo: #ff8a80; --perigo-bg: #3b1a17; --info: #8db4f0; --info-bg: #18263d;
   --neutro: #b5bdb9; --neutro-bg: #2e3640; --moldura: #0f1317;
@@ -407,6 +409,32 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
   .ver-como button { padding: 8px 10px; }
   .painel-precos { margin: 12px 16px 0; }
 }
+
+/* Fase 2: dashboard (cores das séries validadas com o script do skill dataviz) */
+.bloqueado { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border: 1px dashed var(--borda); border-radius: var(--raio); background: var(--sup-2); }
+.bloqueado span { color: var(--laranja-forte); font-weight: 600; }
+.graficos-fin { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; }
+.titulo-grafico { margin: 0; font-weight: 600; color: var(--titulo); }
+.legenda-serie { display: flex; gap: 14px; font-size: 12.5px; color: var(--texto); }
+.legenda-serie span { display: inline-flex; align-items: center; gap: 6px; }
+.legenda-serie span::before { content: ""; width: 10px; height: 10px; border-radius: 2px; }
+.legenda-serie .leg-receita::before { background: var(--serie-receita); }
+.legenda-serie .leg-despesa::before { background: var(--serie-despesa); }
+.barras-duplas { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; align-items: end; }
+.barras-duplas .mes { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.barras-duplas .par { display: flex; align-items: flex-end; gap: 2px; height: 140px; }
+.barras-duplas .par span { width: 9px; border-radius: 3px 3px 0 0; }
+.barras-duplas .valor-destaque { min-height: 14px; font-size: 10.5px; font-weight: 600; color: var(--titulo); white-space: nowrap; }
+.barras-duplas .rotulo-x { width: 100%; padding-top: 4px; border-top: 1px solid var(--borda); font-size: 10.5px; text-align: center; color: var(--suave); }
+.b-receita { background: var(--serie-receita); }
+.b-despesa { background: var(--serie-despesa); }
+.barras-duplas .mes.destaque .rotulo-x { color: var(--titulo); font-weight: 700; }
+.barras-h { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.barras-h li { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.barras-h .trilho { height: 10px; background: var(--neutro-bg); border-radius: 2px; overflow: hidden; }
+.barras-h .trilho span { display: block; height: 100%; border-radius: 2px; }
+.desvio-ruim { color: var(--perigo); font-weight: 600; }
+@media (max-width: 900px) { .graficos-fin { grid-template-columns: 1fr; } }
 
 </style>
 <div id="app"></div>
@@ -4095,6 +4123,127 @@ function MPreferencias({ estado, executar, eu }) {
   </section>`;
 }
 
+// ---- src/ui/financeiro-sindico.js ----
+
+const ETQ_COBRANCA = { aberta: 'info', vencida: 'perigo', paga: 'ok', cancelada: 'neutro' };
+const NOMES_SITUACAO_COBRANCA = { aberta: 'Em aberto', vencida: 'Vencida', paga: 'Paga', cancelada: 'Cancelada' };
+
+function decimal(n) {
+  return String(n).replace('.', ',');
+}
+
+function EtqCobranca({ situacao }) {
+  return html`<${Etiqueta} tipo=${ETQ_COBRANCA[situacao]}>${NOMES_SITUACAO_COBRANCA[situacao]}<//>`;
+}
+
+function Bloqueado({ estado, recurso, titulo }) {
+  const minimo = planoMinimo(recurso);
+  const unidades = estado.condominio.unidades.length;
+  const diferenca = mensalidade(minimo.id, unidades) - mensalidade(estado.plano, unidades);
+  return html`<div class="bloqueado"><strong>${titulo}</strong><span>Disponível no plano ${minimo.nome} (+${fmtReais(diferenca)}/mês)</span></div>`;
+}
+
+function pendenciasCobranca(estado, hoje) {
+  const fin = estado.financeiro;
+  const proxima = proximaCompetencia(fin);
+  const itens = [];
+  if (!fin.emitidas.includes(proxima)) itens.push({ chave: 'emitir', texto: `Emitir cobranças de ${mesExtenso(proxima)} (fechamento dia ${fin.parametros.diaFechamento})`, href: '#sindico.cobranca.previa' });
+  for (const d of devedores(estado, hoje).filter((x) => x.dias >= 60)) itens.push({ chave: `juridico-${d.unidade}`, texto: `${d.unidade}: débito há mais de 60 dias, avaliar cobrança jurídica`, href: '#sindico.cobranca.emitidas' });
+  return itens;
+}
+
+// Duas séries (receitas e despesas): legenda sempre presente, rótulo direto só no mês em destaque, tabela para leitores de tela.
+function GraficoReceitas({ estado, hoje }) {
+  const serie = serieReceitasDespesas(estado, hoje);
+  const maximo = Math.max(...serie.flatMap((m) => [m.receitas, m.despesas]));
+  const altura = (valor) => `${Math.round((valor / maximo) * 140)}px`;
+  return html`<section class="cartao">
+    <p class="titulo-grafico">${tituloSerie(serie)}</p>
+    <div class="legenda-serie" aria-hidden="true"><span class="leg-receita">Receitas</span><span class="leg-despesa">Despesas</span></div>
+    <div class="barras-duplas" aria-hidden="true">
+      ${serie.map((m) => {
+        const destaque = m.despesas > m.receitas;
+        return html`<div key=${m.mes} class=${`mes${destaque ? ' destaque' : ''}`} title=${`${mesExtenso(m.mes)}: receitas ${fmtReaisCurto(m.receitas)}, despesas ${fmtReaisCurto(m.despesas)}`}>
+          <span class="valor-destaque">${destaque ? fmtReaisCurto(m.despesas) : ''}</span>
+          <div class="par"><span class="b-receita" style=${`height:${altura(m.receitas)}`}></span><span class="b-despesa" style=${`height:${altura(m.despesas)}`}></span></div>
+          <span class="rotulo-x">${mesCurto(m.mes)}</span>
+        </div>`;
+      })}
+    </div>
+    <table class="so-leitor">
+      <caption>Receitas e despesas dos últimos 12 meses</caption>
+      <thead><tr><th>Mês</th><th>Receitas</th><th>Despesas</th></tr></thead>
+      <tbody>${serie.map((m) => html`<tr key=${m.mes}><td>${nomeMes(m.mes)}</td><td>${fmtReais(m.receitas)}</td><td>${fmtReais(m.despesas)}</td></tr>`)}</tbody>
+    </table>
+  </section>`;
+}
+
+function Categorias({ estado }) {
+  const fin = estado.financeiro;
+  const linhas = Object.entries(CATEGORIAS_DESPESA).map(([id, nome]) => [nome, fin.despesasMes[id]]).sort((a, b) => b[1] - a[1]);
+  const maximo = linhas[0][1];
+  return html`<section class="cartao">
+    <p class="titulo-grafico">Para onde foi o dinheiro em ${mesExtenso(fin.vigente)}</p>
+    <ul class="barras-h">${linhas.map(([nome, valor]) => html`<li key=${nome}><span>${nome}</span><span class="trilho"><span class="b-despesa" style=${`width:${Math.round((valor / maximo) * 100)}%`}></span></span><strong>${fmtReaisCurto(valor)}</strong></li>`)}</ul>
+  </section>`;
+}
+
+function ListaDevedores({ estado, hoje }) {
+  const lista = devedores(estado, hoje);
+  return html`<section class="pilha">
+    <h2>Devedores</h2>
+    ${lista.length
+      ? html`<div class="tabela-rolagem"><table class="tabela">
+          <thead><tr><th>Unidade</th><th>Responsável</th><th>Cobranças</th><th>Valor atualizado</th><th>Atraso</th><th>Etapa da régua</th></tr></thead>
+          <tbody>${lista.map((d) => html`<tr key=${d.unidade}><td>${d.unidade}</td><td>${d.responsavel ? d.responsavel.nome : '—'}</td><td>${d.cobrancas}</td><td>${fmtReais(d.valor)}</td><td>${d.dias} dias</td><td>${d.etapa ? d.etapa.nome : '—'}</td></tr>`)}</tbody>
+        </table></div>`
+      : html`<${Vazio} texto="Nenhuma unidade em atraso." />`}
+    <small class="sub">Lista visível só para quem tem acesso financeiro. Nunca aparece para os moradores.</small>
+  </section>`;
+}
+
+function OrcadoRealizado({ estado }) {
+  const fin = estado.financeiro;
+  return html`<section class="pilha">
+    <h2>Orçado × realizado em ${mesExtenso(fin.vigente)}</h2>
+    <div class="tabela-rolagem"><table class="tabela">
+      <thead><tr><th>Categoria</th><th>Orçado</th><th>Realizado</th><th>Desvio</th><th>%</th></tr></thead>
+      <tbody>${Object.entries(CATEGORIAS_DESPESA).map(([id, nome]) => {
+        const orcado = fin.orcamento[id];
+        const realizado = fin.despesasMes[id];
+        const desvio = realizado - orcado;
+        const pct = Math.round((desvio / orcado) * 1000) / 10;
+        const sinal = desvio > 0 ? '+' : '';
+        return html`<tr key=${id}><td>${nome}</td><td>${fmtReais(orcado)}</td><td>${fmtReais(realizado)}</td><td class=${desvio > 0 ? 'desvio-ruim' : ''}>${sinal}${fmtReais(desvio)}</td><td>${sinal}${decimal(pct)}%</td></tr>`;
+      })}</tbody>
+    </table></div>
+  </section>`;
+}
+
+function PainelFinanceiro({ estado, agora }) {
+  const hoje = isoDia(agora);
+  const ind = indicadoresFinanceiros(estado, hoje);
+  const completo = liberado(estado.plano, 'dashboardCompleto');
+  const a = ind.arrecadado;
+  const numeros = [
+    ['Saldo em caixa', fmtReaisCurto(ind.saldo.valor), 'Conta Asaas + banco', ind.saldo.alerta, 'cifrao'],
+    [`Arrecadado em ${mesExtenso(a.competencia)}`, `${a.pct}%`, `${fmtReaisCurto(a.recebido)} de ${fmtReaisCurto(a.previsto)}${a.proxima ? ` · ${mesExtenso(a.proxima.competencia)}: ${a.proxima.pagas} de ${a.proxima.total} pagas` : ''}`, a.alerta, 'grafico'],
+    ['Inadimplência', `${ind.inadimplencia.unidades} de ${ind.inadimplencia.total}`, `${decimal(ind.inadimplencia.pct)}% das unidades · ${fmtReaisCurto(ind.inadimplencia.valor)}`, ind.inadimplencia.alerta, 'pessoa'],
+  ];
+  if (completo) numeros.push(['Despesas do mês', fmtReaisCurto(ind.despesas.valor), `${ind.despesas.desvio > 0 ? '+' : ''}${decimal(ind.despesas.desvio)}% em relação ao orçado`, ind.despesas.alerta, 'documento']);
+  return html`<div class="pilha">
+    <div class="indicadores">
+      ${numeros.map(([rotulo, valor, detalhe, alerta, icone]) => html`<div key=${rotulo} class=${`indicador ${alerta ? 'ind-perigo' : 'ind-ok'}`}><${QuadroIcone} nome=${icone} cheio=${alerta} /><span class="ind-rotulo">${rotulo}</span><strong>${valor}</strong><small>${detalhe}</small></div>`)}
+    </div>
+    ${completo
+      ? html`<div class="graficos-fin"><${GraficoReceitas} estado=${estado} hoje=${hoje} /><${Categorias} estado=${estado} /></div><${ListaDevedores} estado=${estado} hoje=${hoje} />`
+      : html`<${Bloqueado} estado=${estado} recurso="dashboardCompleto" titulo="Despesas do mês, receitas × despesas em 12 meses, para onde foi o dinheiro e lista de devedores" />`}
+    ${liberado(estado.plano, 'orcadoRealizado')
+      ? html`<${OrcadoRealizado} estado=${estado} />`
+      : completo && html`<${Bloqueado} estado=${estado} recurso="orcadoRealizado" titulo="Orçado × realizado por categoria" />`}
+  </div>`;
+}
+
 // ---- src/ui/sindico.js ----
 
 const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
@@ -4138,6 +4287,7 @@ function SInicio({ estado, agora }) {
   const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora));
   const alertas = alertasDocumentos(estado.documentos, isoDia(agora));
   const vendedoresPendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
+  const pendCobranca = pendenciasCobranca(estado, isoDia(agora));
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
   const cartoes = [
     ['Reservas pendentes', ind.pendentes, '#sindico.reservas', ind.pendentes ? 'alerta' : 'ok', 'Aguardando sua aprovação', 'calendario'],
@@ -4145,9 +4295,22 @@ function SInicio({ estado, agora }) {
     ['Encomendas paradas', ind.paradas, '#sindico.encomendas', ind.paradas ? 'alerta' : 'ok', 'Há mais de 3 dias na portaria', 'pacote'],
     ['Documentos vencendo', ind.vencendo, '#sindico.documentos', ind.vencendo ? 'perigo' : 'ok', 'Vencidos ou nos próximos 60 dias', 'documento'],
   ];
-  const semPendencias = !pendentes.length && !vencidas.length && !paradas.length && !alertas.length && !vendedoresPendentes.length;
+  const semPendencias = !pendentes.length && !vencidas.length && !paradas.length && !alertas.length && !vendedoresPendentes.length && !pendCobranca.length;
   return html`<section>
     <h1>Olá, Roberto</h1>
+    <${PainelFinanceiro} estado=${estado} agora=${agora} />
+    <h2>Precisa da sua atenção</h2>
+    ${semPendencias
+      ? html`<${Vazio} texto="Nada pendente. Bom trabalho!" />`
+      : html`<ul class="atencao">
+          ${pendCobranca.map((p) => html`<li key=${p.chave}><a href=${p.href}>${p.texto}</a></li>`)}
+          ${pendentes.map((r) => html`<li key=${r.id}><a href="#sindico.reservas">Aprovar reserva: ${areaPorId(estado, r.areaId).nome}, apto ${r.unidade}, ${fmtDia(r.data)}</a></li>`)}
+          ${vencidas.map((o) => html`<li key=${o.id}><a href=${`#sindico.ocorrencias.${o.id}`}>Prazo vencido: ${o.id} · ${CATEGORIAS[o.categoria].nome}</a></li>`)}
+          ${paradas.map((e) => html`<li key=${e.id}><a href="#sindico.encomendas">Encomenda parada: apto ${e.unidade}, chegou ${haQuanto(e.chegadaEm, agora)}</a></li>`)}
+          ${alertas.map((a) => html`<li key=${a.documento.id}><a href="#sindico.documentos">${textoAlerta(a)}: ${a.documento.titulo}</a></li>`)}
+          ${vendedoresPendentes.map((p) => html`<li key=${`v${p.unidade}`}><a href="#sindico.vendas">Aprovar vendedor: ${p.nome}, apto ${p.unidade}</a></li>`)}
+        </ul>`}
+    <h2>Operação</h2>
     <div class="indicadores">
       ${cartoes.map(([rotulo, valor, href, tipo, detalhe, icone]) => html`<a key=${rotulo} class=${`indicador ind-${tipo}`} href=${href}><${QuadroIcone} nome=${icone} cheio=${tipo === 'perigo' || tipo === 'alerta'} /><span class="ind-rotulo">${rotulo}</span><strong>${valor}</strong><small>${detalhe}</small></a>`)}
     </div>
@@ -4156,16 +4319,6 @@ function SInicio({ estado, agora }) {
       <div class="barra" role="progressbar" aria-label="Adesão" aria-valuenow=${pct} aria-valuemin="0" aria-valuemax="100"><span style=${`width:${pct}%`}></span></div>
       <small class="sub">Meta do piloto: 60% das unidades em 30 dias. Hoje: ${pct}%.</small>
     </div>
-    <h2>Precisa da sua atenção</h2>
-    ${semPendencias
-      ? html`<${Vazio} texto="Nada pendente. Bom trabalho!" />`
-      : html`<ul class="atencao">
-          ${pendentes.map((r) => html`<li key=${r.id}><a href="#sindico.reservas">Aprovar reserva: ${areaPorId(estado, r.areaId).nome}, apto ${r.unidade}, ${fmtDia(r.data)}</a></li>`)}
-          ${vencidas.map((o) => html`<li key=${o.id}><a href=${`#sindico.ocorrencias.${o.id}`}>Prazo vencido: ${o.id} · ${CATEGORIAS[o.categoria].nome}</a></li>`)}
-          ${paradas.map((e) => html`<li key=${e.id}><a href="#sindico.encomendas">Encomenda parada: apto ${e.unidade}, chegou ${haQuanto(e.chegadaEm, agora)}</a></li>`)}
-          ${alertas.map((a) => html`<li key=${a.documento.id}><a href="#sindico.documentos">${textoAlerta(a)}: ${a.documento.titulo}</a></li>`)}
-          ${vendedoresPendentes.map((p) => html`<li key=${`v${p.unidade}`}><a href="#sindico.vendas">Aprovar vendedor: ${p.nome}, apto ${p.unidade}</a></li>`)}
-        </ul>`}
   </section>`;
 }
 

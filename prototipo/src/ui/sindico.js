@@ -4,6 +4,7 @@ import { areaPorId, statusDia, indicadoresSindico, slaVencido, alertasDocumentos
 import { aprovarReserva, recusarReserva, publicarComunicado, avancarOcorrencia, comentarOcorrencia, arquivarOcorrencia, lembrarEncomenda } from '../acoes.js';
 import { aprovarVendedor, recusarVendedor, suspenderVendedor, reativarVendedor, ocultarAnuncio, mostrarAnuncio } from '../vendas/acoes.js';
 import { nomeVizinho, fmtCentavos } from '../vendas/regras.js';
+import { PainelFinanceiro, pendenciasCobranca } from './financeiro-sindico.js';
 import { isoDia, somarMes, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
 import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
@@ -48,6 +49,7 @@ function SInicio({ estado, agora }) {
   const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora));
   const alertas = alertasDocumentos(estado.documentos, isoDia(agora));
   const vendedoresPendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
+  const pendCobranca = pendenciasCobranca(estado, isoDia(agora));
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
   const cartoes = [
     ['Reservas pendentes', ind.pendentes, '#sindico.reservas', ind.pendentes ? 'alerta' : 'ok', 'Aguardando sua aprovação', 'calendario'],
@@ -55,9 +57,22 @@ function SInicio({ estado, agora }) {
     ['Encomendas paradas', ind.paradas, '#sindico.encomendas', ind.paradas ? 'alerta' : 'ok', 'Há mais de 3 dias na portaria', 'pacote'],
     ['Documentos vencendo', ind.vencendo, '#sindico.documentos', ind.vencendo ? 'perigo' : 'ok', 'Vencidos ou nos próximos 60 dias', 'documento'],
   ];
-  const semPendencias = !pendentes.length && !vencidas.length && !paradas.length && !alertas.length && !vendedoresPendentes.length;
+  const semPendencias = !pendentes.length && !vencidas.length && !paradas.length && !alertas.length && !vendedoresPendentes.length && !pendCobranca.length;
   return html`<section>
     <h1>Olá, Roberto</h1>
+    <${PainelFinanceiro} estado=${estado} agora=${agora} />
+    <h2>Precisa da sua atenção</h2>
+    ${semPendencias
+      ? html`<${Vazio} texto="Nada pendente. Bom trabalho!" />`
+      : html`<ul class="atencao">
+          ${pendCobranca.map((p) => html`<li key=${p.chave}><a href=${p.href}>${p.texto}</a></li>`)}
+          ${pendentes.map((r) => html`<li key=${r.id}><a href="#sindico.reservas">Aprovar reserva: ${areaPorId(estado, r.areaId).nome}, apto ${r.unidade}, ${fmtDia(r.data)}</a></li>`)}
+          ${vencidas.map((o) => html`<li key=${o.id}><a href=${`#sindico.ocorrencias.${o.id}`}>Prazo vencido: ${o.id} · ${CATEGORIAS[o.categoria].nome}</a></li>`)}
+          ${paradas.map((e) => html`<li key=${e.id}><a href="#sindico.encomendas">Encomenda parada: apto ${e.unidade}, chegou ${haQuanto(e.chegadaEm, agora)}</a></li>`)}
+          ${alertas.map((a) => html`<li key=${a.documento.id}><a href="#sindico.documentos">${textoAlerta(a)}: ${a.documento.titulo}</a></li>`)}
+          ${vendedoresPendentes.map((p) => html`<li key=${`v${p.unidade}`}><a href="#sindico.vendas">Aprovar vendedor: ${p.nome}, apto ${p.unidade}</a></li>`)}
+        </ul>`}
+    <h2>Operação</h2>
     <div class="indicadores">
       ${cartoes.map(([rotulo, valor, href, tipo, detalhe, icone]) => html`<a key=${rotulo} class=${`indicador ind-${tipo}`} href=${href}><${QuadroIcone} nome=${icone} cheio=${tipo === 'perigo' || tipo === 'alerta'} /><span class="ind-rotulo">${rotulo}</span><strong>${valor}</strong><small>${detalhe}</small></a>`)}
     </div>
@@ -66,16 +81,6 @@ function SInicio({ estado, agora }) {
       <div class="barra" role="progressbar" aria-label="Adesão" aria-valuenow=${pct} aria-valuemin="0" aria-valuemax="100"><span style=${`width:${pct}%`}></span></div>
       <small class="sub">Meta do piloto: 60% das unidades em 30 dias. Hoje: ${pct}%.</small>
     </div>
-    <h2>Precisa da sua atenção</h2>
-    ${semPendencias
-      ? html`<${Vazio} texto="Nada pendente. Bom trabalho!" />`
-      : html`<ul class="atencao">
-          ${pendentes.map((r) => html`<li key=${r.id}><a href="#sindico.reservas">Aprovar reserva: ${areaPorId(estado, r.areaId).nome}, apto ${r.unidade}, ${fmtDia(r.data)}</a></li>`)}
-          ${vencidas.map((o) => html`<li key=${o.id}><a href=${`#sindico.ocorrencias.${o.id}`}>Prazo vencido: ${o.id} · ${CATEGORIAS[o.categoria].nome}</a></li>`)}
-          ${paradas.map((e) => html`<li key=${e.id}><a href="#sindico.encomendas">Encomenda parada: apto ${e.unidade}, chegou ${haQuanto(e.chegadaEm, agora)}</a></li>`)}
-          ${alertas.map((a) => html`<li key=${a.documento.id}><a href="#sindico.documentos">${textoAlerta(a)}: ${a.documento.titulo}</a></li>`)}
-          ${vendedoresPendentes.map((p) => html`<li key=${`v${p.unidade}`}><a href="#sindico.vendas">Aprovar vendedor: ${p.nome}, apto ${p.unidade}</a></li>`)}
-        </ul>`}
   </section>`;
 }
 
