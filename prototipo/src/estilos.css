@@ -390,3 +390,4 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 .mais-vendidos li strong { margin-left: 8px; }
 .situacao-pedidos { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 0; }
 .situacao-pedidos dd { margin: 0; font-weight: 600; color: var(--titulo); text-align: right; font-variant-numeric: tabular-nums; }
+#painel-entrega { scroll-margin-top: 170px; }

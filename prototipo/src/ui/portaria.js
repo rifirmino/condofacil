@@ -85,6 +85,7 @@ function PEntregar({ estado, executar, agora }) {
   const [nome, setNome] = useState('');
   const [erro, setErro] = useState(null);
   const [entregue, setEntregue] = useState(null);
+  const [lido, setLido] = useState(null);
   const termo = busca.trim();
   const lista = estado.encomendas
     .filter((e) => e.status === 'aguardando' && (!termo || e.unidade.includes(termo) || e.codigo === termo))
@@ -97,6 +98,18 @@ function PEntregar({ estado, executar, agora }) {
     setNome('');
     setErro(null);
     setEntregue(null);
+    setLido(null);
+    // No celular o painel de entrega fica abaixo da lista: leva o porteiro até ele.
+    setTimeout(() => {
+      const painel = document.getElementById('painel-entrega');
+      const reduzir = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (painel) painel.scrollIntoView({ behavior: reduzir ? 'auto' : 'smooth', block: 'start' });
+    }, 0);
+  }
+
+  function escanear() {
+    setCodigo(encomenda.codigo);
+    setLido(`QR lido: código ${encomenda.codigo} (leitura simulada no protótipo)`);
   }
 
   function confirmar() {
@@ -126,10 +139,11 @@ function PEntregar({ estado, executar, agora }) {
     </div>
     <div class="p-coluna">
       ${encomenda
-        ? html`<div class="cartao">
+        ? html`<div class="cartao" id="painel-entrega">
             <h2>Entregar: apto ${encomenda.unidade} · ${encomenda.transportadora}</h2>
             <${Campo} rotulo="Código de retirada"><input id="portaria-codigo" class="entrada-grande" inputmode="numeric" maxlength="6" value=${codigo} onInput=${(ev) => setCodigo(ev.target.value)} /><//>
-            <button type="button" class="btn secundario" onClick=${() => setCodigo(encomenda.codigo)}>Escanear QR do morador</button>
+            <button type="button" class="btn secundario" onClick=${escanear}>Escanear QR do morador</button>
+            ${lido && html`<p class="dica-ocr" role="status">${lido}</p>`}
             <${Campo} rotulo="Quem retirou"><input id="portaria-quem" class="entrada-grande" value=${nome} onInput=${(ev) => setNome(ev.target.value)} /><//>
             <div class="sugestoes">${moradoresDaUnidade(estado, encomenda.unidade).map((m) => html`<button type="button" key=${m.id} class="btn secundario" onClick=${() => setNome(m.nome)}>${m.nome}</button>`)}</div>
             <${Erro} texto=${erro} />
