@@ -73,9 +73,9 @@ Todas devolvem `{ estado, notificacao?, erro? }` e registram auditoria `{ em, qu
   - notificação "Proposta AC-002 enviada a Vicente Moraes".
 - `cancelarProposta(estado, id, perfil, agora)`: só o síndico e só na situação `aguardando`. O acordo vira `cancelado`, e as originais não mudam.
 - `marcarTermoLido(estado, id, agora)` grava `termoLidoEm`.
-- `aceitarAcordo(estado, id, { unidadeDoMorador, ciente }, agora)`:
+- `aceitarAcordo(estado, id, { quem, ciente }, agora)`, em que `quem` é o nome de quem aceita:
   - **Verificações:**
-    - quem aceita é o responsável financeiro da unidade (senão "Só o responsável financeiro pode aceitar o acordo");
+    - `quem` é o responsável financeiro da unidade (senão "Só o responsável financeiro pode aceitar o acordo");
     - `ciente` está marcado (senão "Marque que leu e aceita as condições");
     - no Avançado, o termo foi lido (senão "Leia o termo de confissão antes de aceitar").
   - **Efeitos:**
@@ -100,9 +100,9 @@ Hoje = D. O vencimento vigente é o dia 10 de outubro (`vencimentoVigente`).
 
 - **304 (Otávio Reis):**
   - cobranças de junho e julho (competências vigente − 4 e − 3) com `status: 'cancelada'` e `substituidaPor: 'AC-001'`;
-  - AC-001 criado e aceito há cerca de 2 meses, em D − 60;
+  - AC-001 proposto e aceito no dia 5 do mês vigente − 2, por exemplo 05/08 quando o vigente é outubro. A data é fixa no mês para a parcela 2 sempre cair no vencimento vigente;
   - perdão de 100% da multa e 0% dos juros;
-  - entrada de R$ 300,00, vencida em D − 57 e paga;
+  - entrada de R$ 300,00, que vence no dia 8 do mesmo mês e foi paga;
   - 4 parcelas nos dias 10 de setembro (paga), outubro (aberta, vencida há 9 dias), novembro e dezembro.
   - A régua da parcela 2 tem `antes5` e `vencimento` enviados. `atraso1` fica pendente, ou seja, a régua está reativada.
 - **704 (Vicente):** setembro e outubro abertos e vencidos, que é o que já existe. Não há proposta: o roteiro cria a AC-002.
@@ -112,7 +112,7 @@ Hoje = D. O vencimento vigente é o dia 10 de outubro (`vencimentoVigente`).
 
 ### Síndico, Cobrança › Acordos (nova aba depois de Emitidas)
 - **Lista:**
-  - colunas: número, unidade e responsável, etiqueta de situação, progresso ("2 de 4 parcelas pagas") e próxima parcela;
+  - colunas: número, unidade e responsável, etiqueta de situação, progresso ("1 de 4 parcelas pagas") e próxima parcela;
   - botão **Novo acordo**;
   - cada linha abre o detalhe.
 - **Rotas:**
@@ -182,7 +182,7 @@ Hoje = D. O vencimento vigente é o dia 10 de outubro (`vencimentoVigente`).
     - `alertasAcordos` traz o seed e a proposta;
     - a adesão continua em 20.
 - **verificar:**
-  - `#sindico.cobranca.acordos` mostra "AC-001", "2 de 4 parcelas pagas" e "Otávio Reis";
+  - `#sindico.cobranca.acordos` mostra "AC-001", "1 de 4 parcelas pagas" e "Otávio Reis";
   - `#sindico.inicio` mostra "Acordo AC-001 (304): parcela 2 vencida" e "Propor acordo";
   - o Financeiro do Vicente vem dos e2e, porque o morador padrão é a Ana.
 - **e2e:**
@@ -206,3 +206,16 @@ Hoje = D. O vencimento vigente é o dia 10 de outubro (`vencimentoVigente`).
 - Vencimento antecipado automático.
 - Assinatura eletrônica real.
 - Juros sobre as parcelas do acordo.
+
+## Ajustes na escrita do plano
+
+- **Progresso:** conta só as parcelas, sem a entrada. O AC-001 aparece como "1 de 4 parcelas pagas".
+- **Erros de guarda:**
+  - "Escolha só débitos vencidos desta unidade" (id de débito que não é da unidade);
+  - "Só propostas aguardando aceite podem ser canceladas";
+  - "Esta proposta não está aguardando aceite".
+- **Efeito do seed nos números atuais:**
+  - a 304 entra nos devedores, então a inadimplência passa a 4 de 32 (12,5%, com alerta);
+  - a régua de hoje passa a 7 avisos para 4 responsáveis.
+  - Os testes e checagens antigos são atualizados para esses números.
+- **Seed:** é gerado pelas próprias ações (propor, aceitar e pagar) sobre as cobranças de junho e julho da 304. Depois, o saldo volta ao valor original.
