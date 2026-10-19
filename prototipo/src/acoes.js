@@ -7,11 +7,11 @@ function erroAcao(estado, mensagem) {
   return { estado, erro: mensagem };
 }
 
-function trocarItem(lista, id, mudanca) {
+export function trocarItem(lista, id, mudanca) {
   return lista.map((x) => (x.id === id ? { ...x, ...mudanca } : x));
 }
 
-function nomesDaUnidade(estado, unidade) {
+export function nomesDaUnidade(estado, unidade) {
   const nomes = estado.pessoas.filter((p) => p.unidade === unidade).map((p) => p.nome);
   return nomes.length ? nomes.join(', ') : `Apto ${unidade}`;
 }
@@ -139,12 +139,12 @@ export function reagir(estado, id, unidade, tipo) {
 }
 
 export function abrirOcorrencia(estado, dados, agora) {
-  if (!CATEGORIAS[dados.categoria]) return erroAcao(estado, 'Escolha a categoria');
+  if (!CATEGORIAS[dados.categoria]) return erroAcao(estado, 'Escolha o tipo e a categoria');
   const descricao = String(dados.descricao || '').trim();
   if (!descricao) return erroAcao(estado, 'Descreva a ocorrência');
   const id = `OC-${String(estado.proximoProtocolo).padStart(4, '0')}`;
   const em = agora.toISOString();
-  const ocorrencia = { id, categoria: dados.categoria, descricao, local: String(dados.local || '').trim(), unidade: dados.unidade, anonima: !!dados.anonima, publica: !!dados.publica, foto: !!dados.foto, status: 'aberta', eutambem: [], linha: [{ em, status: 'aberta', texto: 'Ocorrência aberta', autor: dados.anonima ? 'Anônimo' : nomesDaUnidade(estado, dados.unidade) }], avaliacao: null, arquivada: false, criadaEm: em };
+  const ocorrencia = { id, categoria: dados.categoria, descricao, local: String(dados.local || '').trim(), unidade: dados.unidade, anonima: !!dados.anonima, publica: !!dados.publica, foto: !!dados.foto, status: 'aberta', eutambem: [], linha: [{ em, status: 'aberta', texto: 'Ocorrência aberta', autor: dados.anonima ? 'Anônimo' : nomesDaUnidade(estado, dados.unidade) }], avaliacao: null, arquivada: false, criadaEm: em, prioridade: CATEGORIAS[dados.categoria].prioridade, os: null, advertencia: null, motivoArquivamento: null };
   return {
     estado: { ...estado, ocorrencias: [ocorrencia, ...estado.ocorrencias], proximoProtocolo: estado.proximoProtocolo + 1 },
     id,
@@ -199,7 +199,7 @@ export function avaliarOcorrencia(estado, id, nota) {
 export function euTambem(estado, id, unidade) {
   const oc = estado.ocorrencias.find((x) => x.id === id);
   if (!oc) return erroAcao(estado, 'Ocorrência não encontrada');
-  if (!oc.publica) return erroAcao(estado, 'Ocorrência não é pública');
+  if (!oc.publica && oc.unidade === unidade) return erroAcao(estado, 'Ocorrência não é pública');
   const eutambem = oc.eutambem.includes(unidade) ? oc.eutambem.filter((u) => u !== unidade) : [...oc.eutambem, unidade];
   return { estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { eutambem }) } };
 }

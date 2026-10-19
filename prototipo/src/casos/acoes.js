@@ -114,7 +114,7 @@ export const CASOS_ACOES = [
     nome: 'ocorrência sem categoria ou descrição é recusada',
     rodar() {
       const e = dadosIniciais(AGORA_TESTE);
-      igual(abrirOcorrencia(e, { categoria: '', descricao: 'x', unidade: '302' }, AGORA_TESTE).erro, 'Escolha a categoria');
+      igual(abrirOcorrencia(e, { categoria: '', descricao: 'x', unidade: '302' }, AGORA_TESTE).erro, 'Escolha o tipo e a categoria');
       igual(abrirOcorrencia(e, { categoria: 'barulho', descricao: '  ', unidade: '302' }, AGORA_TESTE).erro, 'Descreva a ocorrência');
     },
   },
@@ -143,7 +143,7 @@ export const CASOS_ACOES = [
       igual(acharPorId(um.estado.ocorrencias, 'OC-0040').eutambem.length, 8);
       const dois = euTambem(um.estado, 'OC-0040', '302');
       igual(acharPorId(dois.estado.ocorrencias, 'OC-0040').eutambem.length, 7);
-      igual(euTambem(dois.estado, 'OC-0039', '302').erro, 'Ocorrência não é pública');
+      igual(euTambem(dois.estado, 'OC-0042', '302').erro, 'Ocorrência não é pública');
     },
   },
   {

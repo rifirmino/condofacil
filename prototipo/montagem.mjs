@@ -19,6 +19,7 @@ export const ORDEM = [
   'src/regras.js',
   'src/notificacoes/regras.js',
   'src/acoes.js',
+  'src/notificacoes/acoes.js',
   'src/vendas/regras.js',
   'src/vendas/acoes.js',
   'src/casos/afirmar.js',
