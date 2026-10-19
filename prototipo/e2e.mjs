@@ -236,6 +236,61 @@ const ROTEIROS = {
     await esperarTexto('Bolo de cenoura com chocolate');
   },
 
+  async cobrancaEmissao() {
+    await irPara('#sindico.cobranca.previa');
+    await esperarTexto('Sem responsável financeiro: não será emitida');
+    await clicarSeletor('[data-acao="emitir"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('31 responsáveis')`, 'o aviso de emissão');
+    await irPara('#sindico.inicio');
+    await esperarTexto('0 de 31 pagas');
+  },
+
+  async cobrancaPagamento() {
+    await irPara('#morador.inicio');
+    await esperarTexto('Sua cobrança de');
+    await esperarTexto('R$ 865,00');
+    await irPara('#morador.financeiro');
+    await clicar('Pagar com Pix');
+    await esperarTexto('Pix copia e cola');
+    await clicar('Simular confirmação do Asaas');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Pagamento recebido')`, 'o aviso do Asaas');
+    await esperarTexto('Nenhuma cobrança em aberto');
+    await clicar('Juliana · 104');
+    await irPara('#morador.financeiro');
+    await esperarTexto('vão para o responsável financeiro');
+    await esperarTexto('Carlos A. (proprietário)');
+    await clicar('Ana · 302');
+    await irPara('#sindico.inicio');
+    await esperarTexto('1 de 31 pagas');
+    await esperarTexto('R$ 49.215');
+  },
+
+  async cobrancaReguaBaixa() {
+    await irPara('#sindico.cobranca.regua');
+    await clicarSeletor('[data-acao="executar-regua"]');
+    await esperarTexto('6 avisos enviados');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('3 responsáveis')`, 'o aviso da régua');
+    await irPara('#sindico.cobranca.emitidas');
+    const vigente = await js(`[...document.getElementById('emitidas-competencia').options].map((o) => o.value)[1]`);
+    await preencher('Competência', vigente);
+    await clicarSeletor(`[data-cobranca="CB-${vigente}-503"]`);
+    await clicar('Baixa manual');
+    await clicar('Anexar comprovante');
+    await clicar('Confirmar baixa');
+    await esperarTexto('Baixa registrada');
+    await irPara('#sindico.inicio');
+    await esperarTexto('2 de 32');
+  },
+
+  async cobrancaPlanos() {
+    await clicar('Básico');
+    await irPara('#sindico.inicio');
+    await esperarTexto('Disponível no plano Intermediário (+R$ 158,40/mês)');
+    await clicar('Avançado');
+    await esperarTexto('Orçado × realizado');
+    await clicar('Intermediário');
+  },
+
   async persistencia() {
     await irPara('#sindico.comunicados');
     await esperarTexto('Bazar de Natal');
@@ -250,7 +305,7 @@ const ROTEIROS = {
   async larguraCelular() {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await pausa(300);
-    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar']) {
+    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro']) {
       await irPara(hash);
       const largura = await js('document.documentElement.scrollWidth');
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);

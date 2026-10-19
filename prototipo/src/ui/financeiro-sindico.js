@@ -115,7 +115,7 @@ export function PainelFinanceiro({ estado, agora }) {
   if (completo) numeros.push(['Despesas do mês', fmtReaisCurto(ind.despesas.valor), `${ind.despesas.desvio > 0 ? '+' : ''}${decimal(ind.despesas.desvio)}% em relação ao orçado`, ind.despesas.alerta, 'documento']);
   return html`<div class="pilha">
     <div class="indicadores">
-      ${numeros.map(([rotulo, valor, detalhe, alerta, icone]) => html`<div key=${rotulo} class=${`indicador ${alerta ? 'ind-perigo' : 'ind-ok'}`}><${QuadroIcone} nome=${icone} cheio=${alerta} /><span class="ind-rotulo">${rotulo}</span><strong>${valor}</strong><small>${detalhe}</small></div>`)}
+      ${numeros.map(([rotulo, valor, detalhe, alerta, icone]) => html`<div key=${rotulo} class=${`indicador fin ${alerta ? 'ind-perigo' : 'ind-ok'}`}><${QuadroIcone} nome=${icone} cheio=${alerta} /><span class="ind-rotulo">${rotulo}</span><strong>${valor}</strong><small>${detalhe}</small></div>`)}
     </div>
     ${completo
       ? html`<div class="graficos-fin"><${GraficoReceitas} estado=${estado} hoje=${hoje} /><${Categorias} estado=${estado} /></div><${ListaDevedores} estado=${estado} hoje=${hoje} />`
