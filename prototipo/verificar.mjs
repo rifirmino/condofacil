@@ -58,6 +58,11 @@ const CHECAGENS = [
   ['#sindico.manutencao.CP-001', ['Aprovar', 'Recusar', 'Casa do Encanador', 'OS-003']],
   ['#sindico.manutencao.caixa', ['Caixa pequeno', 'Disponível no plano Avançado']],
   ['#sindico.manutencao.OS-002', ['Validar', 'OC-0037', 'Concluída com fotos do depois', 'Foto do depois']],
+  ['#zelador.os', ['Seu Antônio', 'OS-003', 'Garagem, vaga 12', 'Nova OS', 'Compras', 'Caixa', '!Saldo em caixa']],
+  ['#zelador.os.OS-003', ['Concluir', 'Aguardando material', 'Foto do antes', 'Retomada']],
+  ['#zelador.compras', ['CP-001', 'Aguardando aprovação', 'Nova compra']],
+  ['#zelador.caixa', ['Disponível no plano Avançado']],
+  ['#portaria.hoje', ['Notificação urgente: OC-0039']],
 ];
 
 // Só larguras de desktop: o Chrome headless impõe janela mínima maior que um celular; a largura de 390 px é medida no e2e.

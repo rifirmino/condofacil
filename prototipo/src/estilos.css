@@ -462,3 +462,5 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 /* Fase 2: notificações e manutenção */
 .filtros-notificacao { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); max-width: 680px; }
 .fotos-reparo { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; max-width: 520px; }
+.faixa-urgente { margin: 0 0 12px; padding: 10px 14px; background: var(--perigo-bg); color: var(--perigo); font-weight: 600; border-left: 3px solid var(--perigo); border-radius: var(--raio); }
+.cel-abas.zelador { grid-template-columns: repeat(3, 1fr); }

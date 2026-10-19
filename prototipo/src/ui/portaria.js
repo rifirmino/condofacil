@@ -1,5 +1,6 @@
 import { html, useState } from '../vendor.js';
-import { TRANSPORTADORAS, PORTEIRO_DIA } from '../dados.js';
+import { TRANSPORTADORAS, PORTEIRO_DIA, CATEGORIAS } from '../dados.js';
+import { urgentesAbertas } from '../notificacoes/regras.js';
 import { areaPorId, moradoresDaUnidade, encomendaParada } from '../regras.js';
 import { registrarEncomenda, entregarEncomenda } from '../acoes.js';
 import { isoDia, fmtHora, haQuanto } from '../datas.js';
@@ -18,7 +19,10 @@ export function TelaPortaria(props) {
       </nav>
       <span class="tab-turno">${PORTEIRO_DIA} · turno do dia</span>
     </header>
-    <div class="tab-conteudo"><${Conteudo} ...${props} /></div>
+    <div class="tab-conteudo">
+      ${urgentesAbertas(props.estado).map((o) => html`<p class="faixa-urgente" key=${o.id}>Notificação urgente: ${o.id} · ${CATEGORIAS[o.categoria].nome} · ${o.local}</p>`)}
+      <${Conteudo} ...${props} />
+    </div>
   </div>`;
 }
 

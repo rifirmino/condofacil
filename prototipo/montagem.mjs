@@ -46,6 +46,7 @@ export const ORDEM = [
   'src/ui/vendas.js',
   'src/ui/morador.js',
   'src/ui/sindico.js',
+  'src/ui/zelador.js',
   'src/ui/app.js',
 ];
 
