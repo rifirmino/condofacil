@@ -4,12 +4,13 @@ import { MORADORES_DEMO } from '../vendas/dados.js';
 import { pessoaDaUnidade, anunciosVisiveis } from '../vendas/regras.js';
 import { trocarMorador, alternarOfertas } from '../vendas/acoes.js';
 import { TelaVendas, CartaoAnuncio } from './vendas.js';
+import { MFinanceiro, CartaoCobrancaInicio } from './financeiro-morador.js';
 import { areaPorId, statusDia, horariosDaArea, comunicadosDaUnidade, avisoCancelamento, encomendaParada, STATUS_ATIVOS } from '../regras.js';
 import { solicitarReserva, cancelarReserva, marcarLido, reagir, abrirOcorrencia, avaliarOcorrencia, euTambem } from '../acoes.js';
 import { isoDia, somarMes, diferencaDias, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
 import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, QrFalso, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
-const ABAS_MORADOR = [['inicio', 'Início', 'casa'], ['reservas', 'Reservas', 'calendario'], ['avisos', 'Avisos', 'megafone'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['vendas', 'Vendas', 'loja'], ['mais', 'Mais', 'menu']];
+const ABAS_MORADOR = [['inicio', 'Início', 'casa'], ['financeiro', 'Financeiro', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['vendas', 'Vendas', 'loja'], ['mais', 'Mais', 'menu']];
 
 function relogio(d) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -35,9 +36,9 @@ function tipoEtiquetaAviso(c) {
 
 export function TelaMorador(props) {
   const eu = props.estado.moradorAtual;
-  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas };
+  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro };
   const Conteudo = telas[props.rota.tela] || MInicio;
-  const aba = ['documentos', 'encomendas', 'preferencias'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
+  const aba = ['documentos', 'encomendas', 'preferencias', 'avisos'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
   return html`<div class="celular">
     <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
     <div class="cel-pessoa" role="group" aria-label="Morador da demonstração">
@@ -68,12 +69,15 @@ function MInicio({ estado, agora, eu }) {
   const pacotes = estado.encomendas.filter((e) => e.unidade === eu && e.status === 'aguardando');
   const fixado = comunicadosDaUnidade(estado, eu).find((c) => c.fixado);
   const novidades = anunciosVisiveis(estado).filter((a) => a.vendedor !== eu).slice(0, 2);
+  const naoLidos = comunicadosDaUnidade(estado, eu).filter((c) => !c.leituras.includes(eu)).length;
   const proxima = estado.reservas
     .filter((r) => r.unidade === eu && STATUS_ATIVOS.includes(r.status) && r.data >= hoje)
     .sort((a, b) => a.data.localeCompare(b.data) || a.inicio - b.inicio)[0];
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Olá, ${pessoaDaUnidade(estado, eu).nome.split(' ')[0]}</h1>
     <p class="m-sub">Apto ${eu} · Residencial Ipê Amarelo</p>
+    <${CartaoCobrancaInicio} estado=${estado} eu=${eu} agora=${agora} />
+    <a class="cartao link com-icone" href="#morador.avisos"><${QuadroIcone} nome="megafone" /><span><strong>Avisos</strong><span class="sub">${naoLidos ? `${naoLidos} não ${naoLidos === 1 ? 'lido' : 'lidos'}` : 'Tudo lido'}</span></span></a>
     <h2>Encomendas na portaria</h2>
     ${pacotes.length ? pacotes.map((e) => html`<${MCartaoEncomenda} key=${e.id} encomenda=${e} agora=${agora} />`) : html`<${Vazio} texto="Nenhuma encomenda esperando por você." />`}
     ${fixado && html`<h2>Fixado pelo síndico</h2>
@@ -345,6 +349,7 @@ function MDetalheOcorrencia({ executar, oc, eu }) {
 function MMais() {
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Mais</h1>
+    <a class="cartao link com-icone" href="#morador.avisos"><${QuadroIcone} nome="megafone" /><span><strong>Avisos</strong><span class="sub">Comunicados do síndico e confirmação de leitura</span></span></a>
     <a class="cartao link com-icone" href="#morador.encomendas"><${QuadroIcone} nome="pacote" /><span><strong>Encomendas</strong><span class="sub">Na portaria e histórico de retiradas</span></span></a>
     <a class="cartao link com-icone" href="#morador.documentos"><${QuadroIcone} nome="documento" /><span><strong>Documentos</strong><span class="sub">Convenção, regimento, atas e laudos</span></span></a>
     <a class="cartao link com-icone" href="#morador.preferencias"><${QuadroIcone} nome="pessoa" /><span><strong>Minhas preferências</strong><span class="sub">Avisos de anúncios e situação de vendedor</span></span></a>

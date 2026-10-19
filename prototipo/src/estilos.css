@@ -442,3 +442,11 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 .em-breve { display: flex; flex-direction: column; padding: 8px 20px; color: var(--suave); font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
 .em-breve small { font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; }
 @media (max-width: 900px) { .em-breve { display: none; } }
+
+/* Fase 2: Financeiro do morador */
+.cartao.cobranca.vencida, .cartao.cobranca-inicio.vencida { box-shadow: inset 3px 0 0 var(--perigo); }
+.cobranca-inicio .btn { align-self: flex-start; }
+.composicao summary { cursor: pointer; color: var(--laranja-forte); font-weight: 600; min-height: 32px; }
+.pagamento { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.pagamento .campo { width: 100%; }
+.pagamento input[readonly] { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
