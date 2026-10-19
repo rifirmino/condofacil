@@ -397,6 +397,17 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 .situacao-pedidos dd { margin: 0; font-weight: 600; color: var(--titulo); text-align: right; font-variant-numeric: tabular-nums; }
 #painel-entrega { scroll-margin-top: 170px; }
 
+/* Fase 2: plano e preços */
+.ver-como.plano button.precos { border: 1px solid var(--ardosia-suave); }
+.painel-precos { position: relative; z-index: 15; display: flex; flex-direction: column; gap: 8px; max-width: 520px; margin: 12px auto 0; padding: 14px 16px; background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); }
+.painel-precos li.plano-atual { color: var(--laranja-forte); font-weight: 600; }
+@media (max-width: 900px) {
+  .barra-demo { position: static; }
+  .ver-como { flex-wrap: wrap; }
+  .ver-como button { padding: 8px 10px; }
+  .painel-precos { margin: 12px 16px 0; }
+}
+
 </style>
 <div id="app"></div>
 <script type="module">
@@ -2987,6 +2998,7 @@ const ICONES = {
   loja: 'M4 9l1-5h14l1 5M4 9v11h16V9M4 9h16M9 20v-6h6v6',
   etiqueta: 'M3 12V4h8l10 10-8 8zM7.5 7.5h.01',
   pessoa: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
+  cifrao: 'M12 3v18M17 7H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H6',
 };
 
 function Icone({ nome, tamanho = 22 }) {
@@ -4582,6 +4594,7 @@ function App() {
   const [rota, setRota] = useState(lerRota);
   const [selo, setSelo] = useState(null);
   const [geracao, setGeracao] = useState(0);
+  const [mostrarPrecos, setMostrarPrecos] = useState(false);
 
   useEffect(() => {
     const mudou = () => setRota(lerRota());
@@ -4631,13 +4644,27 @@ function App() {
         <span>Ver como</span>
         ${PERFIS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${rota.perfil === p.id} onClick=${() => trocarPerfil(p.id)}>${p.nome}</button>`)}
       </div>
+      <div class="ver-como plano" role="group" aria-label="Plano">
+        <span>Plano</span>
+        ${PLANOS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${estado.plano === p.id} onClick=${() => executar((e) => trocarPlano(e, p.id))}>${p.nome}</button>`)}
+        <button type="button" class="precos" aria-expanded=${mostrarPrecos} onClick=${() => setMostrarPrecos(!mostrarPrecos)}>Preços</button>
+      </div>
       <button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>
     </header>
+    ${mostrarPrecos && html`<${PainelPrecos} plano=${estado.plano} unidades=${estado.condominio.unidades.length} aoFechar=${() => setMostrarPrecos(false)} />`}
     <main class=${`palco palco-${rota.perfil}`}>
       <${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />
     </main>
     ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
   `;
+}
+
+function PainelPrecos({ plano, unidades, aoFechar }) {
+  return html`<div class="painel-precos" role="dialog" aria-label="Preços por plano">
+    <div class="linha-entre"><strong>Preços para ${unidades} unidades · faixa de ${PRECO_BASE.faixa}</strong><button type="button" class="btn-link" onClick=${aoFechar}>Fechar</button></div>
+    <ul class="itens-sacola">${PLANOS.map((p) => html`<li key=${p.id} class=${p.id === plano ? 'plano-atual' : ''}><span>${p.nome} · ${p.multiplicador.toFixed(1).replace('.', ',')}x</span><strong>${fmtReais(mensalidade(p.id, unidades))}/mês</strong></li>`)}</ul>
+    <small class="sub">Implantação ${fmtReais(PRECO_BASE.implantacao)} · base de ${fmtReais(PRECO_BASE.porUnidade)} por unidade. As tarifas do Asaas por boleto ou Pix são do condomínio e aparecem à parte.</small>
+  </div>`;
 }
 
 function PainelTestes() {

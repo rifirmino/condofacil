@@ -2,6 +2,9 @@ import { html, render, useState, useEffect } from '../vendor.js';
 import { dadosIniciais } from '../dados.js';
 import { isoDia } from '../datas.js';
 import { carregarEstado, salvarEstado, limparEstado } from '../armazenamento.js';
+import { trocarPlano } from '../cobranca/acoes.js';
+import { fmtReais } from '../cobranca/regras.js';
+import { PLANOS, PRECO_BASE, mensalidade } from '../planos.js';
 import { CASOS_DADOS } from '../casos/dados.js';
 import { CASOS_REGRAS } from '../casos/regras.js';
 import { CASOS_ACOES } from '../casos/acoes.js';
@@ -27,6 +30,7 @@ function App() {
   const [rota, setRota] = useState(lerRota);
   const [selo, setSelo] = useState(null);
   const [geracao, setGeracao] = useState(0);
+  const [mostrarPrecos, setMostrarPrecos] = useState(false);
 
   useEffect(() => {
     const mudou = () => setRota(lerRota());
@@ -76,13 +80,27 @@ function App() {
         <span>Ver como</span>
         ${PERFIS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${rota.perfil === p.id} onClick=${() => trocarPerfil(p.id)}>${p.nome}</button>`)}
       </div>
+      <div class="ver-como plano" role="group" aria-label="Plano">
+        <span>Plano</span>
+        ${PLANOS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${estado.plano === p.id} onClick=${() => executar((e) => trocarPlano(e, p.id))}>${p.nome}</button>`)}
+        <button type="button" class="precos" aria-expanded=${mostrarPrecos} onClick=${() => setMostrarPrecos(!mostrarPrecos)}>Preços</button>
+      </div>
       <button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>
     </header>
+    ${mostrarPrecos && html`<${PainelPrecos} plano=${estado.plano} unidades=${estado.condominio.unidades.length} aoFechar=${() => setMostrarPrecos(false)} />`}
     <main class=${`palco palco-${rota.perfil}`}>
       <${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />
     </main>
     ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
   `;
+}
+
+function PainelPrecos({ plano, unidades, aoFechar }) {
+  return html`<div class="painel-precos" role="dialog" aria-label="Preços por plano">
+    <div class="linha-entre"><strong>Preços para ${unidades} unidades · faixa de ${PRECO_BASE.faixa}</strong><button type="button" class="btn-link" onClick=${aoFechar}>Fechar</button></div>
+    <ul class="itens-sacola">${PLANOS.map((p) => html`<li key=${p.id} class=${p.id === plano ? 'plano-atual' : ''}><span>${p.nome} · ${p.multiplicador.toFixed(1).replace('.', ',')}x</span><strong>${fmtReais(mensalidade(p.id, unidades))}/mês</strong></li>`)}</ul>
+    <small class="sub">Implantação ${fmtReais(PRECO_BASE.implantacao)} · base de ${fmtReais(PRECO_BASE.porUnidade)} por unidade. As tarifas do Asaas por boleto ou Pix são do condomínio e aparecem à parte.</small>
+  </div>`;
 }
 
 function PainelTestes() {

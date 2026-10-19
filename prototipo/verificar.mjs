@@ -37,6 +37,7 @@ const CHECAGENS = [
   ['#morador.vendas.loja', ['Quer vender para os vizinhos?', 'Pedir para vender']],
   ['#morador.inicio', ['Novidades na vitrine', 'Bicicleta infantil aro 16']],
   ['#sindico.inicio', ['Aprovar vendedor: Paulo Ribeiro, apto 102']],
+  ['#sindico.reservas', ['Plano', 'Básico', 'Intermediário', 'Avançado', 'Preços']],
   ['#sindico.vendas', ['Salgados assados para festas', 'aprovar-vendedor-102', 'Juliana Costa · apto 104', 'Bicicleta infantil aro 16', 'Pedidos no mês']],
 ];
 
