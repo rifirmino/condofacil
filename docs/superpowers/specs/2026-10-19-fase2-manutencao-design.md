@@ -193,7 +193,7 @@ O zelador é o **Seu Antônio** (`ZELADOR = 'Seu Antônio'`), visto no celular. 
 - **OS:**
   - **OS-001:** preventiva da bomba d'água, origem 'sindico', validada há 10 dias, 1,5 h;
   - **OS-002:** lâmpadas do hall do 5º andar, da OC-0037, concluída há 7 dias, ainda sem validação;
-  - **OS-003:** vazamento na garagem, vaga 12, da OC-0039, urgente, em_execucao, com a linha do tempo "Iniciada", "Aguardando material: registro de 3/4\"" e "Retomada".
+  - **OS-003:** vazamento na garagem, vaga 12, da OC-0039, urgente, em_execucao, com a linha do tempo "Iniciada", "Aguardando material: registro de 3/4" e "Retomada".
 - **Compras:**
   - **CP-001:** registro de 3/4" e conexões, quantidade 1, R$ 380,00, ligada à OS-003, solicitada, 1 cotação;
   - **CP-002:** produtos de limpeza, R$ 145,00, recebida há 6 dias com nota, já incluída nas despesas.
