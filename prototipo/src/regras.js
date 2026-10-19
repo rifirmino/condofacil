@@ -146,7 +146,7 @@ export function encomendaParada(encomenda, agora) {
 }
 
 export function moradoresDaUnidade(estado, unidade) {
-  return estado.pessoas.filter((p) => p.unidade === unidade);
+  return estado.pessoas.filter((p) => p.unidade === unidade && !p.naoResidente);
 }
 
 export function indicadoresSindico(estado, agora) {
@@ -156,6 +156,6 @@ export function indicadoresSindico(estado, agora) {
     slaVencidas: estado.ocorrencias.filter((o) => slaVencido(o, agora)).length,
     paradas: estado.encomendas.filter((e) => encomendaParada(e, agora)).length,
     vencendo: alertasDocumentos(estado.documentos, isoDia(agora)).length,
-    adesao: { com: new Set(estado.pessoas.map((p) => p.unidade)).size, total: estado.condominio.unidades.length },
+    adesao: { com: new Set(estado.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, total: estado.condominio.unidades.length },
   };
 }

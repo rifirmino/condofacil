@@ -65,10 +65,13 @@ export function dadosIniciais(agora = new Date()) {
   const periodos = [{ id: 'tarde', nome: 'Tarde', inicio: 13, fim: 18 }, { id: 'noite', nome: 'Noite', inicio: 18, fim: 23 }];
   const canaisPadrao = ['push', 'email', 'whatsapp'];
 
-  const pessoas = MORADORES.map(([unidade, nome]) => ({ id: `p${unidade}`, nome, unidade, ...perfilVenda(unidade, em) }));
+  const pessoas = [
+    ...MORADORES.map(([unidade, nome]) => ({ id: `p${unidade}`, nome, unidade, ...perfilVenda(unidade, em) })),
+    { id: 'p704', nome: 'Vicente Moraes', unidade: '704', naoResidente: true, ...perfilVenda('704', em) },
+  ];
 
   return {
-    versao: 3,
+    versao: 4,
     geradoEm: hoje,
     proximoProtocolo: 43,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },

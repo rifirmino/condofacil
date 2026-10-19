@@ -1,5 +1,5 @@
 // Constantes e dados iniciais do módulo de vendas entre moradores.
-export const MORADORES_DEMO = [['302', 'Ana'], ['104', 'Juliana']];
+export const MORADORES_DEMO = [['302', 'Ana'], ['104', 'Juliana'], ['704', 'Vicente']];
 export const CATEGORIAS_VENDA = { doces: 'Doces', salgados: 'Salgados', artesanato: 'Artesanato', desapego: 'Desapego', servicos: 'Serviços' };
 export const PAGAMENTOS = { pix: 'Pix', dinheiro: 'Dinheiro', cartao: 'Cartão na entrega' };
 export const ENTREGAS = { retirar: 'Retirar no apto', porta: 'Entrega na porta' };

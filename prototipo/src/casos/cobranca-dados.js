@@ -40,6 +40,7 @@ export const CASOS_COBRANCA_DADOS = [
     rodar() {
       const u = financeiroTeste().unidades;
       igual([u['403'].responsavel, u['104'].responsavel.nome, u['104'].responsavel.relacao, u['202'].responsavel.nome, u['302'].responsavel.relacao, u['801'].tipo], [null, 'Carlos Andrade', 'proprietario', 'Helena Prado', 'titular', 'cobertura']);
+      igual([u['704'].responsavel.nome, u['704'].responsavel.relacao], ['Vicente Moraes', 'proprietario']);
     },
   },
   {

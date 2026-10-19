@@ -10,11 +10,12 @@ export const CASOS_DADOS = [
     },
   },
   {
-    nome: 'dados: 20 unidades com morador cadastrado',
+    nome: 'dados: 20 unidades com morador e 1 proprietário não residente',
     rodar() {
       const e = dadosIniciais(AGORA_TESTE);
-      igual(new Set(e.pessoas.map((p) => p.unidade)).size, 20);
-      igual(e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome, 'Ana Souza');
+      igual(new Set(e.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, 20);
+      igual(e.pessoas.filter((p) => p.naoResidente).map((p) => [p.unidade, p.nome, p.recebeOfertas, p.vendedor]), [['704', 'Vicente Moraes', false, 'nao']]);
+      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [4, 'Ana Souza']);
     },
   },
   {

@@ -14,7 +14,7 @@ export const CATEGORIAS_DESPESA = { pessoal: 'Pessoal', concessionarias: 'Conces
 export const NOMES_FORMA = { pix: 'Pix', boleto: 'Boleto', cartao: 'Cartão', manual: 'Baixa manual' };
 export const NOMES_RELACAO = { titular: 'titular', inquilino: 'inquilino', proprietario: 'proprietário' };
 
-const RESPONSAVEIS_SEM_APP = { 103: 'Lúcia Ferraz', 202: 'Helena Prado', 304: 'Otávio Reis', 503: 'Márcio Lopes', 602: 'Sílvia Campos', 604: 'André Nogueira', 701: 'Teresa Barreto', 704: 'Vicente Moraes', 802: 'Paula Siqueira', 803: 'Rogério Antunes', 804: 'Denise Correia' };
+const RESPONSAVEIS_SEM_APP = { 103: 'Lúcia Ferraz', 202: 'Helena Prado', 304: 'Otávio Reis', 503: 'Márcio Lopes', 602: 'Sílvia Campos', 604: 'André Nogueira', 701: 'Teresa Barreto', 802: 'Paula Siqueira', 803: 'Rogério Antunes', 804: 'Denise Correia' };
 const HISTORICO_RECEITAS = [2710000, 2685000, 2730000, 2760000, 2655000, 2700000, 2745000, 2690000, 2720000, 2735000, 2700000];
 const HISTORICO_DESPESAS = [1780000, 1810000, 1750000, 1840000, 1795000, 1870000, 1820000, 1760000, 2940000, 1850000, 1790000];
 const DEVEDORAS_VIGENTE = ['503', '704', '202'];
@@ -59,10 +59,11 @@ export function financeiroInicial(hoje, em, pessoas, unidades) {
     extra: { descricao: 'Pintura da fachada', total: 4800000, parcelas: 10, inicio: somarMes(vigente, -2), unidades: 32 },
   };
   const nomes = Object.fromEntries(pessoas.map((p) => [p.unidade, p.nome]));
+  const naoResidentes = new Set(pessoas.filter((p) => p.naoResidente).map((p) => p.unidade));
   const unidadesFinanceiro = Object.fromEntries(unidades.map((u) => {
     let responsavel = null;
     if (u === '104') responsavel = { nome: 'Carlos Andrade', relacao: 'proprietario' };
-    else if (nomes[u]) responsavel = { nome: nomes[u], relacao: 'titular' };
+    else if (nomes[u]) responsavel = { nome: nomes[u], relacao: naoResidentes.has(u) ? 'proprietario' : 'titular' };
     else if (RESPONSAVEIS_SEM_APP[u]) responsavel = { nome: RESPONSAVEIS_SEM_APP[u], relacao: 'proprietario' };
     if (responsavel) responsavel = { ...responsavel, documento: documentoMascarado(u), canais: ['App', 'E-mail', 'WhatsApp'] };
     return [u, { tipo: u[0] === '8' ? 'cobertura' : 'A', responsavel }];

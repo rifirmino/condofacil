@@ -274,6 +274,7 @@ export const CASOS_VENDAS = [
       const r = trocarMorador(e, '104');
       igual([r.estado.moradorAtual, r.estado.sacola], ['104', []]);
       igual(trocarMorador(e, '999').erro, 'Morador indisponível na demonstração');
+      igual(trocarMorador(e, '704').estado.moradorAtual, '704');
       igual(pessoaDe(alternarOfertas(e, '302').estado, '302').recebeOfertas, true);
     },
   },
