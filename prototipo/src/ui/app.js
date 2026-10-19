@@ -7,6 +7,7 @@ import { CASOS_REGRAS } from '../casos/regras.js';
 import { CASOS_ACOES } from '../casos/acoes.js';
 import { CASOS_VENDAS } from '../casos/vendas.js';
 import { CASOS_COBRANCA_DADOS } from '../casos/cobranca-dados.js';
+import { CASOS_COBRANCA_REGRAS } from '../casos/cobranca-regras.js';
 import { PERFIS, lerRota, ir, Selo, Icone } from './comum.js';
 import { TelaPortaria } from './portaria.js';
 import { TelaMorador } from './morador.js';
@@ -84,7 +85,7 @@ function App() {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

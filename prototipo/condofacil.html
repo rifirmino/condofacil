@@ -627,6 +627,162 @@ function financeiroInicial(hoje, em, pessoas, unidades) {
   };
 }
 
+// ---- src/cobranca/regras.js ----
+
+const MESES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const ETAPAS_POR_PLANO = {
+  basico: ['antes5', 'vencimento'],
+  intermediario: ['antes5', 'vencimento', 'atraso1', 'atraso15', 'atraso60'],
+  avancado: ETAPAS_REGUA.map((e) => e.id),
+};
+
+function milhar(n) {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+function fmtReais(centavos) {
+  const abs = Math.abs(centavos);
+  return `${centavos < 0 ? '−' : ''}R$ ${milhar(Math.floor(abs / 100))},${String(abs % 100).padStart(2, '0')}`;
+}
+
+function fmtReaisCurto(centavos) {
+  return `${centavos < 0 ? '−' : ''}R$ ${milhar(Math.round(Math.abs(centavos) / 100))}`;
+}
+
+function mesCurto(anoMes) {
+  return MESES_ABREV[Number(anoMes.slice(5, 7)) - 1];
+}
+
+function mesExtenso(anoMes) {
+  return nomeMes(anoMes).split(' de ')[0];
+}
+
+function situacaoCobranca(cobranca, hoje) {
+  if (cobranca.status !== 'aberta') return cobranca.status;
+  return cobranca.vencimento < hoje ? 'vencida' : 'aberta';
+}
+
+function valorAtualizado(cobranca, parametros, hoje) {
+  const dias = situacaoCobranca(cobranca, hoje) === 'vencida' ? diferencaDias(hoje, cobranca.vencimento) : 0;
+  if (!dias) return { total: cobranca.valor, multa: 0, juros: 0, dias: 0 };
+  const multa = Math.round((cobranca.valor * parametros.multaPct) / 100);
+  const juros = Math.round((cobranca.valor * parametros.jurosPct * dias) / 3000);
+  return { total: cobranca.valor + multa + juros, multa, juros, dias };
+}
+
+function validarParametros(p) {
+  const falha = (motivo) => ({ ok: false, motivo });
+  for (const dia of [p.diaVencimento, p.diaFechamento]) {
+    if (!Number.isInteger(dia) || dia < 1 || dia > 28) return falha('Use um dia entre 1 e 28');
+  }
+  if (!(p.multaPct >= 0) || p.multaPct > 2) return falha('A multa por atraso é limitada a 2% (Código Civil, art. 1.336)');
+  if (!(p.jurosPct >= 0)) return falha('Informe os juros ao mês');
+  if (p.descontoPct > 0 && !String(p.descontoAprovadoEm || '').trim()) return falha('Informe a ata ou cláusula que aprova o desconto');
+  if (!p.formas || !p.formas.length) return falha('Escolha ao menos uma forma de pagamento');
+  return { ok: true };
+}
+
+function proximaCompetencia(financeiro) {
+  return somarMes(financeiro.vigente, 1);
+}
+
+function vencimentoDa(financeiro, competencia) {
+  return mesmoDiaDoMes(financeiro.vencimentoVigente, diferencaMeses(competencia, financeiro.vigente));
+}
+
+function previaCompetencia(estado, competencia) {
+  const fin = estado.financeiro;
+  const ajustes = fin.ajustesPrevia[competencia] || {};
+  const linhas = estado.condominio.unidades.map((unidade) => {
+    const { tipo, responsavel } = fin.unidades[unidade];
+    const avulsos = fin.avulsos.filter((a) => a.unidade === unidade && a.competencia === competencia).map(({ tipo: t, descricao, valor }) => ({ tipo: t, descricao, valor }));
+    const itens = ajustes[unidade] || [...itensBase(fin.composicao, tipo, competencia), ...avulsos];
+    const bloqueada = !responsavel || !responsavel.documento;
+    return { unidade, tipo, responsavel, itens, total: itens.reduce((soma, i) => soma + i.valor, 0), bloqueada, motivo: bloqueada ? 'Sem responsável financeiro' : null };
+  });
+  return { competencia, vencimento: vencimentoDa(fin, competencia), linhas };
+}
+
+function etapasNoPlano(plano) {
+  return ETAPAS_POR_PLANO[plano];
+}
+
+function etapaRegua(cobranca, hoje) {
+  if (cobranca.status !== 'aberta') return null;
+  const dias = diferencaDias(hoje, cobranca.vencimento);
+  const alcancadas = ETAPAS_REGUA.filter((e) => e.dias <= dias);
+  return alcancadas.length ? alcancadas[alcancadas.length - 1] : null;
+}
+
+function pendentesDaRegua(estado, hoje, plano) {
+  const permitidas = etapasNoPlano(plano);
+  return estado.financeiro.cobrancas.flatMap((c) => {
+    if (c.status !== 'aberta') return [];
+    const dias = diferencaDias(hoje, c.vencimento);
+    const candidatas = ETAPAS_REGUA.filter((e) => e.dias <= dias && permitidas.includes(e.id));
+    const etapa = candidatas[candidatas.length - 1];
+    return etapa && !c.regua.some((r) => r.etapa === etapa.id) ? [{ cobranca: c, etapa }] : [];
+  });
+}
+
+function devedores(estado, hoje) {
+  const fin = estado.financeiro;
+  const grupos = {};
+  for (const c of fin.cobrancas) {
+    if (situacaoCobranca(c, hoje) !== 'vencida') continue;
+    const v = valorAtualizado(c, fin.parametros, hoje);
+    if (!grupos[c.unidade]) grupos[c.unidade] = { unidade: c.unidade, responsavel: fin.unidades[c.unidade].responsavel, cobrancas: 0, valor: 0, dias: 0, etapa: null };
+    const g = grupos[c.unidade];
+    g.cobrancas += 1;
+    g.valor += v.total;
+    if (v.dias > g.dias) {
+      g.dias = v.dias;
+      g.etapa = etapaRegua(c, hoje);
+    }
+  }
+  return Object.values(grupos).sort((a, b) => b.dias - a.dias);
+}
+
+function indicadoresFinanceiros(estado, hoje) {
+  const fin = estado.financeiro;
+  const daCompetencia = (competencia) => fin.cobrancas.filter((c) => c.competencia === competencia && c.status !== 'cancelada');
+  const vigentes = daCompetencia(fin.vigente);
+  const previsto = vigentes.reduce((soma, c) => soma + c.valor, 0);
+  const recebido = vigentes.filter((c) => c.status === 'paga').reduce((soma, c) => soma + c.valor, 0);
+  const proxima = proximaCompetencia(fin);
+  const daProxima = daCompetencia(proxima);
+  const lista = devedores(estado, hoje);
+  const totalUnidades = estado.condominio.unidades.length;
+  const despesaMedia = Math.round(fin.historico.reduce((soma, m) => soma + m.despesas, 0) / fin.historico.length);
+  const despesas = Object.values(fin.despesasMes).reduce((soma, v) => soma + v, 0);
+  const orcado = Object.values(fin.orcamento).reduce((soma, v) => soma + v, 0);
+  const desvio = Math.round(((despesas - orcado) / orcado) * 1000) / 10;
+  const pct = previsto ? Math.round((recebido / previsto) * 100) : 0;
+  const inadimplenciaPct = Math.round((lista.length / totalUnidades) * 1000) / 10;
+  return {
+    saldo: { valor: fin.saldo, despesaMedia, alerta: fin.saldo < despesaMedia },
+    arrecadado: { competencia: fin.vigente, recebido, previsto, pct, alerta: pct < 85, proxima: fin.emitidas.includes(proxima) ? { competencia: proxima, pagas: daProxima.filter((c) => c.status === 'paga').length, total: daProxima.length } : null },
+    inadimplencia: { unidades: lista.length, total: totalUnidades, pct: inadimplenciaPct, valor: lista.reduce((soma, d) => soma + d.valor, 0), alerta: inadimplenciaPct > 10 },
+    despesas: { valor: despesas, orcado, desvio, alerta: desvio > 10 },
+  };
+}
+
+function serieReceitasDespesas(estado, hoje) {
+  const ind = indicadoresFinanceiros(estado, hoje);
+  return [...estado.financeiro.historico, { mes: estado.financeiro.vigente, receitas: ind.arrecadado.recebido, despesas: ind.despesas.valor }];
+}
+
+function tituloSerie(serie) {
+  const acima = serie.filter((m) => m.despesas > m.receitas);
+  if (!acima.length) return 'Receita cobriu a despesa em todos os meses';
+  if (acima.length === 1) return `Despesa superou a receita só em ${mesExtenso(acima[0].mes)}`;
+  return `Despesa superou a receita em ${acima.length} meses`;
+}
+
+function podeOperar(perfil) {
+  return perfil === 'sindico';
+}
+
 // ---- src/vendas/dados.js ----
 // Constantes e dados iniciais do módulo de vendas entre moradores.
 const MORADORES_DEMO = [['302', 'Ana'], ['104', 'Juliana']];
@@ -2370,6 +2526,111 @@ const CASOS_COBRANCA_DADOS = [
       igual([liberado('basico', 'cobranca'), liberado('basico', 'dashboardCompleto'), liberado('intermediario', 'dashboardCompleto'), liberado('intermediario', 'orcadoRealizado'), liberado('avancado', 'orcadoRealizado')], [true, false, true, false, true]);
       igual([mensalidade('basico', 32), mensalidade('intermediario', 32), mensalidade('avancado', 32)], [31680, 47520, 69696]);
       igual([planoMinimo('notificacaoFormal').nome, dadosIniciais(AGORA_FASE2).plano], ['Avançado', 'intermediario']);
+    },
+  },
+];
+
+// ---- src/casos/cobranca-regras.js ----
+
+const HOJE_FASE2 = '2026-10-19';
+const PARAMETROS_OK = { diaVencimento: 10, diaFechamento: 20, multaPct: 2, jurosPct: 1, descontoPct: 0, descontoAprovadoEm: '', formas: ['pix'], tarifa: 'condominio' };
+
+function estadoFase2() {
+  return dadosIniciais(AGORA_FASE2);
+}
+
+function cobrancaFase2(estado, unidade, competencia) {
+  return estado.financeiro.cobrancas.find((c) => c.unidade === unidade && c.competencia === competencia);
+}
+
+const CASOS_COBRANCA_REGRAS = [
+  {
+    nome: 'cobrança: formatação de reais',
+    rodar() {
+      igual([fmtReais(4835000), fmtReaisCurto(4835000), fmtReais(86500), fmtReais(-5000), fmtReais(15840), mesExtenso('2026-07')], ['R$ 48.350,00', 'R$ 48.350', 'R$ 865,00', '−R$ 50,00', 'R$ 158,40', 'julho']);
+    },
+  },
+  {
+    nome: 'cobrança: valor atualizado com multa de 2% e juros de 1% ao mês',
+    rodar() {
+      const e = estadoFase2();
+      const p = e.financeiro.parametros;
+      igual(valorAtualizado(cobrancaFase2(e, '503', '2026-10'), p, HOJE_FASE2), { total: 88490, multa: 1730, juros: 260, dias: 9 });
+      igual(valorAtualizado(cobrancaFase2(e, '704', '2026-09'), p, HOJE_FASE2).juros, 1125);
+      igual(valorAtualizado(cobrancaFase2(e, '202', '2026-08'), p, HOJE_FASE2).total, 90248);
+      igual(valorAtualizado(cobrancaFase2(e, '302', '2026-10'), p, HOJE_FASE2), { total: 86500, multa: 0, juros: 0, dias: 0 });
+      igual([situacaoCobranca(cobrancaFase2(e, '503', '2026-10'), HOJE_FASE2), situacaoCobranca(cobrancaFase2(e, '302', '2026-10'), HOJE_FASE2)], ['vencida', 'paga']);
+    },
+  },
+  {
+    nome: 'cobrança: parâmetros respeitam o Código Civil e a assembleia',
+    rodar() {
+      igual(validarParametros(PARAMETROS_OK), { ok: true });
+      igual(validarParametros({ ...PARAMETROS_OK, multaPct: 2.5 }).motivo, 'A multa por atraso é limitada a 2% (Código Civil, art. 1.336)');
+      igual(validarParametros({ ...PARAMETROS_OK, descontoPct: 5 }).motivo, 'Informe a ata ou cláusula que aprova o desconto');
+      igual(validarParametros({ ...PARAMETROS_OK, descontoPct: 5, descontoAprovadoEm: 'AGO 28/03/2026' }), { ok: true });
+      igual(validarParametros({ ...PARAMETROS_OK, diaVencimento: 30 }).motivo, 'Use um dia entre 1 e 28');
+      igual(validarParametros({ ...PARAMETROS_OK, formas: [] }).motivo, 'Escolha ao menos uma forma de pagamento');
+    },
+  },
+  {
+    nome: 'cobrança: prévia de novembro',
+    rodar() {
+      const e = estadoFase2();
+      const previa = previaCompetencia(e, proximaCompetencia(e.financeiro));
+      const linha = (u) => previa.linhas.find((l) => l.unidade === u);
+      igual([previa.competencia, previa.vencimento, previa.linhas.length, previa.linhas.filter((l) => !l.bloqueada).length], ['2026-11', '2026-11-10', 32, 31]);
+      igual([linha('403').bloqueada, linha('403').motivo], [true, 'Sem responsável financeiro']);
+      igual([linha('302').total, linha('801').total, linha('104').total, linha('301').total], [86500, 122800, 101500, 81500]);
+      igual(linha('302').itens[2].descricao, 'Pintura da fachada (parcela 4/10)');
+    },
+  },
+  {
+    nome: 'cobrança: etapas da régua por plano',
+    rodar() {
+      const e = estadoFase2();
+      igual(etapaRegua(cobrancaFase2(e, '704', '2026-09'), HOJE_FASE2).id, 'atraso30');
+      igual(etapaRegua(cobrancaFase2(e, '302', '2026-10'), HOJE_FASE2), null);
+      const resumo = (plano) => pendentesDaRegua(e, HOJE_FASE2, plano).map((p) => [p.cobranca.unidade, p.cobranca.competencia, p.etapa.id]);
+      igual(resumo('intermediario'), [['202', '2026-10', 'atraso1'], ['503', '2026-10', 'atraso1'], ['704', '2026-10', 'atraso1'], ['704', '2026-09', 'atraso15'], ['202', '2026-09', 'atraso15'], ['202', '2026-08', 'atraso60']]);
+      igual(resumo('basico'), []);
+      igual(resumo('avancado')[3], ['704', '2026-09', 'atraso30']);
+    },
+  },
+  {
+    nome: 'cobrança: devedores com valor atualizado e etapa',
+    rodar() {
+      igual(devedores(estadoFase2(), HOJE_FASE2).map((d) => [d.unidade, d.cobrancas, d.valor, d.dias, d.etapa.id, d.responsavel.nome]), [
+        ['202', 3, 268093, 70, 'atraso60', 'Helena Prado'],
+        ['704', 2, 177845, 39, 'atraso30', 'Vicente Moraes'],
+        ['503', 1, 88490, 9, 'atraso1', 'Márcio Lopes'],
+      ]);
+    },
+  },
+  {
+    nome: 'cobrança: indicadores do dashboard',
+    rodar() {
+      igual(indicadoresFinanceiros(estadoFase2(), HOJE_FASE2), {
+        saldo: { valor: 4835000, despesaMedia: 1909545, alerta: false },
+        arrecadado: { competencia: '2026-10', recebido: 2567200, previsto: 2826700, pct: 91, alerta: false, proxima: null },
+        inadimplencia: { unidades: 3, total: 32, pct: 9.4, valor: 534428, alerta: false },
+        despesas: { valor: 1810000, orcado: 1790000, desvio: 1.1, alerta: false },
+      });
+    },
+  },
+  {
+    nome: 'cobrança: série de 12 meses e título do gráfico',
+    rodar() {
+      const serie = serieReceitasDespesas(estadoFase2(), HOJE_FASE2);
+      igual([serie.length, serie[11]], [12, { mes: '2026-10', receitas: 2567200, despesas: 1810000 }]);
+      igual(tituloSerie(serie), 'Despesa superou a receita só em julho');
+      igual(tituloSerie([{ mes: '2026-01', receitas: 10, despesas: 5 }]), 'Receita cobriu a despesa em todos os meses');
+    },
+  },
+  {
+    nome: 'cobrança: só o síndico opera',
+    rodar() {
+      igual([podeOperar('sindico'), podeOperar('morador'), podeOperar('portaria')], [true, false, false]);
     },
   },
 ];
@@ -4131,7 +4392,7 @@ function App() {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };
