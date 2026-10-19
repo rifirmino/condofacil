@@ -1,10 +1,14 @@
 import { dadosIniciais } from '../dados.js';
-import { alertasManutencao, listaOS } from '../manutencao/regras.js';
-import { gerarOS, abrirOS, iniciarOS, pausarOS, concluirOS, validarOS } from '../manutencao/acoes.js';
+import { alertasManutencao, listaOS, cotacoesMinimas } from '../manutencao/regras.js';
+import { gerarOS, abrirOS, iniciarOS, pausarOS, concluirOS, validarOS, solicitarCompra, anexarCotacao, aprovarCompra, recusarCompra, receberCompra, gastoCaixa, reporCaixa } from '../manutencao/acoes.js';
 import { igual, AGORA_FASE2 } from './afirmar.js';
 
 function estadoMan() {
   return dadosIniciais(AGORA_FASE2);
+}
+
+function compraDe(e, id) {
+  return e.manutencao.compras.find((x) => x.id === id);
 }
 
 function osDe(e, id) {
@@ -72,6 +76,59 @@ export const CASOS_MANUTENCAO = [
       igual(alertasManutencao(e, AGORA_FASE2).map((a) => a.texto), ['OS-002 concluída: validar', 'CP-001 aguardando aprovação: Registro de 3/4" e conexões, R$ 380,00']);
       e = abrirOS(e, { local: 'Portão', descricao: 'Portão não fecha', prioridade: 'urgente' }, 'sindico', new Date(2026, 9, 19, 7, 0)).estado;
       igual(alertasManutencao(e, AGORA_FASE2)[0].texto, 'OS-004 urgente sem início há 3 h');
+    },
+  },
+  {
+    nome: 'compras: solicitação, recusa e aprovação',
+    rodar() {
+      const e = estadoMan();
+      igual(solicitarCompra(e, { item: '', quantidade: 1, valorEstimado: 100 }, 'zelador', AGORA_FASE2).erro, 'Informe item, quantidade e valor');
+      const s = solicitarCompra(e, { item: 'Bomba reserva', quantidade: 1, valorEstimado: 250000, categoria: 'manutencao' }, 'zelador', AGORA_FASE2);
+      igual(s.id, 'CP-003');
+      igual(aprovarCompra(s.estado, 'CP-003', 'zelador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      igual(recusarCompra(s.estado, 'CP-003', '', 'sindico', AGORA_FASE2).erro, 'Informe o motivo da recusa');
+      igual(compraDe(recusarCompra(s.estado, 'CP-003', 'Fora do orçamento', 'sindico', AGORA_FASE2).estado, 'CP-003').status, 'recusada');
+      igual(compraDe(aprovarCompra(s.estado, 'CP-003', 'sindico', AGORA_FASE2).estado, 'CP-003').status, 'aprovada');
+    },
+  },
+  {
+    nome: 'compras: cotações mínimas no Avançado',
+    rodar() {
+      const e = { ...estadoMan(), plano: 'avancado' };
+      igual([cotacoesMinimas(50000).minimo, cotacoesMinimas(50001).minimo, cotacoesMinimas(200001).minimo], [1, 2, 3]);
+      let s = solicitarCompra(e, { item: 'Bomba reserva', quantidade: 1, valorEstimado: 250000, categoria: 'manutencao', cotacoes: [{ fornecedor: 'A', valor: 250000 }] }, 'zelador', AGORA_FASE2);
+      igual(aprovarCompra(s.estado, 'CP-003', 'sindico', AGORA_FASE2).erro, 'Anexe 3 cotações para compras acima de R$ 2.000,00');
+      s = anexarCotacao(s.estado, 'CP-003', { fornecedor: 'B', valor: 240000 }, 'sindico', AGORA_FASE2);
+      s = anexarCotacao(s.estado, 'CP-003', { fornecedor: 'C', valor: 260000 }, 'zelador', AGORA_FASE2);
+      igual(compraDe(aprovarCompra(s.estado, 'CP-003', 'sindico', AGORA_FASE2).estado, 'CP-003').status, 'aprovada');
+      igual(aprovarCompra(estadoMan(), 'CP-001', 'sindico', AGORA_FASE2).erro, undefined);
+    },
+  },
+  {
+    nome: 'compras: recebimento com nota lança a despesa',
+    rodar() {
+      const a = aprovarCompra(estadoMan(), 'CP-001', 'sindico', AGORA_FASE2).estado;
+      igual(receberCompra(a, 'CP-001', { valorFinal: 39000, nota: '' }, 'zelador', AGORA_FASE2).erro, 'Anexe a nota fiscal (obrigatória acima de R$ 200,00)');
+      igual(receberCompra(estadoMan(), 'CP-001', { valorFinal: 39000, nota: 'n.pdf' }, 'zelador', AGORA_FASE2).erro, 'Só compras aprovadas podem ser recebidas');
+      const r = receberCompra(a, 'CP-001', { valorFinal: 39000, nota: 'nota-CP-001.pdf' }, 'zelador', AGORA_FASE2);
+      igual([compraDe(r.estado, 'CP-001').status, r.estado.financeiro.despesasMes.manutencao, r.estado.financeiro.saldo, r.estado.financeiro.auditoria.at(-1).acao], ['recebida', 269000, 4796000, 'Compra lançada']);
+    },
+  },
+  {
+    nome: 'caixa pequeno: cupom, limite, saldo e reposição',
+    rodar() {
+      const e = { ...estadoMan(), plano: 'avancado' };
+      igual(gastoCaixa(estadoMan(), { descricao: 'x', valor: 1000, cupom: true }, 'zelador', AGORA_FASE2).erro, 'Disponível no plano Avançado');
+      igual(gastoCaixa(e, { descricao: 'Fusíveis', valor: 1000, cupom: false }, 'zelador', AGORA_FASE2).erro, 'Anexe a foto do cupom');
+      igual(gastoCaixa(e, { descricao: 'Fusíveis', valor: 20001, cupom: true }, 'zelador', AGORA_FASE2).erro, 'Gasto acima de R$ 200,00: faça uma compra');
+      const g = gastoCaixa(e, { descricao: 'Fusíveis', valor: 2500, cupom: true }, 'zelador', AGORA_FASE2);
+      igual(g.estado.manutencao.caixa.saldo, 21450);
+      const sem = gastoCaixa(g.estado, { descricao: 'Ferramentas', valor: 19000, cupom: true }, 'zelador', AGORA_FASE2).estado;
+      igual(sem.manutencao.caixa.saldo, 2450);
+      igual(gastoCaixa(sem, { descricao: 'x', valor: 3000, cupom: true }, 'zelador', AGORA_FASE2).erro, 'Saldo do caixa pequeno insuficiente');
+      igual(reporCaixa(sem, 'zelador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      const r = reporCaixa(sem, 'sindico', AGORA_FASE2);
+      igual([r.estado.manutencao.caixa.saldo, r.estado.financeiro.despesasMes.manutencao, r.estado.financeiro.saldo, r.estado.manutencao.caixa.reposicoes[0].valor], [30000, 257550, 4807450, 27550]);
     },
   },
 ];

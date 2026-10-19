@@ -1,12 +1,16 @@
 import { CATEGORIAS, PRIORIDADES } from '../dados.js';
 import { liberado } from '../planos.js';
 import { trocarItem, nomesDaUnidade } from '../acoes.js';
+import { fmtReais } from '../cobranca/regras.js';
+import { comAuditoria } from '../cobranca/acoes.js';
 import { ZELADOR } from './dados.js';
+import { cotacoesMinimas, textoCotacoes } from './regras.js';
 
 // Ações do zelador e do síndico sobre OS, compras e caixa pequeno. Cada uma devolve { estado, notificacao?, erro?, id? }.
 const SO_EQUIPE = 'Somente o zelador ou o síndico pode fazer isso';
 const SO_SINDICO_MAN = 'Somente o síndico pode fazer isso';
 const DIA_MS = 86400000;
+const LIMITE_CAIXA = 20000;
 
 function erroMan(estado, mensagem) {
   return { estado, erro: mensagem };
@@ -105,4 +109,100 @@ export function validarOS(estado, id, perfil, agora) {
   const os = estado.manutencao.os.find((o) => o.id === id);
   if (!os || os.status !== 'concluida') return erroMan(estado, 'Só OS concluídas podem ser validadas');
   return { estado: mudarOS(estado, id, { status: 'validada', validadaEm: agora.toISOString() }, { em: agora.toISOString(), status: 'validada', texto: 'Validada pelo síndico', autor: 'Síndico' }) };
+}
+
+function compraPorId(estado, id) {
+  return estado.manutencao.compras.find((c) => c.id === id);
+}
+
+function lancarDespesa(estado, categoria, valor, agora, acao, detalhe) {
+  const fin = estado.financeiro;
+  return { ...estado, financeiro: { ...fin, despesasMes: { ...fin.despesasMes, [categoria]: fin.despesasMes[categoria] + valor }, saldo: fin.saldo - valor, auditoria: comAuditoria(estado, agora, acao, detalhe) } };
+}
+
+export function solicitarCompra(estado, { item, quantidade, valorEstimado, motivo = '', categoria = 'manutencao', os = null, urgente = false, cotacoes = [] }, perfil, agora) {
+  const falha = guardaMan(estado, perfil);
+  if (falha) return erroMan(estado, falha);
+  if (!String(item || '').trim() || !(quantidade >= 1) || !(valorEstimado > 0)) return erroMan(estado, 'Informe item, quantidade e valor');
+  const id = `CP-${String(estado.manutencao.proximaCompra).padStart(3, '0')}`;
+  const compra = { id, item: item.trim(), quantidade, motivo: String(motivo).trim(), valorEstimado, categoria, os, urgente, cotacoes: [...cotacoes], status: 'solicitada', motivoRecusa: null, valorFinal: null, nota: null, viaCaixa: false, criadaEm: agora.toISOString(), aprovadaEm: null, recebidaEm: null };
+  return {
+    estado: comManutencao(estado, { compras: [...estado.manutencao.compras, compra], proximaCompra: estado.manutencao.proximaCompra + 1 }),
+    id,
+    notificacao: { canal: 'Push', para: 'Síndico', texto: `${id} aguardando aprovação: ${compra.item}, ${fmtReais(valorEstimado)}` },
+  };
+}
+
+export function anexarCotacao(estado, id, { fornecedor, valor }, perfil) {
+  const falha = guardaMan(estado, perfil);
+  if (falha) return erroMan(estado, falha);
+  const c = compraPorId(estado, id);
+  if (!c || c.status !== 'solicitada') return erroMan(estado, 'Só compras aguardando aprovação recebem cotação');
+  if (!String(fornecedor || '').trim() || !(valor > 0)) return erroMan(estado, 'Informe fornecedor e valor da cotação');
+  return { estado: comManutencao(estado, { compras: trocarItem(estado.manutencao.compras, id, { cotacoes: [...c.cotacoes, { fornecedor: fornecedor.trim(), valor }] }) }) };
+}
+
+export function aprovarCompra(estado, id, perfil, agora) {
+  const falha = guardaMan(estado, perfil, true);
+  if (falha) return erroMan(estado, falha);
+  const c = compraPorId(estado, id);
+  if (!c || c.status !== 'solicitada') return erroMan(estado, 'Esta compra não está aguardando aprovação');
+  if (liberado(estado.plano, 'cotacoes') && c.cotacoes.length < cotacoesMinimas(c.valorEstimado).minimo) return erroMan(estado, textoCotacoes(c.valorEstimado));
+  return {
+    estado: comManutencao(estado, { compras: trocarItem(estado.manutencao.compras, id, { status: 'aprovada', aprovadaEm: agora.toISOString() }) }),
+    notificacao: { canal: 'Push', para: ZELADOR, texto: `${id} aprovada: pode comprar` },
+  };
+}
+
+export function recusarCompra(estado, id, motivo, perfil) {
+  const falha = guardaMan(estado, perfil, true);
+  if (falha) return erroMan(estado, falha);
+  const c = compraPorId(estado, id);
+  if (!c || c.status !== 'solicitada') return erroMan(estado, 'Esta compra não está aguardando aprovação');
+  if (!String(motivo || '').trim()) return erroMan(estado, 'Informe o motivo da recusa');
+  return {
+    estado: comManutencao(estado, { compras: trocarItem(estado.manutencao.compras, id, { status: 'recusada', motivoRecusa: motivo.trim() }) }),
+    notificacao: { canal: 'Push', para: ZELADOR, texto: `${id} recusada: ${motivo.trim()}` },
+  };
+}
+
+export function receberCompra(estado, id, { valorFinal, nota }, perfil, agora) {
+  const falha = guardaMan(estado, perfil);
+  if (falha) return erroMan(estado, falha);
+  const c = compraPorId(estado, id);
+  if (!c || c.status !== 'aprovada') return erroMan(estado, 'Só compras aprovadas podem ser recebidas');
+  if (!(valorFinal > 0)) return erroMan(estado, 'Informe o valor final');
+  if (valorFinal > LIMITE_CAIXA && !String(nota || '').trim()) return erroMan(estado, 'Anexe a nota fiscal (obrigatória acima de R$ 200,00)');
+  const recebida = comManutencao(estado, { compras: trocarItem(estado.manutencao.compras, id, { status: 'recebida', valorFinal, nota: String(nota || '').trim() || null, recebidaEm: agora.toISOString() }) });
+  return {
+    estado: lancarDespesa(recebida, c.categoria, valorFinal, agora, 'Compra lançada', `${id} · ${c.item} · ${fmtReais(valorFinal)}`),
+    notificacao: { canal: 'App', para: 'Síndico', texto: `${id} recebida: ${fmtReais(valorFinal)} lançado em despesas` },
+  };
+}
+
+export function gastoCaixa(estado, { descricao, valor, cupom }, perfil, agora) {
+  const falha = guardaMan(estado, perfil);
+  if (falha) return erroMan(estado, falha);
+  if (!liberado(estado.plano, 'caixaPequeno')) return erroMan(estado, 'Disponível no plano Avançado');
+  const caixa = estado.manutencao.caixa;
+  if (!String(descricao || '').trim() || !(valor > 0)) return erroMan(estado, 'Informe descrição e valor');
+  if (!cupom) return erroMan(estado, 'Anexe a foto do cupom');
+  if (valor > LIMITE_CAIXA) return erroMan(estado, 'Gasto acima de R$ 200,00: faça uma compra');
+  if (valor > caixa.saldo) return erroMan(estado, 'Saldo do caixa pequeno insuficiente');
+  const gasto = { id: `G${caixa.gastos.length + 1}`, descricao: descricao.trim(), valor, cupom: true, em: agora.toISOString() };
+  return { estado: comManutencao(estado, { caixa: { ...caixa, saldo: caixa.saldo - valor, gastos: [...caixa.gastos, gasto] } }) };
+}
+
+export function reporCaixa(estado, perfil, agora) {
+  const falha = guardaMan(estado, perfil, true);
+  if (falha) return erroMan(estado, falha);
+  if (!liberado(estado.plano, 'caixaPequeno')) return erroMan(estado, 'Disponível no plano Avançado');
+  const caixa = estado.manutencao.caixa;
+  const valor = caixa.fundo - caixa.saldo;
+  if (!valor) return erroMan(estado, 'O caixa pequeno já está completo');
+  const reposto = comManutencao(estado, { caixa: { ...caixa, saldo: caixa.fundo, reposicoes: [...caixa.reposicoes, { em: agora.toISOString(), valor }] } });
+  return {
+    estado: lancarDespesa(reposto, 'manutencao', valor, agora, 'Caixa pequeno reposto', `${fmtReais(valor)} · ${caixa.gastos.length} gastos com cupom`),
+    notificacao: { canal: 'App', para: ZELADOR, texto: `Caixa pequeno reposto: saldo ${fmtReais(caixa.fundo)}` },
+  };
 }
