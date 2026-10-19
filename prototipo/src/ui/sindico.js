@@ -4,11 +4,12 @@ import { areaPorId, statusDia, indicadoresSindico, slaVencido, alertasDocumentos
 import { aprovarReserva, recusarReserva, publicarComunicado, avancarOcorrencia, comentarOcorrencia, arquivarOcorrencia, lembrarEncomenda } from '../acoes.js';
 import { aprovarVendedor, recusarVendedor, suspenderVendedor, reativarVendedor, ocultarAnuncio, mostrarAnuncio } from '../vendas/acoes.js';
 import { nomeVizinho, fmtCentavos } from '../vendas/regras.js';
-import { PainelFinanceiro, pendenciasCobranca } from './financeiro-sindico.js';
+import { PainelFinanceiro, pendenciasCobranca, SCobranca } from './financeiro-sindico.js';
 import { isoDia, somarMes, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
 import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
-const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
+const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
+const EM_BREVE = ['Acordos', 'Notificações e OS', 'Zelador', 'Escala de porteiros'];
 const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
 const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
 
@@ -32,11 +33,12 @@ function tipoEtiquetaComunicado(c) {
 
 export function TelaSindico(props) {
   const tela = MENU_SINDICO.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'inicio';
-  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas }[tela];
+  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca }[tela];
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
       <p class="painel-usuario"><strong>Roberto Lima</strong><small>Síndico · apto 801</small></p>
       ${MENU_SINDICO.map(([id, nome, icone]) => html`<a key=${id} href=${`#sindico.${id}`} class=${id === tela ? 'ativa' : ''} aria-current=${id === tela ? 'page' : undefined}><${Icone} nome=${icone} tamanho=${20} />${nome}</a>`)}
+      ${EM_BREVE.map((nome) => html`<span key=${nome} class="em-breve" aria-disabled="true">${nome}<small>Em breve · Intermediário</small></span>`)}
     </nav>
     <div class="painel-conteudo"><${Conteudo} ...${props} /></div>
   </div>`;

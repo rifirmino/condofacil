@@ -38,6 +38,10 @@ const CHECAGENS = [
   ['#morador.inicio', ['Novidades na vitrine', 'Bicicleta infantil aro 16']],
   ['#sindico.inicio', ['Aprovar vendedor: Paulo Ribeiro, apto 102']],
   ['#sindico.reservas', ['Plano', 'Básico', 'Intermediário', 'Avançado', 'Preços']],
+  ['#sindico.cobranca', ['Conta Asaas ativa', 'Prévia e emissão', 'Sem responsável financeiro: não será emitida', 'R$ 865,00', 'R$ 1.228,00', 'R$ 1.015,00', 'Emitir 31 cobranças']],
+  ['#sindico.cobranca.emitidas', ['Competência', 'Vencida', 'Auditoria']],
+  ['#sindico.cobranca.regua', ['30 dias após', 'Disponível no Avançado', 'Executar a régua de hoje']],
+  ['#sindico.cobranca.parametros', ['Multa por atraso (%)', 'Composição da taxa', 'Pintura da fachada']],
   ['#sindico.inicio', ['Saldo em caixa', 'R$ 48.350', 'Arrecadado em', '91%', '3 de 32', 'Despesas do mês', 'Despesa superou a receita só em julho', 'Para onde foi o dinheiro', 'Devedores', 'Helena Prado', 'Emitir cobranças de', 'Operação', 'Reservas pendentes']],
   ['#sindico.vendas', ['Salgados assados para festas', 'aprovar-vendedor-102', 'Juliana Costa · apto 104', 'Bicicleta infantil aro 16', 'Pedidos no mês']],
 ];
