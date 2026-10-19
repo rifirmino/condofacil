@@ -1,6 +1,7 @@
 import { isoDia, somarDias, momento, fmtDia } from './datas.js';
 import { vendasIniciais, perfilVenda } from './vendas/dados.js';
 import { financeiroInicial } from './cobranca/dados.js';
+import { manutencaoInicial } from './manutencao/dados.js';
 import { comAcordoInicial } from './cobranca/acordos.js';
 
 export const UNIDADES = Array.from({ length: 32 }, (_, i) => `${Math.floor(i / 4) + 1}0${(i % 4) + 1}`);
@@ -110,7 +111,7 @@ export function dadosIniciais(agora = new Date()) {
       { id: 'c5', tipo: 'urgente', titulo: 'Elevador 2 parado', texto: 'O elevador 2 está parado aguardando o técnico. Use o elevador 1 ou a escada. Avisaremos assim que voltar a funcionar.', publico: { tipo: 'todos' }, canais: [...canaisPadrao, 'sms'], fixado: false, anexo: null, publicadoEm: em(-1, 21), leituras: leramSemAna(22), reacoes: { util: ['702', '703'], duvida: [] } },
     ],
     ocorrencias: [
-      { id: 'OC-0037', categoria: 'eletrica', descricao: 'Lâmpada do hall do 5º andar queimada.', local: '5º andar', unidade: '502', anonima: false, publica: false, foto: false, status: 'resolvida', eutambem: [], linha: [
+      { id: 'OC-0037', os: 'OS-002', categoria: 'eletrica', descricao: 'Lâmpada do hall do 5º andar queimada.', local: '5º andar', unidade: '502', anonima: false, publica: false, foto: false, status: 'resolvida', eutambem: [], linha: [
         { em: em(-9, 19), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Larissa Moura' },
         { em: em(-8, 9), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
         { em: em(-8, 10), status: 'em_andamento', texto: 'Zelador vai trocar hoje à tarde', autor: 'Síndico' },
@@ -120,7 +121,7 @@ export function dadosIniciais(agora = new Date()) {
         { em: em(-6, 11), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Lucas Martins' },
         { em: em(-6, 14), status: 'fechada', texto: 'Agradecemos o elogio! Repassado ao Seu José.', autor: 'Síndico' },
       ], avaliacao: null, arquivada: false, criadaEm: em(-6, 11) },
-      { id: 'OC-0039', categoria: 'vazamento', descricao: 'Água pingando do teto da garagem, perto da vaga 12.', local: 'Garagem, vaga 12', unidade: '101', anonima: false, publica: false, foto: true, status: 'em_andamento', eutambem: [], linha: [
+      { id: 'OC-0039', os: 'OS-003', categoria: 'vazamento', descricao: 'Água pingando do teto da garagem, perto da vaga 12.', local: 'Garagem, vaga 12', unidade: '101', anonima: false, publica: false, foto: true, status: 'em_andamento', eutambem: [], linha: [
         { em: em(-3, 8), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Carla Mendes' },
         { em: em(-3, 10), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
         { em: em(-2, 9), status: 'em_andamento', texto: 'Encanador agendado para avaliar a prumada', autor: 'Síndico' },
@@ -163,6 +164,7 @@ export function dadosIniciais(agora = new Date()) {
     moradorAtual: UNIDADE_ANA,
     sacola: [],
     ...vendasIniciais(em),
+    manutencao: manutencaoInicial(em),
     plano: 'intermediario',
     financeiro: financeiroInicial(hoje, em, pessoas, UNIDADES),
   });

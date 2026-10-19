@@ -14,6 +14,7 @@ import { CASOS_COBRANCA_REGRAS } from '../casos/cobranca-regras.js';
 import { CASOS_COBRANCA_ACOES } from '../casos/cobranca-acoes.js';
 import { CASOS_ACORDOS } from '../casos/acordos.js';
 import { CASOS_NOTIFICACOES } from '../casos/notificacoes.js';
+import { CASOS_MANUTENCAO } from '../casos/manutencao.js';
 import { PERFIS, lerRota, ir, Selo, Icone } from './comum.js';
 import { TelaPortaria } from './portaria.js';
 import { TelaMorador } from './morador.js';
@@ -106,7 +107,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };
