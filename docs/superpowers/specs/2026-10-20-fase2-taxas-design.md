@@ -129,7 +129,7 @@ Todas exigem o perfil síndico (`SO_SINDICO`) e devolvem `{ estado, notificacao?
   - o reajuste de 6% em novembro arredonda por tipo e não altera as cobranças emitidas;
   - a vigência no passado dá erro;
   - a nova versão com a mesma vigência substitui a anterior;
-  - o modo fração com R$ 22.120,00 dá A R$ 650,00 e cobertura R$ 979,99;
+  - o modo fração com R$ 22.120,00 dá A R$ 650,00 e cobertura R$ 980,00;
   - duas taxas ativas no mesmo mês;
   - o rateio por fração;
   - encerrar corta só as parcelas futuras;
