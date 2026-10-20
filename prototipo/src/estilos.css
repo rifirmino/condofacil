@@ -464,3 +464,14 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 .fotos-reparo { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; max-width: 520px; }
 .faixa-urgente { margin: 0 0 12px; padding: 10px 14px; background: var(--perigo-bg); color: var(--perigo); font-weight: 600; border-left: 3px solid var(--perigo); border-radius: var(--raio); }
 .cel-abas.zelador { grid-template-columns: repeat(3, 1fr); }
+.grade-escala { display: flex; flex-direction: column; border: 1px solid var(--borda); border-radius: var(--raio); background: var(--sup); }
+.dia-escala { display: grid; grid-template-columns: minmax(110px, 160px) 1fr; gap: 6px 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--borda); }
+.dia-escala:last-child { border-bottom: 0; }
+.dia-escala.hoje { background: var(--laranja-tinta); }
+.dia-escala-data { font-weight: 600; color: var(--titulo); font-size: 13px; }
+.dia-escala-turnos { display: flex; flex-wrap: wrap; gap: 6px; }
+.turno-escala { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 2px; background: var(--sup-2); border: 1px solid var(--borda); }
+.turno-escala .btn-link { min-height: 28px; }
+.turno-escala.descoberto .btn-link { color: var(--perigo); }
+.buraco-escala { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 2px; background: var(--perigo-bg); color: var(--perigo); font-weight: 600; font-size: 13px; }
+@media (max-width: 560px) { .dia-escala { grid-template-columns: 1fr; } }

@@ -64,6 +64,11 @@ const CHECAGENS = [
   ['#zelador.compras', ['CP-001', 'Aguardando aprovação', 'Nova compra']],
   ['#zelador.caixa', ['Disponível no plano Avançado']],
   ['#portaria.hoje', ['Notificação urgente: OC-0039']],
+  ['#sindico.escala', ['Escala', 'Portaria principal', 'sem ninguém', 'Nossa Senhora Aparecida', 'buracos de cobertura', 'publicada em']],
+  ['#sindico.escala.pendencias', ['Trocas aguardando aprovação', 'Turnos descobertos']],
+  ['#sindico.escala.equipe', ['Vigilância Prisma', 'Folguista', 'Guarita da garagem']],
+  ['#sindico.escala.horas', ['Disponível no plano Avançado']],
+  ['#sindico.inicio', ['Gerar a escala de', '!Escala de porteiros']],
 ];
 
 // Só larguras de desktop: o Chrome headless impõe janela mínima maior que um celular; a largura de 390 px é medida no e2e.

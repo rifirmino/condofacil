@@ -46,6 +46,7 @@ export const ORDEM = [
   'src/ui/financeiro-sindico.js',
   'src/ui/acordos.js',
   'src/ui/manutencao-sindico.js',
+  'src/ui/escala-sindico.js',
   'src/ui/financeiro-morador.js',
   'src/ui/vendas.js',
   'src/ui/morador.js',

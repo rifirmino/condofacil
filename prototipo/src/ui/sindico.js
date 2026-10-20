@@ -12,11 +12,13 @@ import { ZELADOR } from '../manutencao/dados.js';
 import { alertasManutencao } from '../manutencao/regras.js';
 import { gerarOS } from '../manutencao/acoes.js';
 import { SManutencao } from './manutencao-sindico.js';
+import { SEscala } from './escala-sindico.js';
+import { alertasEscala } from '../escala/regras.js';
 import { isoDia, somarMes, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
 import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
-const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
-const EM_BREVE = [['Escala de porteiros', 'Intermediário'], ['Estoque, checklist e rondas', 'Avançado']];
+const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
+const EM_BREVE = [['Estoque, checklist e rondas', 'Avançado']];
 const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
 const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
 
@@ -40,7 +42,7 @@ function tipoEtiquetaComunicado(c) {
 
 export function TelaSindico(props) {
   const tela = MENU_SINDICO.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'inicio';
-  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, manutencao: SManutencao }[tela];
+  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, manutencao: SManutencao, escala: SEscala }[tela];
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
       <p class="painel-usuario"><strong>Roberto Lima</strong><small>Síndico · apto 801</small></p>
@@ -59,7 +61,7 @@ function SInicio({ estado, agora }) {
   const vendedoresPendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
   const pendCobranca = pendenciasCobranca(estado, isoDia(agora));
   const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
-  const pendOperacao = comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : [];
+  const pendOperacao = [...(comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : []), ...(liberado(estado.plano, 'escala') ? alertasEscala(estado, agora) : [])];
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
   const cartoes = [
     ['Reservas pendentes', ind.pendentes, '#sindico.reservas', ind.pendentes ? 'alerta' : 'ok', 'Aguardando sua aprovação', 'calendario'],
