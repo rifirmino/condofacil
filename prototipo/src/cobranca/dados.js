@@ -35,17 +35,53 @@ function documentoMascarado(unidade) {
   return `***.${unidade}.${String(((Number(unidade) * 7) % 900) + 100)}-**`;
 }
 
-export function itensBase(composicao, tipo, competencia) {
-  const ordinaria = composicao.ordinaria[tipo];
+// Fração ideal por tipo (convenção): 28 aptos tipo A e 4 coberturas somam 100%.
+export const FRACOES_TIPO = { A: 0.029385, cobertura: 0.044304 };
+
+// A composição é uma lista de versões com vigência; cada competência usa a mais recente que já vale.
+export function versaoEm(fin, competencia) {
+  return fin.composicao.versoes.filter((v) => v.vigencia <= competencia).sort((a, b) => a.vigencia.localeCompare(b.vigencia)).at(-1) || null;
+}
+
+export function ordinariaDe(fin, versao, unidade) {
+  const u = fin.unidades[unidade];
+  return versao.modo === 'fracao' ? Math.round(versao.orcamento * u.fracao) : versao.ordinaria[u.tipo];
+}
+
+export function fundoDe(fin, versao, unidade) {
+  return Math.round((ordinariaDe(fin, versao, unidade) * versao.fundoPct) / 100);
+}
+
+export function mensalDe(fin, versao, unidade) {
+  return ordinariaDe(fin, versao, unidade) + fundoDe(fin, versao, unidade);
+}
+
+export function fimExtra(extra) {
+  return somarMes(extra.inicio, extra.parcelas - 1);
+}
+
+export function parcelaDe(extra, competencia) {
+  const n = diferencaMeses(competencia, extra.inicio) + 1;
+  if (n < 1 || n > extra.parcelas) return null;
+  if (extra.situacao === 'encerrada' && (!extra.ultimaCompetencia || competencia > extra.ultimaCompetencia)) return null;
+  return n;
+}
+
+export function valorExtraDe(fin, extra, unidade) {
+  const porMes = extra.total / extra.parcelas;
+  return Math.round(extra.rateio === 'fracao' ? porMes * fin.unidades[unidade].fracao : porMes / Object.keys(fin.unidades).length);
+}
+
+export function itensBase(fin, unidade, competencia) {
+  const v = versaoEm(fin, competencia);
   const itens = [
-    { tipo: 'ordinaria', descricao: 'Taxa ordinária', valor: ordinaria },
-    { tipo: 'fundo', descricao: `Fundo de reserva (${composicao.fundoPct}%)`, valor: Math.round((ordinaria * composicao.fundoPct) / 100) },
+    { tipo: 'ordinaria', descricao: 'Taxa ordinária', valor: ordinariaDe(fin, v, unidade) },
+    { tipo: 'fundo', descricao: `Fundo de reserva (${v.fundoPct}%)`, valor: fundoDe(fin, v, unidade) },
   ];
-  const extra = composicao.extra;
-  const parcela = diferencaMeses(competencia, extra.inicio) + 1;
-  if (parcela >= 1 && parcela <= extra.parcelas) {
-    itens.push({ tipo: 'extra', descricao: `${extra.descricao} (parcela ${parcela}/${extra.parcelas})`, valor: Math.round(extra.total / extra.parcelas / extra.unidades) });
-  }
+  fin.composicao.extras.forEach((x) => {
+    const p = parcelaDe(x, competencia);
+    if (p) itens.push({ tipo: 'extra', descricao: `${x.descricao} (parcela ${p}/${x.parcelas})`, valor: valorExtraDe(fin, x, unidade) });
+  });
   return itens;
 }
 
@@ -53,10 +89,17 @@ export function financeiroInicial(hoje, em, pessoas, unidades) {
   const vencimentoVigente = mesmoDiaDoMes(somarDias(hoje, -9), 0);
   const vigente = vencimentoVigente.slice(0, 7);
   const proxima = somarMes(vigente, 1);
+  const inicioCv1 = somarMes(vigente, -18);
+  const inicioCv2 = somarMes(vigente, -6);
+  const mesAge = somarMes(vigente, -3);
   const composicao = {
-    ordinaria: { A: 65000, cobertura: 98000 },
-    fundoPct: 10,
-    extra: { descricao: 'Pintura da fachada', total: 4800000, parcelas: 10, inicio: somarMes(vigente, -2), unidades: 32 },
+    versoes: [
+      { id: 'CV-001', vigencia: inicioCv1, modo: 'fixo', ordinaria: { A: 61000, cobertura: 92000 }, orcamento: null, fundoPct: 10, aprovadoEm: `AGO de 30/03/${inicioCv1.slice(0, 4)}`, criadaEm: em(-560, 10), criadaPor: 'Síndico' },
+      { id: 'CV-002', vigencia: inicioCv2, modo: 'fixo', ordinaria: { A: 65000, cobertura: 98000 }, orcamento: null, fundoPct: 10, aprovadoEm: `AGO de 28/03/${inicioCv2.slice(0, 4)}, item 3`, criadaEm: em(-200, 10), criadaPor: 'Síndico' },
+    ],
+    extras: [{ id: 'TX-001', descricao: 'Pintura da fachada', total: 4800000, parcelas: 10, inicio: somarMes(vigente, -2), rateio: 'igual', aprovadoEm: `AGE de 15/${mesAge.slice(5, 7)}/${mesAge.slice(0, 4)}`, situacao: 'ativa', ultimaCompetencia: null, motivoEncerramento: null, criadaEm: em(-75, 10), encerradaEm: null }],
+    proximaVersao: 3,
+    proximaExtra: 2,
   };
   const nomes = Object.fromEntries(pessoas.map((p) => [p.unidade, p.nome]));
   const naoResidentes = new Set(pessoas.filter((p) => p.naoResidente).map((p) => p.unidade));
@@ -66,10 +109,11 @@ export function financeiroInicial(hoje, em, pessoas, unidades) {
     else if (nomes[u]) responsavel = { nome: nomes[u], relacao: naoResidentes.has(u) ? 'proprietario' : 'titular' };
     else if (RESPONSAVEIS_SEM_APP[u]) responsavel = { nome: RESPONSAVEIS_SEM_APP[u], relacao: 'proprietario' };
     if (responsavel) responsavel = { ...responsavel, documento: documentoMascarado(u), canais: ['App', 'E-mail', 'WhatsApp'] };
-    return [u, { tipo: u[0] === '8' ? 'cobertura' : 'A', responsavel }];
+    const tipo = u[0] === '8' ? 'cobertura' : 'A';
+    return [u, { tipo, fracao: FRACOES_TIPO[tipo], responsavel }];
   }));
   const novaCobranca = (unidade, competencia, vencimento, status, extras = {}) => {
-    const itens = itensBase(composicao, unidadesFinanceiro[unidade].tipo, competencia);
+    const itens = itensBase({ composicao, unidades: unidadesFinanceiro }, unidade, competencia);
     const valor = itens.reduce((soma, i) => soma + i.valor, 0);
     return { id: `CB-${competencia}-${unidade}`, unidade, competencia, vencimento, itens, valor, status, pagaEm: null, valorPago: status === 'paga' ? valor : null, forma: null, baixaManual: null, eventosAsaas: [], regua: [], substituiu: null, acordo: null, ...extras };
   };

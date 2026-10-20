@@ -86,7 +86,7 @@ export function dadosIniciais(agora = new Date()) {
   ];
 
   return comEscalaInicial(comAcordoInicial({
-    versao: 6,
+    versao: 7,
     geradoEm: hoje,
     proximoProtocolo: 44,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },

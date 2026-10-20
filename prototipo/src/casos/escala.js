@@ -61,7 +61,7 @@ export const CASOS_ESCALA = [
     rodar() {
       const e = dadosIniciais(AGORA_FASE2);
       const m = e.escala.meses['2026-10'];
-      igual([m.situacao, e.versao, e.escala.meses['2026-11']], ['publicada', 6, undefined]);
+      igual([m.situacao, e.versao, e.escala.meses['2026-11']], ['publicada', 7, undefined]);
       const at = m.turnos.find((x) => x.id === 'T-2026-10-20-guarita-07');
       igual([at.porteiro, at.motivoDescoberto, at.porteiroOriginal, at.anexo], [null, 'atestado', 'claudia', 'atestado-claudia.pdf']);
       igual(e.escala.trocas.map((x) => [x.id, x.turno, x.de, x.para, x.situacao]), [['TR-001', 'T-2026-10-22-portaria-07', 'marcos', 'paulo', 'aceita']]);

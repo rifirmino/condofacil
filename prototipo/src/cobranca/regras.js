@@ -75,7 +75,7 @@ export function previaCompetencia(estado, competencia) {
   const linhas = estado.condominio.unidades.map((unidade) => {
     const { tipo, responsavel } = fin.unidades[unidade];
     const avulsos = fin.avulsos.filter((a) => a.unidade === unidade && a.competencia === competencia).map(({ tipo: t, descricao, valor }) => ({ tipo: t, descricao, valor }));
-    const itens = ajustes[unidade] || [...itensBase(fin.composicao, tipo, competencia), ...avulsos];
+    const itens = ajustes[unidade] || [...itensBase(fin, unidade, competencia), ...avulsos];
     const bloqueada = !responsavel || !responsavel.documento;
     return { unidade, tipo, responsavel, itens, total: itens.reduce((soma, i) => soma + i.valor, 0), bloqueada, motivo: bloqueada ? 'Sem responsável financeiro' : null };
   });

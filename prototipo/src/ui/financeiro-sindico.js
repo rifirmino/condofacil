@@ -1,5 +1,5 @@
 import { html, useState } from '../vendor.js';
-import { ETAPAS_REGUA, CATEGORIAS_DESPESA, NOMES_FORMA, NOMES_RELACAO } from '../cobranca/dados.js';
+import { ETAPAS_REGUA, CATEGORIAS_DESPESA, NOMES_FORMA, NOMES_RELACAO, versaoEm } from '../cobranca/dados.js';
 import { fmtReais, fmtReaisCurto, mesCurto, mesExtenso, situacaoCobranca, valorAtualizado, previaCompetencia, proximaCompetencia, etapasNoPlano, devedores, indicadoresFinanceiros, serieReceitasDespesas, tituloSerie, rotuloCobranca } from '../cobranca/regras.js';
 import { alertasAcordos } from '../cobranca/acordos.js';
 import { emitirCompetencia, editarItemPrevia, baixaManual, cancelarEReemitir, enviarSegundaVia, executarRegua, salvarParametros } from '../cobranca/acoes.js';
@@ -338,7 +338,8 @@ function CParametros({ estado, executar }) {
   const [erro, setErro] = useState(null);
   const [mensagem, setMensagem] = useState(null);
   const completa = liberado(estado.plano, 'composicaoCompleta');
-  const c = fin.composicao;
+  const c = versaoEm(fin, fin.vigente);
+  const extra = fin.composicao.extras[0];
   const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.type === 'number' ? Number(ev.target.value) : ev.target.value });
   const alternarForma = (k) => setForm({ ...form, formas: form.formas.includes(k) ? form.formas.filter((x) => x !== k) : [...form.formas, k] });
 
@@ -370,7 +371,7 @@ function CParametros({ estado, executar }) {
       <dt>${completa ? 'Ordinária · apto tipo A' : 'Valor fixo · apto tipo A'}</dt><dd>${fmtReais(c.ordinaria.A)}</dd>
       <dt>${completa ? 'Ordinária · cobertura' : 'Valor fixo · cobertura'}</dt><dd>${fmtReais(c.ordinaria.cobertura)}</dd>
       ${completa && html`<dt>Fundo de reserva</dt><dd>${c.fundoPct}% da ordinária</dd>`}
-      ${completa && html`<dt>Taxa extra</dt><dd>${c.extra.descricao}: ${fmtReais(c.extra.total)} em ${c.extra.parcelas}x (${fmtReais(Math.round(c.extra.total / c.extra.parcelas / c.extra.unidades))} por unidade)</dd>`}
+      ${completa && html`<dt>Taxa extra</dt><dd>${extra.descricao}: ${fmtReais(extra.total)} em ${extra.parcelas}x</dd>`}
     </dl>
     ${!completa && html`<${Bloqueado} estado=${estado} recurso="composicaoCompleta" titulo="Fundo de reserva e taxa extra parcelada" />`}
   </div>`;
