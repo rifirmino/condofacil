@@ -217,7 +217,7 @@ turno = { id: 'T-2026-10-22-portaria-07', posto, porteiro: id|null, inicio, fim,
   - "Só o porteiro do turno pode propor a troca"
   - "Este colega já tem turno nesse horário"
   - "Só o colega convidado pode aceitar"
-- **Falta:** "Escolha o turno e o motivo"
+- **Falta:** "Escolha o turno e o motivo" e "Só o porteiro do turno pode registrar a falta"
 - **Escala:**
   - "A escala de novembro já foi gerada" (com o nome do mês)
   - "Gere a escala antes de publicar"
