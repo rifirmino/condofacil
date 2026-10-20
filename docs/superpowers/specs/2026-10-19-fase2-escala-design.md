@@ -130,7 +130,7 @@ turno = { id: 'T-2026-10-22-portaria-07', posto, porteiro: id|null, inicio, fim,
   - "Gerar a escala de novembro" quando M+1 não existe;
   - "Escala de novembro em rascunho: publicar";
   - "Troca aguardando aprovação: Marcos → Paulo, 22/10 7h";
-  - "Turno descoberto: Guarita da garagem 20/10 7h–15h (atestado da Cláudia)", para cada descoberto com `fim > agora` nos próximos 7 dias.
+  - "Turno descoberto: Guarita da garagem 20/10 7h–15h · atestado de Cláudia", para cada descoberto com `fim > agora` nos próximos 7 dias.
 
 ## Ações (`src/escala/acoes.js`)
 
