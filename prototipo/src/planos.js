@@ -21,6 +21,9 @@ const RECURSOS_PLANO = {
   indicadorAtendimento: 'avancado',
   cotacoes: 'avancado',
   caixaPequeno: 'avancado',
+  escala: 'intermediario',
+  checkin: 'avancado',
+  relatorioHoras: 'avancado',
 };
 
 const ORDEM_PLANOS = ['basico', 'intermediario', 'avancado'];
