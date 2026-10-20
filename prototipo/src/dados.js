@@ -3,6 +3,7 @@ import { vendasIniciais, perfilVenda } from './vendas/dados.js';
 import { financeiroInicial } from './cobranca/dados.js';
 import { manutencaoInicial } from './manutencao/dados.js';
 import { comAcordoInicial } from './cobranca/acordos.js';
+import { comEscalaInicial } from './escala/acoes.js';
 
 export const UNIDADES = Array.from({ length: 32 }, (_, i) => `${Math.floor(i / 4) + 1}0${(i % 4) + 1}`);
 export const UNIDADE_ANA = '302';
@@ -84,8 +85,8 @@ export function dadosIniciais(agora = new Date()) {
     { id: 'p704', nome: 'Vicente Moraes', unidade: '704', naoResidente: true, ...perfilVenda('704', em) },
   ];
 
-  return comAcordoInicial({
-    versao: 5,
+  return comEscalaInicial(comAcordoInicial({
+    versao: 6,
     geradoEm: hoje,
     proximoProtocolo: 44,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
@@ -167,5 +168,5 @@ export function dadosIniciais(agora = new Date()) {
     manutencao: manutencaoInicial(em),
     plano: 'intermediario',
     financeiro: financeiroInicial(hoje, em, pessoas, UNIDADES),
-  });
+  }), agora);
 }

@@ -25,6 +25,7 @@ export const ORDEM = [
   'src/manutencao/acoes.js',
   'src/escala/dados.js',
   'src/escala/regras.js',
+  'src/escala/acoes.js',
   'src/vendas/regras.js',
   'src/vendas/acoes.js',
   'src/casos/afirmar.js',
