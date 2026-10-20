@@ -1,13 +1,15 @@
 import { html, useState } from '../vendor.js';
-import { ETAPAS_REGUA, CATEGORIAS_DESPESA, NOMES_FORMA, NOMES_RELACAO, versaoEm } from '../cobranca/dados.js';
+import { ETAPAS_REGUA, CATEGORIAS_DESPESA, NOMES_FORMA, NOMES_RELACAO } from '../cobranca/dados.js';
 import { fmtReais, fmtReaisCurto, mesCurto, mesExtenso, situacaoCobranca, valorAtualizado, previaCompetencia, proximaCompetencia, etapasNoPlano, devedores, indicadoresFinanceiros, serieReceitasDespesas, tituloSerie, rotuloCobranca } from '../cobranca/regras.js';
 import { alertasAcordos } from '../cobranca/acordos.js';
+import { alertasComposicao } from '../cobranca/composicao.js';
 import { emitirCompetencia, editarItemPrevia, baixaManual, cancelarEReemitir, enviarSegundaVia, executarRegua, salvarParametros } from '../cobranca/acoes.js';
 import { lerPreco } from '../vendas/regras.js';
 import { PLANOS, liberado, planoMinimo, mensalidade } from '../planos.js';
 import { isoDia, nomeMes, fmtDataCurta, fmtDataHora } from '../datas.js';
 import { Campo, Erro, Sucesso, Vazio, Etiqueta, QuadroIcone } from './comum.js';
 import { CAcordos } from './acordos.js';
+import { CTaxas } from './composicao.js';
 
 const ETQ_COBRANCA = { aberta: 'info', vencida: 'perigo', paga: 'ok', cancelada: 'neutro' };
 const NOMES_SITUACAO_COBRANCA = { aberta: 'Em aberto', vencida: 'Vencida', paga: 'Paga', cancelada: 'Cancelada' };
@@ -33,7 +35,7 @@ export function pendenciasCobranca(estado, hoje) {
   const itens = [];
   if (!fin.emitidas.includes(proxima)) itens.push({ chave: 'emitir', texto: `Emitir cobranças de ${mesExtenso(proxima)} (fechamento dia ${fin.parametros.diaFechamento})`, href: '#sindico.cobranca.previa' });
   for (const d of devedores(estado, hoje).filter((x) => x.dias >= 60)) itens.push({ chave: `juridico-${d.unidade}`, texto: `${d.unidade}: débito há mais de 60 dias, avaliar cobrança jurídica`, href: '#sindico.cobranca.emitidas' });
-  itens.push(...alertasAcordos(estado, hoje));
+  itens.push(...alertasAcordos(estado, hoje), ...alertasComposicao(estado));
   return itens;
 }
 
@@ -129,14 +131,14 @@ export function PainelFinanceiro({ estado, agora }) {
   </div>`;
 }
 
-const ABAS_COBRANCA = [['previa', 'Prévia e emissão'], ['emitidas', 'Cobranças emitidas'], ['acordos', 'Acordos'], ['regua', 'Régua'], ['parametros', 'Parâmetros']];
+const ABAS_COBRANCA = [['previa', 'Prévia e emissão'], ['emitidas', 'Cobranças emitidas'], ['acordos', 'Acordos'], ['regua', 'Régua'], ['taxas', 'Taxa e reajustes'], ['parametros', 'Parâmetros']];
 const FILTROS_COBRANCA = [['todas', 'Todas'], ['aberta', 'Em aberto'], ['vencida', 'Vencidas'], ['paga', 'Pagas'], ['cancelada', 'Canceladas']];
 
 export function SCobranca(props) {
   const idRota = props.rota.id || '';
   const deAcordo = idRota.startsWith('novoacordo') || idRota.startsWith('AC-');
   const aba = deAcordo ? 'acordos' : ABAS_COBRANCA.some(([id]) => id === idRota) ? idRota : 'previa';
-  const Conteudo = { previa: CPrevia, emitidas: CEmitidas, acordos: CAcordos, regua: CRegua, parametros: CParametros }[aba];
+  const Conteudo = { previa: CPrevia, emitidas: CEmitidas, acordos: CAcordos, regua: CRegua, taxas: CTaxas, parametros: CParametros }[aba];
   return html`<section>
     <h1>Cobrança</h1>
     <p class="faixa-asaas">Conta Asaas ativa · subconta do condomínio. O dinheiro cai direto na conta do condomínio; o CondoFácil só organiza emissão, baixa e relatórios.</p>
@@ -337,9 +339,6 @@ function CParametros({ estado, executar }) {
   const [form, setForm] = useState({ ...fin.parametros, formas: [...fin.parametros.formas] });
   const [erro, setErro] = useState(null);
   const [mensagem, setMensagem] = useState(null);
-  const completa = liberado(estado.plano, 'composicaoCompleta');
-  const c = versaoEm(fin, fin.vigente);
-  const extra = fin.composicao.extras[0];
   const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.type === 'number' ? Number(ev.target.value) : ev.target.value });
   const alternarForma = (k) => setForm({ ...form, formas: form.formas.includes(k) ? form.formas.filter((x) => x !== k) : [...form.formas, k] });
 
@@ -366,13 +365,6 @@ function CParametros({ estado, executar }) {
     <${Erro} texto=${erro} />
     <${Sucesso} texto=${mensagem} />
     <button type="button" class="btn primario" onClick=${salvar}>Salvar parâmetros</button>
-    <h2>Composição da taxa</h2>
-    <dl class="resumo">
-      <dt>${completa ? 'Ordinária · apto tipo A' : 'Valor fixo · apto tipo A'}</dt><dd>${fmtReais(c.ordinaria.A)}</dd>
-      <dt>${completa ? 'Ordinária · cobertura' : 'Valor fixo · cobertura'}</dt><dd>${fmtReais(c.ordinaria.cobertura)}</dd>
-      ${completa && html`<dt>Fundo de reserva</dt><dd>${c.fundoPct}% da ordinária</dd>`}
-      ${completa && html`<dt>Taxa extra</dt><dd>${extra.descricao}: ${fmtReais(extra.total)} em ${extra.parcelas}x</dd>`}
-    </dl>
-    ${!completa && html`<${Bloqueado} estado=${estado} recurso="composicaoCompleta" titulo="Fundo de reserva e taxa extra parcelada" />`}
+    <small class="sub">Valores da taxa, reajustes e taxas extras ficam na aba <a href="#sindico.cobranca.taxas">Taxa e reajustes</a>.</small>
   </div>`;
 }

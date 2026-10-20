@@ -10,6 +10,8 @@ export const PRECO_BASE = { faixa: '31 a 70 unidades', implantacao: 39900, porUn
 const RECURSOS_PLANO = {
   cobranca: 'basico',
   composicaoCompleta: 'intermediario',
+  fracaoIdeal: 'intermediario',
+  taxaExtra: 'intermediario',
   reguaCompleta: 'intermediario',
   notificacaoFormal: 'avancado',
   dashboardCompleto: 'intermediario',

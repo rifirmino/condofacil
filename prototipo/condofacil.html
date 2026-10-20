@@ -584,6 +584,8 @@ const PRECO_BASE = { faixa: '31 a 70 unidades', implantacao: 39900, porUnidade: 
 const RECURSOS_PLANO = {
   cobranca: 'basico',
   composicaoCompleta: 'intermediario',
+  fracaoIdeal: 'intermediario',
+  taxaExtra: 'intermediario',
   reguaCompleta: 'intermediario',
   notificacaoFormal: 'avancado',
   dashboardCompleto: 'intermediario',
@@ -652,17 +654,53 @@ function documentoMascarado(unidade) {
   return `***.${unidade}.${String(((Number(unidade) * 7) % 900) + 100)}-**`;
 }
 
-function itensBase(composicao, tipo, competencia) {
-  const ordinaria = composicao.ordinaria[tipo];
+// Fração ideal por tipo (convenção): 28 aptos tipo A e 4 coberturas somam 100%.
+const FRACOES_TIPO = { A: 0.029385, cobertura: 0.044304 };
+
+// A composição é uma lista de versões com vigência; cada competência usa a mais recente que já vale.
+function versaoEm(fin, competencia) {
+  return fin.composicao.versoes.filter((v) => v.vigencia <= competencia).sort((a, b) => a.vigencia.localeCompare(b.vigencia)).at(-1) || null;
+}
+
+function ordinariaDe(fin, versao, unidade) {
+  const u = fin.unidades[unidade];
+  return versao.modo === 'fracao' ? Math.round(versao.orcamento * u.fracao) : versao.ordinaria[u.tipo];
+}
+
+function fundoDe(fin, versao, unidade) {
+  return Math.round((ordinariaDe(fin, versao, unidade) * versao.fundoPct) / 100);
+}
+
+function mensalDe(fin, versao, unidade) {
+  return ordinariaDe(fin, versao, unidade) + fundoDe(fin, versao, unidade);
+}
+
+function fimExtra(extra) {
+  return somarMes(extra.inicio, extra.parcelas - 1);
+}
+
+function parcelaDe(extra, competencia) {
+  const n = diferencaMeses(competencia, extra.inicio) + 1;
+  if (n < 1 || n > extra.parcelas) return null;
+  if (extra.situacao === 'encerrada' && (!extra.ultimaCompetencia || competencia > extra.ultimaCompetencia)) return null;
+  return n;
+}
+
+function valorExtraDe(fin, extra, unidade) {
+  const porMes = extra.total / extra.parcelas;
+  return Math.round(extra.rateio === 'fracao' ? porMes * fin.unidades[unidade].fracao : porMes / Object.keys(fin.unidades).length);
+}
+
+function itensBase(fin, unidade, competencia) {
+  const v = versaoEm(fin, competencia);
   const itens = [
-    { tipo: 'ordinaria', descricao: 'Taxa ordinária', valor: ordinaria },
-    { tipo: 'fundo', descricao: `Fundo de reserva (${composicao.fundoPct}%)`, valor: Math.round((ordinaria * composicao.fundoPct) / 100) },
+    { tipo: 'ordinaria', descricao: 'Taxa ordinária', valor: ordinariaDe(fin, v, unidade) },
+    { tipo: 'fundo', descricao: `Fundo de reserva (${v.fundoPct}%)`, valor: fundoDe(fin, v, unidade) },
   ];
-  const extra = composicao.extra;
-  const parcela = diferencaMeses(competencia, extra.inicio) + 1;
-  if (parcela >= 1 && parcela <= extra.parcelas) {
-    itens.push({ tipo: 'extra', descricao: `${extra.descricao} (parcela ${parcela}/${extra.parcelas})`, valor: Math.round(extra.total / extra.parcelas / extra.unidades) });
-  }
+  fin.composicao.extras.forEach((x) => {
+    const p = parcelaDe(x, competencia);
+    if (p) itens.push({ tipo: 'extra', descricao: `${x.descricao} (parcela ${p}/${x.parcelas})`, valor: valorExtraDe(fin, x, unidade) });
+  });
   return itens;
 }
 
@@ -670,10 +708,17 @@ function financeiroInicial(hoje, em, pessoas, unidades) {
   const vencimentoVigente = mesmoDiaDoMes(somarDias(hoje, -9), 0);
   const vigente = vencimentoVigente.slice(0, 7);
   const proxima = somarMes(vigente, 1);
+  const inicioCv1 = somarMes(vigente, -18);
+  const inicioCv2 = somarMes(vigente, -6);
+  const mesAge = somarMes(vigente, -3);
   const composicao = {
-    ordinaria: { A: 65000, cobertura: 98000 },
-    fundoPct: 10,
-    extra: { descricao: 'Pintura da fachada', total: 4800000, parcelas: 10, inicio: somarMes(vigente, -2), unidades: 32 },
+    versoes: [
+      { id: 'CV-001', vigencia: inicioCv1, modo: 'fixo', ordinaria: { A: 61000, cobertura: 92000 }, orcamento: null, fundoPct: 10, aprovadoEm: `AGO de 30/03/${inicioCv1.slice(0, 4)}`, criadaEm: em(-560, 10), criadaPor: 'Síndico' },
+      { id: 'CV-002', vigencia: inicioCv2, modo: 'fixo', ordinaria: { A: 65000, cobertura: 98000 }, orcamento: null, fundoPct: 10, aprovadoEm: `AGO de 28/03/${inicioCv2.slice(0, 4)}, item 3`, criadaEm: em(-200, 10), criadaPor: 'Síndico' },
+    ],
+    extras: [{ id: 'TX-001', descricao: 'Pintura da fachada', total: 4800000, parcelas: 10, inicio: somarMes(vigente, -2), rateio: 'igual', aprovadoEm: `AGE de 15/${mesAge.slice(5, 7)}/${mesAge.slice(0, 4)}`, situacao: 'ativa', ultimaCompetencia: null, motivoEncerramento: null, criadaEm: em(-75, 10), encerradaEm: null }],
+    proximaVersao: 3,
+    proximaExtra: 2,
   };
   const nomes = Object.fromEntries(pessoas.map((p) => [p.unidade, p.nome]));
   const naoResidentes = new Set(pessoas.filter((p) => p.naoResidente).map((p) => p.unidade));
@@ -683,10 +728,11 @@ function financeiroInicial(hoje, em, pessoas, unidades) {
     else if (nomes[u]) responsavel = { nome: nomes[u], relacao: naoResidentes.has(u) ? 'proprietario' : 'titular' };
     else if (RESPONSAVEIS_SEM_APP[u]) responsavel = { nome: RESPONSAVEIS_SEM_APP[u], relacao: 'proprietario' };
     if (responsavel) responsavel = { ...responsavel, documento: documentoMascarado(u), canais: ['App', 'E-mail', 'WhatsApp'] };
-    return [u, { tipo: u[0] === '8' ? 'cobertura' : 'A', responsavel }];
+    const tipo = u[0] === '8' ? 'cobertura' : 'A';
+    return [u, { tipo, fracao: FRACOES_TIPO[tipo], responsavel }];
   }));
   const novaCobranca = (unidade, competencia, vencimento, status, extras = {}) => {
-    const itens = itensBase(composicao, unidadesFinanceiro[unidade].tipo, competencia);
+    const itens = itensBase({ composicao, unidades: unidadesFinanceiro }, unidade, competencia);
     const valor = itens.reduce((soma, i) => soma + i.valor, 0);
     return { id: `CB-${competencia}-${unidade}`, unidade, competencia, vencimento, itens, valor, status, pagaEm: null, valorPago: status === 'paga' ? valor : null, forma: null, baixaManual: null, eventosAsaas: [], regua: [], substituiu: null, acordo: null, ...extras };
   };
@@ -803,7 +849,7 @@ function previaCompetencia(estado, competencia) {
   const linhas = estado.condominio.unidades.map((unidade) => {
     const { tipo, responsavel } = fin.unidades[unidade];
     const avulsos = fin.avulsos.filter((a) => a.unidade === unidade && a.competencia === competencia).map(({ tipo: t, descricao, valor }) => ({ tipo: t, descricao, valor }));
-    const itens = ajustes[unidade] || [...itensBase(fin.composicao, tipo, competencia), ...avulsos];
+    const itens = ajustes[unidade] || [...itensBase(fin, unidade, competencia), ...avulsos];
     const bloqueada = !responsavel || !responsavel.documento;
     return { unidade, tipo, responsavel, itens, total: itens.reduce((soma, i) => soma + i.valor, 0), bloqueada, motivo: bloqueada ? 'Sem responsável financeiro' : null };
   });
@@ -889,6 +935,124 @@ function tituloSerie(serie) {
 
 function podeOperar(perfil) {
   return perfil === 'sindico';
+}
+
+// ---- src/cobranca/composicao.js ----
+
+// Reajustes e taxas extras: montagem de uma nova versão, simulação do impacto e o que muda para cada unidade.
+const NOMES_TIPO_UNIDADE = { A: 'Apto tipo A', cobertura: 'Cobertura' };
+const NOMES_MODO = { fixo: 'Valor fixo por tipo', fracao: 'Rateio por fração ideal' };
+const NOMES_RATEIO = { igual: 'Dividido igual entre as unidades', fracao: 'Por fração ideal' };
+const MSG_ATA = 'Informe a ata ou data da assembleia';
+const MSG_VALORES = 'Informe um percentual ou valores válidos';
+const DIAS_AVISO_ENCERRADA = 60;
+
+function primeiraNaoEmitida(fin) {
+  return somarMes([...fin.emitidas].sort().at(-1), 1);
+}
+
+function versaoAnterior(fin, vigencia) {
+  return fin.composicao.versoes.filter((v) => v.vigencia < vigencia).sort((a, b) => a.vigencia.localeCompare(b.vigencia)).at(-1) || null;
+}
+
+function fmtFracao(fracao) {
+  return `${(fracao * 100).toFixed(4).replace('.', ',')}%`;
+}
+
+function fmtVariacao(pct) {
+  return `${pct >= 0 ? '+' : '−'}${Math.abs(pct).toFixed(1).replace('.', ',')}%`;
+}
+
+function unidadeModelo(fin, tipo) {
+  return Object.keys(fin.unidades).find((u) => fin.unidades[u].tipo === tipo);
+}
+
+function montarVersao(fin, dados) {
+  const minimo = primeiraNaoEmitida(fin);
+  if (!dados.vigencia || dados.vigencia < minimo) return { erro: `A vigência deve ser a partir de ${nomeMes(minimo)}` };
+  const base = versaoAnterior(fin, dados.vigencia);
+  const modo = dados.modo || base.modo;
+  const fundoPct = dados.fundoPct === undefined || dados.fundoPct === '' ? base.fundoPct : Number(dados.fundoPct);
+  if (!Number.isFinite(fundoPct) || fundoPct < 0 || fundoPct > 30) return { erro: 'O fundo de reserva deve ser de 0% a 30%' };
+  let ordinaria = null;
+  let orcamento = null;
+  if (dados.forma === 'percentual') {
+    if (modo !== base.modo) return { erro: 'Ao trocar o modo, informe os valores' };
+    const pct = String(dados.pct ?? '').trim() === '' ? NaN : Number(dados.pct);
+    if (!Number.isFinite(pct) || pct < -50) return { erro: MSG_VALORES };
+    const aplicar = (v) => Math.round(v * (1 + pct / 100));
+    if (modo === 'fixo') ordinaria = { A: aplicar(base.ordinaria.A), cobertura: aplicar(base.ordinaria.cobertura) };
+    else orcamento = aplicar(base.orcamento);
+  } else if (modo === 'fixo') {
+    const o = dados.ordinaria || {};
+    if (!(o.A > 0 && o.cobertura > 0)) return { erro: MSG_VALORES };
+    ordinaria = { A: Math.round(o.A), cobertura: Math.round(o.cobertura) };
+  } else {
+    if (!(dados.orcamento > 0)) return { erro: MSG_VALORES };
+    orcamento = Math.round(dados.orcamento);
+  }
+  return { versao: { vigencia: dados.vigencia, modo, ordinaria, orcamento, fundoPct } };
+}
+
+function simularComposicao(fin, nova) {
+  const antes = versaoAnterior(fin, nova.vigencia);
+  const tipos = Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => {
+    const u = unidadeModelo(fin, tipo);
+    const a = mensalDe(fin, antes, u);
+    const d = mensalDe(fin, nova, u);
+    return { tipo, antes: a, depois: d, diferenca: d - a, pct: a ? ((d - a) / a) * 100 : 0 };
+  });
+  const soma = (v) => Object.keys(fin.unidades).reduce((s, u) => s + mensalDe(fin, v, u), 0);
+  return { tipos, arrecadacaoAntes: soma(antes), arrecadacaoDepois: soma(nova) };
+}
+
+function resumoVersao(fin, v) {
+  const valores = Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => `${NOMES_TIPO_UNIDADE[tipo]} ${fmtReais(ordinariaDe(fin, v, unidadeModelo(fin, tipo)))}`).join(' · ');
+  return `${v.modo === 'fracao' ? `Orçamento ${fmtReais(v.orcamento)}/mês · ` : ''}${valores} · fundo ${v.fundoPct}%`;
+}
+
+function textoValoresVersao(fin, v) {
+  return Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => {
+    const u = unidadeModelo(fin, tipo);
+    return `${NOMES_TIPO_UNIDADE[tipo]}: ${fmtReais(mensalDe(fin, v, u))} por mês (taxa ordinária ${fmtReais(ordinariaDe(fin, v, u))} + fundo de reserva ${fmtReais(fundoDe(fin, v, u))})`;
+  }).join('\n');
+}
+
+function valorPorTipoExtra(fin, extra) {
+  return Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => ({ tipo, valor: valorExtraDe(fin, extra, unidadeModelo(fin, tipo)) }));
+}
+
+function versoesAgendadas(fin) {
+  const p = primeiraNaoEmitida(fin);
+  return fin.composicao.versoes.filter((v) => v.vigencia >= p).sort((a, b) => a.vigencia.localeCompare(b.vigencia));
+}
+
+function versaoVigente(fin) {
+  return versaoEm(fin, somarMes(primeiraNaoEmitida(fin), -1));
+}
+
+function mudancasDaUnidade(estado, unidade, hoje) {
+  const fin = estado.financeiro;
+  const p = primeiraNaoEmitida(fin);
+  const linhas = versoesAgendadas(fin).map((v) => {
+    const antes = mensalDe(fin, versaoAnterior(fin, v.vigencia), unidade);
+    const depois = mensalDe(fin, v, unidade);
+    return { chave: v.id, titulo: 'Reajuste da taxa', texto: `A partir de ${nomeMes(v.vigencia)}: de ${fmtReais(antes)} para ${fmtReais(depois)} (${fmtVariacao(((depois - antes) / antes) * 100)})`, detalhe: `Aprovado em: ${v.aprovadoEm}` };
+  });
+  for (const x of fin.composicao.extras) {
+    if (x.situacao === 'ativa' && fimExtra(x) >= p) {
+      const fracao = x.rateio === 'fracao' ? ` (fração ${fmtFracao(fin.unidades[unidade].fracao)})` : '';
+      linhas.push({ chave: x.id, titulo: 'Taxa extra', texto: `${x.descricao}: ${fmtReais(valorExtraDe(fin, x, unidade))} por mês em ${x.parcelas} parcelas, de ${nomeMes(x.inicio)} a ${nomeMes(fimExtra(x))}${fracao}`, detalhe: `Aprovado em: ${x.aprovadoEm}` });
+    } else if (x.situacao === 'encerrada' && diferencaDias(hoje, x.encerradaEm.slice(0, 10)) <= DIAS_AVISO_ENCERRADA) {
+      const texto = x.ultimaCompetencia ? `A taxa ${x.descricao} foi encerrada; a última parcela foi a de ${nomeMes(x.ultimaCompetencia)}` : `A taxa ${x.descricao} foi cancelada antes da primeira parcela`;
+      linhas.push({ chave: x.id, titulo: 'Taxa extra encerrada', texto, detalhe: x.motivoEncerramento });
+    }
+  }
+  return linhas;
+}
+
+function alertasComposicao(estado) {
+  return versoesAgendadas(estado.financeiro).map((v) => ({ chave: `reajuste-${v.id}`, href: '#sindico.cobranca.taxas', texto: `Reajuste agendado para ${nomeMes(v.vigencia)} · confira a prévia antes de emitir` }));
 }
 
 // ---- src/cobranca/acoes.js ----
@@ -1404,7 +1568,7 @@ function dadosIniciais(agora = new Date()) {
   ];
 
   return comEscalaInicial(comAcordoInicial({
-    versao: 6,
+    versao: 7,
     geradoEm: hoje,
     proximoProtocolo: 44,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
@@ -1996,6 +2160,118 @@ function arquivarComJustificativa(estado, id, motivo, perfil, agora) {
   if (!texto) return erroNotif(estado, 'Informe o motivo do arquivamento');
   if (!estado.ocorrencias.some((o) => o.id === id)) return erroNotif(estado, 'Ocorrência não encontrada');
   return { estado: comEntrada(estado, id, { arquivada: true, motivoArquivamento: texto }, { em: agora.toISOString(), status: null, texto: `Arquivada: ${texto}`, autor: 'Síndico' }) };
+}
+
+// ---- src/cobranca/acoes-composicao.js ----
+
+// Reajuste da taxa e taxas extras: só o síndico, sempre com a ata, avisando os responsáveis financeiros.
+function erroTaxa(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function responsaveisAvisados(fin) {
+  return Object.values(fin.unidades).filter((u) => u.responsavel).length;
+}
+
+// Ajustes manuais da prévia guardam a lista inteira de itens: a partir da mudança, eles ficariam com valores velhos.
+function semAjustesDesde(fin, desde) {
+  let desfeitos = 0;
+  const ajustesPrevia = {};
+  for (const [competencia, porUnidade] of Object.entries(fin.ajustesPrevia)) {
+    if (competencia >= desde) desfeitos += Object.keys(porUnidade).length;
+    else ajustesPrevia[competencia] = porUnidade;
+  }
+  return { ajustesPrevia, desfeitos };
+}
+
+function comComunicado(estado, publicar, titulo, texto, agora) {
+  if (!publicar) return estado;
+  return publicarComunicado(estado, { tipo: 'assembleia', titulo, texto, publico: { tipo: 'todos' }, canais: ['push', 'email'] }, agora).estado;
+}
+
+function notificacaoTaxa(fin, texto, publicar) {
+  return { canal: 'App + e-mail + WhatsApp', para: `${responsaveisAvisados(fin)} responsáveis`, texto: `${texto} avisado${publicar ? ' e publicado no mural' : ''}` };
+}
+
+function novaComposicao(estado, dados, perfil, agora) {
+  if (!podeOperar(perfil)) return erroTaxa(estado, SO_SINDICO);
+  const aprovadoEm = String(dados.aprovadoEm || '').trim();
+  if (!aprovadoEm) return erroTaxa(estado, MSG_ATA);
+  const fin = estado.financeiro;
+  const montada = montarVersao(fin, dados);
+  if (montada.erro) return erroTaxa(estado, montada.erro);
+  const versao = { id: `CV-${String(fin.composicao.proximaVersao).padStart(3, '0')}`, ...montada.versao, aprovadoEm, criadaEm: agora.toISOString(), criadaPor: 'Síndico' };
+  const { ajustesPrevia, desfeitos } = semAjustesDesde(fin, versao.vigencia);
+  const publicar = dados.publicar !== false;
+  const composicao = { ...fin.composicao, versoes: [...fin.composicao.versoes.filter((v) => v.vigencia !== versao.vigencia), versao], proximaVersao: fin.composicao.proximaVersao + 1 };
+  let novo = comFinanceiro(estado, { composicao, ajustesPrevia, auditoria: comAuditoria(estado, agora, 'Reajuste da taxa', `${nomeMes(versao.vigencia)} · ${resumoVersao(fin, versao)} · ${aprovadoEm}`) });
+  const texto = `A partir de ${nomeMes(versao.vigencia)}, a taxa condominial passa a ser:\n${textoValoresVersao(novo.financeiro, versao)}\n\nAprovado em: ${aprovadoEm}.`;
+  novo = comComunicado(novo, publicar, `Reajuste da taxa condominial a partir de ${nomeMes(versao.vigencia)}`, texto, agora);
+  return { estado: novo, id: versao.id, desfeitos, notificacao: notificacaoTaxa(fin, `Reajuste a partir de ${nomeMes(versao.vigencia)}`, publicar) };
+}
+
+function cancelarComposicao(estado, id, perfil, agora) {
+  if (!podeOperar(perfil)) return erroTaxa(estado, SO_SINDICO);
+  const fin = estado.financeiro;
+  const versao = versoesAgendadas(fin).find((v) => v.id === id);
+  if (!versao) return erroTaxa(estado, 'Esta competência já foi emitida');
+  return { estado: comFinanceiro(estado, { composicao: { ...fin.composicao, versoes: fin.composicao.versoes.filter((v) => v.id !== id) }, auditoria: comAuditoria(estado, agora, 'Reajuste cancelado', `${versao.id} · ${nomeMes(versao.vigencia)}`) }) };
+}
+
+function montarTaxaExtra(fin, dados) {
+  const minimo = primeiraNaoEmitida(fin);
+  const descricao = String(dados.descricao || '').trim();
+  const parcelas = Number(dados.parcelas);
+  if (!descricao) return { erro: 'Informe a descrição' };
+  if (!(dados.total > 0)) return { erro: 'Informe o valor total' };
+  if (!Number.isInteger(parcelas) || parcelas < 1 || parcelas > 60) return { erro: 'As parcelas devem ser de 1 a 60' };
+  if (!dados.inicio || dados.inicio < minimo) return { erro: `O início deve ser a partir de ${nomeMes(minimo)}` };
+  return { extra: { descricao, total: Math.round(dados.total), parcelas, inicio: dados.inicio, rateio: dados.rateio === 'fracao' ? 'fracao' : 'igual' } };
+}
+
+function criarTaxaExtra(estado, dados, perfil, agora) {
+  if (!podeOperar(perfil)) return erroTaxa(estado, SO_SINDICO);
+  const fin = estado.financeiro;
+  const montada = montarTaxaExtra(fin, dados);
+  if (montada.erro) return erroTaxa(estado, montada.erro);
+  const aprovadoEm = String(dados.aprovadoEm || '').trim();
+  if (!aprovadoEm) return erroTaxa(estado, MSG_ATA);
+  const extra = { id: `TX-${String(fin.composicao.proximaExtra).padStart(3, '0')}`, ...montada.extra, aprovadoEm, situacao: 'ativa', ultimaCompetencia: null, motivoEncerramento: null, criadaEm: agora.toISOString(), encerradaEm: null };
+  const { ajustesPrevia, desfeitos } = semAjustesDesde(fin, extra.inicio);
+  const publicar = dados.publicar !== false;
+  const periodo = `${nomeMes(extra.inicio)} a ${nomeMes(fimExtra(extra))}`;
+  let novo = comFinanceiro(estado, {
+    composicao: { ...fin.composicao, extras: [...fin.composicao.extras, extra], proximaExtra: fin.composicao.proximaExtra + 1 },
+    ajustesPrevia,
+    auditoria: comAuditoria(estado, agora, 'Taxa extra criada', `${extra.id} · ${extra.descricao} · ${fmtReais(extra.total)} em ${extra.parcelas}x · ${aprovadoEm}`),
+  });
+  const valores = valorPorTipoExtra(novo.financeiro, extra).map((v) => `${NOMES_TIPO_UNIDADE[v.tipo]}: ${fmtReais(v.valor)} por parcela`).join('\n');
+  const texto = `Taxa extra aprovada: ${extra.descricao}, ${fmtReais(extra.total)} em ${extra.parcelas} parcelas, de ${periodo}${extra.rateio === 'fracao' ? ', rateada por fração ideal' : ''}.\n${valores}\n\nAprovado em: ${aprovadoEm}.`;
+  novo = comComunicado(novo, publicar, `Taxa extra: ${extra.descricao}`, texto, agora);
+  return { estado: novo, id: extra.id, desfeitos, notificacao: notificacaoTaxa(fin, `Taxa extra ${extra.descricao}`, publicar) };
+}
+
+function encerrarTaxaExtra(estado, id, motivo, perfil, agora) {
+  if (!podeOperar(perfil)) return erroTaxa(estado, SO_SINDICO);
+  const fin = estado.financeiro;
+  const extra = fin.composicao.extras.find((x) => x.id === id);
+  if (!extra || extra.situacao !== 'ativa') return erroTaxa(estado, 'Só taxas ativas podem ser encerradas');
+  const texto = String(motivo || '').trim();
+  if (!texto) return erroTaxa(estado, 'Informe a ata ou o motivo');
+  const ultimaEmitida = somarMes(primeiraNaoEmitida(fin), -1);
+  const cobradas = [...fin.emitidas].sort().filter((c) => c <= ultimaEmitida && parcelaDe(extra, c));
+  const ultimaCompetencia = cobradas.at(-1) || null;
+  const encerrada = { ...extra, situacao: 'encerrada', ultimaCompetencia, motivoEncerramento: texto, encerradaEm: agora.toISOString() };
+  const { ajustesPrevia, desfeitos } = semAjustesDesde(fin, primeiraNaoEmitida(fin));
+  return {
+    estado: comFinanceiro(estado, {
+      composicao: { ...fin.composicao, extras: fin.composicao.extras.map((x) => (x.id === id ? encerrada : x)) },
+      ajustesPrevia,
+      auditoria: comAuditoria(estado, agora, 'Taxa extra encerrada', `${extra.id} · ${extra.descricao} · ${ultimaCompetencia ? `última parcela em ${nomeMes(ultimaCompetencia)}` : 'nenhuma parcela cobrada'} · ${texto}`),
+    }),
+    desfeitos,
+    notificacao: { canal: 'App + e-mail + WhatsApp', para: `${responsaveisAvisados(fin)} responsáveis`, texto: `Taxa extra ${extra.descricao} encerrada${ultimaCompetencia ? `: última parcela em ${nomeMes(ultimaCompetencia)}` : ' antes da primeira parcela'}` },
+  };
 }
 
 // ---- src/manutencao/dados.js ----
@@ -3119,7 +3395,7 @@ const CASOS_DADOS = [
       const e = dadosIniciais(AGORA_TESTE);
       igual(new Set(e.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, 20);
       igual(e.pessoas.filter((p) => p.naoResidente).map((p) => [p.unidade, p.nome, p.recebeOfertas, p.vendedor]), [['704', 'Vicente Moraes', false, 'nao']]);
-      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [6, 'Ana Souza']);
+      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [7, 'Ana Souza']);
     },
   },
   {
@@ -4260,7 +4536,7 @@ const CASOS_NOTIFICACOES = [
         ['OC-0037', 'eletrica', 'alta'], ['OC-0038', 'elogio', 'baixa'], ['OC-0039', 'vazamento', 'urgente'], ['OC-0040', 'elevador', 'alta'],
         ['OC-0041', 'barulho', 'normal'], ['OC-0042', 'vaga', 'normal'], ['OC-0043', 'obra', 'normal'],
       ]);
-      igual([e.proximoProtocolo, e.versao], [44, 6]);
+      igual([e.proximoProtocolo, e.versao], [44, 7]);
     },
   },
   {
@@ -4528,7 +4804,7 @@ const CASOS_ESCALA = [
     rodar() {
       const e = dadosIniciais(AGORA_FASE2);
       const m = e.escala.meses['2026-10'];
-      igual([m.situacao, e.versao, e.escala.meses['2026-11']], ['publicada', 6, undefined]);
+      igual([m.situacao, e.versao, e.escala.meses['2026-11']], ['publicada', 7, undefined]);
       const at = m.turnos.find((x) => x.id === 'T-2026-10-20-guarita-07');
       igual([at.porteiro, at.motivoDescoberto, at.porteiroOriginal, at.anexo], [null, 'atestado', 'claudia', 'atestado-claudia.pdf']);
       igual(e.escala.trocas.map((x) => [x.id, x.turno, x.de, x.para, x.situacao]), [['TR-001', 'T-2026-10-22-portaria-07', 'marcos', 'paulo', 'aceita']]);
@@ -4614,6 +4890,112 @@ const CASOS_ESCALA = [
   },
 ];
 
+// ---- src/casos/composicao.js ----
+
+const ATA_TESTE = 'AGE de 15/10/2026';
+
+function itensDe(estado, competencia, unidade) {
+  return previaCompetencia(estado, competencia).linhas.find((l) => l.unidade === unidade).itens;
+}
+
+function reajuste6(estado, extra = {}) {
+  return novaComposicao(estado, { vigencia: '2026-11', forma: 'percentual', pct: 6, aprovadoEm: ATA_TESTE, ...extra }, 'sindico', AGORA_FASE2);
+}
+
+const CASOS_COMPOSICAO = [
+  {
+    nome: 'taxas: semente mantém os valores e as versões',
+    rodar() {
+      const fin = dadosIniciais(AGORA_FASE2).financeiro;
+      igual(fin.cobrancas.find((c) => c.id === 'CB-2026-10-302').valor, 86500);
+      igual([versaoEm(fin, '2026-05').id, versaoEm(fin, '2025-04').id, primeiraNaoEmitida(fin)], ['CV-002', 'CV-001', '2026-11']);
+      igual(parcelaDe(fin.composicao.extras[0], '2026-10'), 3);
+      const soma = Object.values(fin.unidades).reduce((s, u) => s + u.fracao, 0);
+      igual(soma > 0.99999 && soma < 1.00001, true);
+    },
+  },
+  {
+    nome: 'taxas: montar versão por percentual, vigência e fração ideal',
+    rodar() {
+      const fin = dadosIniciais(AGORA_FASE2).financeiro;
+      igual(montarVersao(fin, { vigencia: '2026-11', forma: 'percentual', pct: 6 }).versao.ordinaria, { A: 68900, cobertura: 103880 });
+      igual(montarVersao(fin, { vigencia: '2026-10', forma: 'percentual', pct: 6 }).erro, 'A vigência deve ser a partir de novembro de 2026');
+      igual(montarVersao(fin, { vigencia: '2026-11', forma: 'percentual', pct: '' }).erro, 'Informe um percentual ou valores válidos');
+      igual(montarVersao(fin, { vigencia: '2026-11', modo: 'fracao', forma: 'percentual', pct: 5 }).erro, 'Ao trocar o modo, informe os valores');
+      igual(montarVersao(fin, { vigencia: '2026-11', forma: 'percentual', pct: 5, fundoPct: 31 }).erro, 'O fundo de reserva deve ser de 0% a 30%');
+      const v = montarVersao(fin, { vigencia: '2026-11', modo: 'fracao', forma: 'valores', orcamento: 2212000 }).versao;
+      igual([ordinariaDe(fin, v, '302'), ordinariaDe(fin, v, '801')], [65000, 98000]);
+    },
+  },
+  {
+    nome: 'taxas: simulação, mudanças da unidade e alerta',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const v = montarVersao(e.financeiro, { vigencia: '2026-11', forma: 'percentual', pct: 6 }).versao;
+      const s = simularComposicao(e.financeiro, v);
+      igual([s.tipos[0].antes, s.tipos[0].depois, s.arrecadacaoAntes], [71500, 75790, 28 * 71500 + 4 * 107800]);
+      const r = reajuste6(e).estado;
+      const linhas = mudancasDaUnidade(r, '302', '2026-10-19');
+      igual(linhas.length, 2);
+      igual(linhas[0].texto, 'A partir de novembro de 2026: de R$ 715,00 para R$ 757,90 (+6,0%)');
+      igual(linhas[1].texto.startsWith('Pintura da fachada: R$ 150,00 por mês em 10 parcelas'), true);
+      igual(alertasComposicao(r).map((a) => a.texto), ['Reajuste agendado para novembro de 2026 · confira a prévia antes de emitir']);
+    },
+  },
+  {
+    nome: 'taxas: reajuste agendado, comunicado e meses já emitidos',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(novaComposicao(e, { vigencia: '2026-11', forma: 'percentual', pct: 6 }, 'sindico', AGORA_FASE2).erro, 'Informe a ata ou data da assembleia');
+      igual(novaComposicao(e, { vigencia: '2026-11', forma: 'percentual', pct: 6, aprovadoEm: ATA_TESTE }, 'zelador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      const r = reajuste6(e);
+      igual([r.id, r.notificacao.para, r.desfeitos], ['CV-003', '31 responsáveis', 0]);
+      igual(itensDe(r.estado, '2026-11', '302')[0].valor, 68900);
+      igual(r.estado.financeiro.cobrancas.find((c) => c.id === 'CB-2026-10-302').valor, 86500);
+      igual(r.estado.comunicados.at(-1).titulo, 'Reajuste da taxa condominial a partir de novembro de 2026');
+      igual(reajuste6(e, { publicar: false }).estado.comunicados.length, e.comunicados.length);
+      const outra = novaComposicao(r.estado, { vigencia: '2026-11', forma: 'percentual', pct: 4, aprovadoEm: ATA_TESTE }, 'sindico', AGORA_FASE2).estado;
+      igual(versoesAgendadas(outra.financeiro).map((v) => [v.id, v.ordinaria.A]), [['CV-004', 67600]]);
+    },
+  },
+  {
+    nome: 'taxas: ajustes manuais desfeitos e cancelamento',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const ajustado = editarItemPrevia(e, '2026-11', '302', [{ tipo: 'ordinaria', descricao: 'Taxa ordinária', valor: 1 }]).estado;
+      const r = reajuste6(ajustado);
+      igual([r.desfeitos, r.estado.financeiro.ajustesPrevia['2026-11']], [1, undefined]);
+      const c = cancelarComposicao(r.estado, 'CV-003', 'sindico', AGORA_FASE2);
+      igual([versoesAgendadas(c.estado.financeiro).length, itensDe(c.estado, '2026-11', '302')[0].valor], [0, 65000]);
+      igual(cancelarComposicao(r.estado, 'CV-002', 'sindico', AGORA_FASE2).erro, 'Esta competência já foi emitida');
+    },
+  },
+  {
+    nome: 'taxas: taxa extra por fração ideal e encerramento',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const dados = { descricao: 'Troca dos elevadores', total: 3000000, parcelas: 12, inicio: '2026-12', rateio: 'fracao', aprovadoEm: ATA_TESTE };
+      igual(criarTaxaExtra(e, { ...dados, parcelas: 61 }, 'sindico', AGORA_FASE2).erro, 'As parcelas devem ser de 1 a 60');
+      igual(criarTaxaExtra(e, { ...dados, inicio: '2026-10' }, 'sindico', AGORA_FASE2).erro, 'O início deve ser a partir de novembro de 2026');
+      const r = criarTaxaExtra(e, dados, 'sindico', AGORA_FASE2);
+      igual([r.id, r.estado.comunicados.at(-1).titulo], ['TX-002', 'Taxa extra: Troca dos elevadores']);
+      const extras = itensDe(r.estado, '2026-12', '302').filter((i) => i.tipo === 'extra');
+      igual(extras.map((i) => [i.descricao, i.valor]), [['Pintura da fachada (parcela 5/10)', 15000], ['Troca dos elevadores (parcela 1/12)', Math.round(250000 * 0.029385)]]);
+      igual(itensDe(r.estado, '2026-11', '302').filter((i) => i.tipo === 'extra').length, 1);
+      const enc = encerrarTaxaExtra(r.estado, 'TX-001', 'AGE de 15/10/2026, item 2', 'sindico', AGORA_FASE2);
+      const tx1 = enc.estado.financeiro.composicao.extras[0];
+      igual([tx1.situacao, tx1.ultimaCompetencia], ['encerrada', '2026-10']);
+      igual(itensDe(enc.estado, '2026-11', '302').filter((i) => i.tipo === 'extra').length, 0);
+      igual(enc.estado.financeiro.cobrancas.find((c) => c.id === 'CB-2026-10-302').valor, 86500);
+      igual(encerrarTaxaExtra(enc.estado, 'TX-001', 'x', 'sindico', AGORA_FASE2).erro, 'Só taxas ativas podem ser encerradas');
+      igual(encerrarTaxaExtra(enc.estado, 'TX-002', '', 'sindico', AGORA_FASE2).erro, 'Informe a ata ou o motivo');
+      const tx2 = encerrarTaxaExtra(enc.estado, 'TX-002', 'Cancelada na AGE', 'sindico', AGORA_FASE2).estado;
+      igual(tx2.financeiro.composicao.extras[1].ultimaCompetencia, null);
+      igual(mudancasDaUnidade(tx2, '302', '2026-10-19').map((l) => l.texto), ['A taxa Pintura da fachada foi encerrada; a última parcela foi a de outubro de 2026', 'A taxa Troca dos elevadores foi cancelada antes da primeira parcela']);
+    },
+  },
+];
+
 // ---- src/armazenamento.js ----
 const CHAVE_ESTADO = 'condofacil-demo-v1';
 
@@ -4622,7 +5004,7 @@ function carregarEstado() {
     const texto = localStorage.getItem(CHAVE_ESTADO);
     if (!texto) return null;
     const estado = JSON.parse(texto);
-    return estado && estado.versao === 6 ? estado : null;
+    return estado && estado.versao === 7 ? estado : null;
   } catch {
     return null;
   }
@@ -5118,7 +5500,7 @@ function pendenciasCobranca(estado, hoje) {
   const itens = [];
   if (!fin.emitidas.includes(proxima)) itens.push({ chave: 'emitir', texto: `Emitir cobranças de ${mesExtenso(proxima)} (fechamento dia ${fin.parametros.diaFechamento})`, href: '#sindico.cobranca.previa' });
   for (const d of devedores(estado, hoje).filter((x) => x.dias >= 60)) itens.push({ chave: `juridico-${d.unidade}`, texto: `${d.unidade}: débito há mais de 60 dias, avaliar cobrança jurídica`, href: '#sindico.cobranca.emitidas' });
-  itens.push(...alertasAcordos(estado, hoje));
+  itens.push(...alertasAcordos(estado, hoje), ...alertasComposicao(estado));
   return itens;
 }
 
@@ -5214,14 +5596,14 @@ function PainelFinanceiro({ estado, agora }) {
   </div>`;
 }
 
-const ABAS_COBRANCA = [['previa', 'Prévia e emissão'], ['emitidas', 'Cobranças emitidas'], ['acordos', 'Acordos'], ['regua', 'Régua'], ['parametros', 'Parâmetros']];
+const ABAS_COBRANCA = [['previa', 'Prévia e emissão'], ['emitidas', 'Cobranças emitidas'], ['acordos', 'Acordos'], ['regua', 'Régua'], ['taxas', 'Taxa e reajustes'], ['parametros', 'Parâmetros']];
 const FILTROS_COBRANCA = [['todas', 'Todas'], ['aberta', 'Em aberto'], ['vencida', 'Vencidas'], ['paga', 'Pagas'], ['cancelada', 'Canceladas']];
 
 function SCobranca(props) {
   const idRota = props.rota.id || '';
   const deAcordo = idRota.startsWith('novoacordo') || idRota.startsWith('AC-');
   const aba = deAcordo ? 'acordos' : ABAS_COBRANCA.some(([id]) => id === idRota) ? idRota : 'previa';
-  const Conteudo = { previa: CPrevia, emitidas: CEmitidas, acordos: CAcordos, regua: CRegua, parametros: CParametros }[aba];
+  const Conteudo = { previa: CPrevia, emitidas: CEmitidas, acordos: CAcordos, regua: CRegua, taxas: CTaxas, parametros: CParametros }[aba];
   return html`<section>
     <h1>Cobrança</h1>
     <p class="faixa-asaas">Conta Asaas ativa · subconta do condomínio. O dinheiro cai direto na conta do condomínio; o CondoFácil só organiza emissão, baixa e relatórios.</p>
@@ -5422,8 +5804,6 @@ function CParametros({ estado, executar }) {
   const [form, setForm] = useState({ ...fin.parametros, formas: [...fin.parametros.formas] });
   const [erro, setErro] = useState(null);
   const [mensagem, setMensagem] = useState(null);
-  const completa = liberado(estado.plano, 'composicaoCompleta');
-  const c = fin.composicao;
   const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.type === 'number' ? Number(ev.target.value) : ev.target.value });
   const alternarForma = (k) => setForm({ ...form, formas: form.formas.includes(k) ? form.formas.filter((x) => x !== k) : [...form.formas, k] });
 
@@ -5450,14 +5830,239 @@ function CParametros({ estado, executar }) {
     <${Erro} texto=${erro} />
     <${Sucesso} texto=${mensagem} />
     <button type="button" class="btn primario" onClick=${salvar}>Salvar parâmetros</button>
-    <h2>Composição da taxa</h2>
+    <small class="sub">Valores da taxa, reajustes e taxas extras ficam na aba <a href="#sindico.cobranca.taxas">Taxa e reajustes</a>.</small>
+  </div>`;
+}
+
+// ---- src/ui/composicao.js ----
+
+// Aba "Taxa e reajustes" do síndico e o cartão "Mudanças na sua taxa" do morador.
+function mesesAFrente(fin) {
+  const p = primeiraNaoEmitida(fin);
+  return Array.from({ length: 12 }, (_, n) => somarMes(p, n));
+}
+
+function lerNumero(texto) {
+  const limpo = String(texto ?? '').trim().replace(',', '.');
+  return limpo === '' ? '' : Number(limpo);
+}
+
+function textoDesfeitos(n) {
+  return n ? ` ${n} ${n === 1 ? 'ajuste manual da prévia foi desfeito' : 'ajustes manuais da prévia foram desfeitos'}.` : '';
+}
+
+function unidadeDoTipo(fin, tipo) {
+  return Object.keys(fin.unidades).find((u) => fin.unidades[u].tipo === tipo);
+}
+
+function ResumoEmVigor({ estado }) {
+  const fin = estado.financeiro;
+  const v = versaoVigente(fin);
+  const competencia = somarMes(primeiraNaoEmitida(fin), -1);
+  const ativas = fin.composicao.extras.filter((x) => parcelaDe(x, competencia));
+  return html`<dl class="resumo">
+    <dt>Modo</dt><dd>${NOMES_MODO[v.modo]}</dd>
+    ${v.modo === 'fracao' && html`<dt>Orçamento mensal</dt><dd>${fmtReais(v.orcamento)}</dd>`}
+    ${Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => {
+      const u = unidadeDoTipo(fin, tipo);
+      return html`<dt key=${`t-${tipo}`}>${NOMES_TIPO_UNIDADE[tipo]}</dt><dd key=${`v-${tipo}`}>${fmtReais(ordinariaDe(fin, v, u))} + fundo ${fmtReais(fundoDe(fin, v, u))}</dd>`;
+    })}
+    <dt>Fundo de reserva</dt><dd>${v.fundoPct}% da ordinária</dd>
+    ${ativas.map((x) => html`<dt key=${`x-${x.id}`}>Taxa extra</dt><dd key=${`d-${x.id}`}>${x.descricao} · parcela ${parcelaDe(x, competencia)}/${x.parcelas}</dd>`)}
+    <dt>Aprovado em</dt><dd>${v.aprovadoEm}</dd>
+  </dl>`;
+}
+
+function TabelaSimulacao({ simulacao }) {
+  return html`<div class="cartao simulacao">
+    <strong>Simulação</strong>
+    <div class="tabela-rolagem"><table class="tabela">
+      <thead><tr><th>Tipo</th><th>Hoje</th><th>Passa a pagar</th><th>Diferença</th></tr></thead>
+      <tbody>${simulacao.tipos.map((t) => html`<tr key=${t.tipo}><td>${NOMES_TIPO_UNIDADE[t.tipo]}</td><td>${fmtReais(t.antes)}</td><td><strong>${fmtReais(t.depois)}</strong></td><td>${fmtReais(t.diferenca)} (${fmtVariacao(t.pct)})</td></tr>`)}</tbody>
+    </table></div>
     <dl class="resumo">
-      <dt>${completa ? 'Ordinária · apto tipo A' : 'Valor fixo · apto tipo A'}</dt><dd>${fmtReais(c.ordinaria.A)}</dd>
-      <dt>${completa ? 'Ordinária · cobertura' : 'Valor fixo · cobertura'}</dt><dd>${fmtReais(c.ordinaria.cobertura)}</dd>
-      ${completa && html`<dt>Fundo de reserva</dt><dd>${c.fundoPct}% da ordinária</dd>`}
-      ${completa && html`<dt>Taxa extra</dt><dd>${c.extra.descricao}: ${fmtReais(c.extra.total)} em ${c.extra.parcelas}x (${fmtReais(Math.round(c.extra.total / c.extra.parcelas / c.extra.unidades))} por unidade)</dd>`}
+      <dt>Arrecadação mensal hoje</dt><dd>${fmtReais(simulacao.arrecadacaoAntes)}</dd>
+      <dt>Arrecadação mensal depois</dt><dd>${fmtReais(simulacao.arrecadacaoDepois)}</dd>
     </dl>
-    ${!completa && html`<${Bloqueado} estado=${estado} recurso="composicaoCompleta" titulo="Fundo de reserva e taxa extra parcelada" />`}
+    <small class="sub">Ordinária mais fundo de reserva, das 32 unidades. Taxas extras não entram.</small>
+  </div>`;
+}
+
+function FormReajuste({ estado, executar, aoConcluir }) {
+  const fin = estado.financeiro;
+  const base = versaoVigente(fin);
+  const comFracao = liberado(estado.plano, 'fracaoIdeal');
+  const comFundo = liberado(estado.plano, 'composicaoCompleta');
+  const [form, setForm] = useState({ vigencia: primeiraNaoEmitida(fin), modo: base.modo, forma: 'percentual', pct: '', A: '', cobertura: '', orcamento: '', fundoPct: String(base.fundoPct), aprovadoEm: '', publicar: true });
+  const [erro, setErro] = useState(null);
+  const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value });
+  const dados = {
+    vigencia: form.vigencia, modo: form.modo, forma: form.forma, pct: lerNumero(form.pct),
+    ordinaria: { A: lerPreco(form.A), cobertura: lerPreco(form.cobertura) }, orcamento: lerPreco(form.orcamento),
+    fundoPct: comFundo ? lerNumero(form.fundoPct) : undefined, aprovadoEm: form.aprovadoEm, publicar: form.publicar,
+  };
+  const montada = montarVersao(fin, dados);
+  const simulacao = montada.versao ? simularComposicao(fin, montada.versao) : null;
+  const agendada = versoesAgendadas(fin).find((v) => v.vigencia === form.vigencia);
+
+  function confirmar() {
+    const r = executar((e) => novaComposicao(e, dados, 'sindico', new Date()));
+    setErro(r.erro || null);
+    if (!r.erro) aoConcluir(`Reajuste agendado para ${nomeMes(form.vigencia)}.${textoDesfeitos(r.desfeitos)}`);
+  }
+
+  return html`<div class="cartao pilha formulario">
+    <strong>Nova composição</strong>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Vigência" dica="Meses já emitidos não mudam"><select id="taxa-vigencia" value=${form.vigencia} onChange=${campo('vigencia')}>${mesesAFrente(fin).map((m) => html`<option key=${m} value=${m}>A partir de ${nomeMes(m)}</option>`)}</select><//>
+      ${comFracao && html`<${Campo} rotulo="Modo da ordinária"><select id="taxa-modo" value=${form.modo} onChange=${campo('modo')}>${Object.entries(NOMES_MODO).map(([k, nome]) => html`<option key=${k} value=${k}>${nome}</option>`)}</select><//>`}
+      <${Campo} rotulo="Como reajustar"><select id="taxa-forma" value=${form.forma} onChange=${campo('forma')}><option value="percentual">Percentual sobre o valor atual</option><option value="valores">${form.modo === 'fracao' ? 'Novo orçamento mensal' : 'Novos valores por tipo'}</option></select><//>
+      ${form.forma === 'percentual' && html`<${Campo} rotulo="Percentual (%)" dica="Use negativo para redução"><input id="taxa-pct" inputmode="decimal" value=${form.pct} onInput=${campo('pct')} placeholder="Ex.: 6" /><//>`}
+      ${form.forma === 'valores' && form.modo === 'fixo' && html`
+        <${Campo} rotulo="Apto tipo A (R$)"><input id="taxa-a" inputmode="decimal" value=${form.A} onInput=${campo('A')} placeholder=${fmtReais(base.ordinaria ? base.ordinaria.A : 0)} /><//>
+        <${Campo} rotulo="Cobertura (R$)"><input id="taxa-cobertura" inputmode="decimal" value=${form.cobertura} onInput=${campo('cobertura')} placeholder=${fmtReais(base.ordinaria ? base.ordinaria.cobertura : 0)} /><//>`}
+      ${form.forma === 'valores' && form.modo === 'fracao' && html`<${Campo} rotulo="Orçamento mensal (R$)" dica="Rateado pela fração ideal de cada unidade"><input id="taxa-orcamento" inputmode="decimal" value=${form.orcamento} onInput=${campo('orcamento')} placeholder="Ex.: 22.120,00" /><//>`}
+      ${comFundo && html`<${Campo} rotulo="Fundo de reserva (%)"><input id="taxa-fundo" inputmode="decimal" value=${form.fundoPct} onInput=${campo('fundoPct')} /><//>`}
+      <${Campo} rotulo="Aprovado em" dica="Ata ou data da assembleia"><input id="taxa-ata" value=${form.aprovadoEm} onInput=${campo('aprovadoEm')} placeholder="Ex.: AGE de 15/10/2026, item 2" /><//>
+    </div>
+    <label class="check"><input id="taxa-publicar" type="checkbox" checked=${form.publicar} onChange=${campo('publicar')} /><span>Publicar comunicado</span></label>
+    ${!comFracao && html`<${Bloqueado} estado=${estado} recurso="fracaoIdeal" titulo="Rateio por fração ideal e fundo de reserva" />`}
+    ${agendada && html`<small class="sub">Substitui o reajuste já agendado para ${nomeMes(form.vigencia)} (${agendada.id}).</small>`}
+    ${simulacao ? html`<${TabelaSimulacao} simulacao=${simulacao} />` : html`<small class="sub">${montada.erro}</small>`}
+    <${Erro} texto=${erro} />
+    <button type="button" class="btn primario" data-acao="confirmar-reajuste" onClick=${confirmar}>Confirmar reajuste</button>
+  </div>`;
+}
+
+function FormTaxaExtra({ estado, executar, aoConcluir }) {
+  const fin = estado.financeiro;
+  const comFracao = liberado(estado.plano, 'fracaoIdeal');
+  const [form, setForm] = useState({ descricao: '', total: '', parcelas: '10', inicio: primeiraNaoEmitida(fin), rateio: 'igual', aprovadoEm: '', publicar: true });
+  const [erro, setErro] = useState(null);
+  const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value });
+  const dados = { ...form, total: lerPreco(form.total), parcelas: Number(form.parcelas) };
+  const montada = montarTaxaExtra(fin, { ...dados, descricao: form.descricao || 'prévia' });
+
+  function criar() {
+    const r = executar((e) => criarTaxaExtra(e, dados, 'sindico', new Date()));
+    setErro(r.erro || null);
+    if (!r.erro) aoConcluir(`Taxa extra ${r.id} criada.${textoDesfeitos(r.desfeitos)}`);
+  }
+
+  return html`<div class="cartao pilha formulario">
+    <strong>Nova taxa extra</strong>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Descrição"><input id="extra-descricao" value=${form.descricao} onInput=${campo('descricao')} placeholder="Ex.: Troca dos elevadores" /><//>
+      <${Campo} rotulo="Valor total (R$)"><input id="extra-total" inputmode="decimal" value=${form.total} onInput=${campo('total')} placeholder="Ex.: 30.000,00" /><//>
+      <${Campo} rotulo="Parcelas" dica="De 1 a 60"><input id="extra-parcelas" type="number" min="1" max="60" value=${form.parcelas} onInput=${campo('parcelas')} /><//>
+      <${Campo} rotulo="Início"><select id="extra-inicio" value=${form.inicio} onChange=${campo('inicio')}>${mesesAFrente(fin).map((m) => html`<option key=${m} value=${m}>${nomeMes(m)}</option>`)}</select><//>
+      <${Campo} rotulo="Rateio"><select id="extra-rateio" value=${form.rateio} onChange=${campo('rateio')}>${Object.entries(NOMES_RATEIO).filter(([k]) => k === 'igual' || comFracao).map(([k, nome]) => html`<option key=${k} value=${k}>${nome}</option>`)}</select><//>
+      <${Campo} rotulo="Aprovado em" dica="Ata ou data da assembleia"><input id="extra-ata" value=${form.aprovadoEm} onInput=${campo('aprovadoEm')} placeholder="Ex.: AGE de 15/10/2026, item 3" /><//>
+    </div>
+    <label class="check"><input id="extra-publicar" type="checkbox" checked=${form.publicar} onChange=${campo('publicar')} /><span>Publicar comunicado</span></label>
+    ${montada.extra
+      ? html`<div class="cartao simulacao"><strong>Valor por parcela</strong><dl class="resumo">${valorPorTipoExtra(fin, montada.extra).map((v) => html`<dt key=${`t-${v.tipo}`}>${NOMES_TIPO_UNIDADE[v.tipo]}</dt><dd key=${`v-${v.tipo}`}>${fmtReais(v.valor)} por mês</dd>`)}</dl><small class="sub">De ${nomeMes(montada.extra.inicio)} a ${nomeMes(fimExtra(montada.extra))}.</small></div>`
+      : html`<small class="sub">${montada.erro}</small>`}
+    <${Erro} texto=${erro} />
+    <button type="button" class="btn primario" data-acao="criar-taxa-extra" onClick=${criar}>Criar taxa extra</button>
+  </div>`;
+}
+
+function ItemTaxaExtra({ estado, extra, executar, aoConcluir }) {
+  const fin = estado.financeiro;
+  const [encerrando, setEncerrando] = useState(false);
+  const [motivo, setMotivo] = useState('');
+  const [erro, setErro] = useState(null);
+  const competencia = somarMes(primeiraNaoEmitida(fin), -1);
+  const parcela = parcelaDe(extra, competencia);
+  const situacao = extra.inicio > competencia ? `começa em ${nomeMes(extra.inicio)}` : parcela ? `parcela ${parcela}/${extra.parcelas} em ${nomeMes(competencia)}` : 'parcelas concluídas';
+
+  function encerrar() {
+    const r = executar((e) => encerrarTaxaExtra(e, extra.id, motivo, 'sindico', new Date()));
+    setErro(r.erro || null);
+    if (!r.erro) aoConcluir(`Taxa extra ${extra.id} encerrada.${textoDesfeitos(r.desfeitos)}`);
+  }
+
+  return html`<li class="cartao">
+    <div class="linha-entre"><strong>${extra.id} · ${extra.descricao}</strong><${Etiqueta} tipo="ok">Ativa<//></div>
+    <span>${fmtReais(extra.total)} em ${extra.parcelas}x · ${NOMES_RATEIO[extra.rateio].toLowerCase()} · ${situacao}</span>
+    <small class="sub">${valorPorTipoExtra(fin, extra).map((v) => `${NOMES_TIPO_UNIDADE[v.tipo]} ${fmtReais(v.valor)}`).join(' · ')} por mês · aprovado em: ${extra.aprovadoEm}</small>
+    ${!encerrando
+      ? html`<div class="acoes"><button type="button" class="btn secundario" data-encerrar=${extra.id} onClick=${() => setEncerrando(true)}>Encerrar</button></div>`
+      : html`<div class="pilha">
+          <${Campo} rotulo="Motivo ou ata" dica="As parcelas ainda não emitidas deixam de existir"><input id=${`encerrar-${extra.id}`} value=${motivo} onInput=${(ev) => setMotivo(ev.target.value)} /><//>
+          <${Erro} texto=${erro} />
+          <div class="acoes"><button type="button" class="btn primario" onClick=${encerrar}>Confirmar encerramento</button><button type="button" class="btn secundario" onClick=${() => setEncerrando(false)}>Voltar</button></div>
+        </div>`}
+  </li>`;
+}
+
+function CTaxas({ estado, executar }) {
+  const fin = estado.financeiro;
+  const [abrindo, setAbrindo] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const [erro, setErro] = useState(null);
+  const comExtra = liberado(estado.plano, 'taxaExtra');
+  const agendadas = versoesAgendadas(fin);
+  const vigente = versaoVigente(fin);
+  const passadas = fin.composicao.versoes.filter((v) => v.vigencia <= vigente.vigencia).sort((a, b) => b.vigencia.localeCompare(a.vigencia));
+  const ativas = fin.composicao.extras.filter((x) => x.situacao === 'ativa' && fimExtra(x) >= primeiraNaoEmitida(fin));
+  const encerradas = fin.composicao.extras.filter((x) => x.situacao === 'encerrada' || fimExtra(x) < primeiraNaoEmitida(fin));
+  const concluir = (texto) => { setAbrindo(null); setErro(null); setMensagem(texto); };
+  const abrir = (qual) => { setAbrindo(abrindo === qual ? null : qual); setMensagem(null); setErro(null); };
+
+  function cancelar(id) {
+    const r = executar((e) => cancelarComposicao(e, id, 'sindico', new Date()));
+    setErro(r.erro || null);
+    setMensagem(r.erro ? null : `Reajuste ${id} cancelado.`);
+  }
+
+  return html`<div class="pilha">
+    <h2>Em vigor</h2>
+    <${ResumoEmVigor} estado=${estado} />
+    <${Sucesso} texto=${mensagem} />
+    <${Erro} texto=${erro} />
+    ${agendadas.length > 0 && html`<h2>Agendado</h2>
+      <ul class="m-lista">${agendadas.map((v) => html`<li key=${v.id} class="cartao">
+        <div class="linha-entre"><strong>${v.id} · a partir de ${nomeMes(v.vigencia)}</strong><${Etiqueta} tipo="info">Agendado<//></div>
+        <span>${resumoVersao(fin, v)}</span>
+        <small class="sub">Aprovado em: ${v.aprovadoEm}</small>
+        <div class="acoes"><button type="button" class="btn secundario" data-cancelar=${v.id} onClick=${() => cancelar(v.id)}>Cancelar reajuste</button></div>
+      </li>`)}</ul>`}
+    <div class="acoes">
+      <button type="button" class="btn primario" aria-expanded=${abrindo === 'reajuste'} onClick=${() => abrir('reajuste')}>Nova composição</button>
+      ${comExtra && html`<button type="button" class="btn secundario" aria-expanded=${abrindo === 'extra'} onClick=${() => abrir('extra')}>Nova taxa extra</button>`}
+    </div>
+    ${abrindo === 'reajuste' && html`<${FormReajuste} estado=${estado} executar=${executar} aoConcluir=${concluir} />`}
+    ${abrindo === 'extra' && html`<${FormTaxaExtra} estado=${estado} executar=${executar} aoConcluir=${concluir} />`}
+    <h2>Taxas extras</h2>
+    ${comExtra
+      ? ativas.length
+        ? html`<ul class="m-lista">${ativas.map((x) => html`<${ItemTaxaExtra} key=${x.id} estado=${estado} extra=${x} executar=${executar} aoConcluir=${concluir} />`)}</ul>`
+        : html`<${Vazio} texto="Nenhuma taxa extra ativa." />`
+      : html`<${Bloqueado} estado=${estado} recurso="taxaExtra" titulo="Taxas extras parceladas, com rateio e encerramento" />`}
+    <h2>Histórico</h2>
+    <ul class="auditoria">
+      ${passadas.map((v) => html`<li key=${v.id}><span class="lt-quando">${nomeMes(v.vigencia)}</span> <strong>${v.id}${v.id === vigente.id ? ' · em vigor' : ''}</strong> · ${resumoVersao(fin, v)} · aprovado em: ${v.aprovadoEm}</li>`)}
+      ${encerradas.map((x) => html`<li key=${x.id}><span class="lt-quando">${x.encerradaEm ? fmtDataCurta(x.encerradaEm.slice(0, 10)) : nomeMes(fimExtra(x))}</span> <strong>${x.id} · ${x.descricao}</strong> · ${x.situacao === 'encerrada' ? `encerrada${x.ultimaCompetencia ? `, última parcela em ${nomeMes(x.ultimaCompetencia)}` : ' antes da primeira parcela'} · ${x.motivoEncerramento}` : 'parcelas concluídas'}</li>`)}
+    </ul>
+    <details class="composicao"><summary>Frações ideais</summary>
+      <div class="tabela-rolagem"><table class="tabela">
+        <thead><tr><th>Unidade</th><th>Tipo</th><th>Fração ideal</th></tr></thead>
+        <tbody>${Object.entries(fin.unidades).map(([u, d]) => html`<tr key=${u}><td>${u}</td><td>${NOMES_TIPO_UNIDADE[d.tipo]}</td><td>${fmtFracao(d.fracao)}</td></tr>`)}</tbody>
+        <tfoot><tr><td colspan="2">Total</td><td>${(Object.values(fin.unidades).reduce((s, d) => s + d.fracao, 0) * 100).toFixed(2).replace('.', ',')}%</td></tr></tfoot>
+      </table></div>
+      <small class="sub">Conforme a convenção. Usada no rateio por fração ideal.</small>
+    </details>
+  </div>`;
+}
+
+function MudancasTaxa({ estado, eu, hoje }) {
+  const linhas = mudancasDaUnidade(estado, eu, hoje);
+  if (!linhas.length) return null;
+  return html`<div class="cartao mudancas-taxa">
+    <strong>Mudanças na sua taxa</strong>
+    <ul class="m-lista">${linhas.map((l) => html`<li key=${l.chave}><span class="sub">${l.titulo}</span><div>${l.texto}</div>${l.detalhe && html`<small class="sub">${l.detalhe}</small>`}</li>`)}</ul>
   </div>`;
 }
 
@@ -6207,6 +6812,7 @@ function MFinanceiro({ estado, eu, executar, agora }) {
     <p class="m-sub">Responsável financeiro: ${responsavel.nome} · ${pessoa && pessoa.naoResidente ? 'proprietário não residente' : `apto ${eu}`}</p>
     ${proposta && html`<${PropostaAcordo} key=${proposta.id} estado=${estado} executar=${executar} acordo=${proposta} hoje=${hoje} eu=${eu} />`}
     ${ativo && html`<${MeuAcordo} estado=${estado} acordo=${ativo} hoje=${hoje} />`}
+    <${MudancasTaxa} estado=${estado} eu=${eu} hoje=${hoje} />
     <h2>Em aberto</h2>
     ${abertas.length
       ? abertas.map((c) => html`<${CartaoCobranca} key=${c.id} estado=${estado} cobranca=${c} executar=${executar} hoje=${hoje} />`)
@@ -7985,7 +8591,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

@@ -519,10 +519,51 @@ const ROTEIROS = {
     await clicar('Intermediário');
   },
 
+  async taxaReajuste() {
+    await clicar('Reiniciar demonstração');
+    await irPara('#sindico.cobranca.taxas');
+    await clicar('Nova composição');
+    await preencher('Percentual (%)', '6');
+    await esperarTexto('R$ 757,90');
+    await clicarSeletor('[data-acao="confirmar-reajuste"]');
+    await esperarTexto('Informe a ata ou data da assembleia');
+    await preencher('Aprovado em', 'AGE de 15/10/2026, item 2');
+    await clicarSeletor('[data-acao="confirmar-reajuste"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('31 responsáveis')`, 'o aviso do reajuste');
+    await esperarTexto('Reajuste agendado para');
+    await irPara('#sindico.cobranca.previa');
+    await esperarTexto('R$ 907,90');
+    await irPara('#sindico.inicio');
+    await esperarTexto('Reajuste agendado para');
+    await irPara('#morador.financeiro');
+    await esperarTexto('para R$ 757,90 (+6,0%)');
+  },
+
+  async taxaExtra() {
+    await irPara('#sindico.cobranca.taxas');
+    await clicar('Nova taxa extra');
+    await preencher('Descrição', 'Troca dos elevadores');
+    await preencher('Valor total (R$)', '30.000,00');
+    await preencher('Parcelas', '12');
+    await preencher('Rateio', 'fracao');
+    await preencher('Aprovado em', 'AGE de 15/10/2026, item 3');
+    await esperarTexto('R$ 73,46 por mês');
+    await clicarSeletor('[data-acao="criar-taxa-extra"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Troca dos elevadores')`, 'o aviso da taxa extra');
+    await esperarTexto('TX-002 · Troca dos elevadores');
+    await clicarSeletor('[data-encerrar="TX-001"]');
+    await preencher('Motivo ou ata', 'AGE de 15/10/2026, item 4');
+    await clicar('Confirmar encerramento');
+    await esperarTexto('última parcela em outubro de 2026');
+    await clicar('Básico');
+    await esperarTexto('Disponível no plano Intermediário');
+    await clicar('Intermediário');
+  },
+
   async larguraCelular() {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await pausa(300);
-    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala']) {
+    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas']) {
       await irPara(hash);
       const largura = await js('document.documentElement.scrollWidth');
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);

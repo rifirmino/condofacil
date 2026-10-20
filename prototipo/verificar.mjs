@@ -69,6 +69,9 @@ const CHECAGENS = [
   ['#sindico.escala.equipe', ['Vigilância Prisma', 'Folguista', 'Guarita da garagem']],
   ['#sindico.escala.horas', ['Disponível no plano Avançado']],
   ['#sindico.inicio', ['Gerar a escala de', '!Escala de porteiros']],
+  ['#sindico.cobranca.taxas', ['Em vigor', 'Pintura da fachada', 'Frações ideais', 'Nova composição', 'Histórico', 'AGO de 28/03', 'Valor fixo por tipo']],
+  ['#sindico.cobranca.parametros', ['Parâmetros de cobrança', '!Composição da taxa']],
+  ['#morador.financeiro', ['Mudanças na sua taxa', 'Pintura da fachada: R$ 150,00 por mês']],
   ['#portaria.escala', ['De plantão agora', 'Portaria principal', 'Guarita da garagem', 'Próximo', 'Meus plantões', 'Seu José', 'Propor troca']],
 ];
 

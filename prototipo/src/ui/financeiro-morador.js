@@ -8,6 +8,7 @@ import { isoDia, nomeMes, fmtDataCurta } from '../datas.js';
 import { Sucesso, Vazio, QrFalso, PrevDoc } from './comum.js';
 import { EtqCobranca } from './financeiro-sindico.js';
 import { PropostaAcordo, MeuAcordo } from './acordos.js';
+import { MudancasTaxa } from './composicao.js';
 
 function responsavelDaPessoa(estado, eu) {
   const responsavel = estado.financeiro.unidades[eu].responsavel;
@@ -145,6 +146,7 @@ export function MFinanceiro({ estado, eu, executar, agora }) {
     <p class="m-sub">Responsável financeiro: ${responsavel.nome} · ${pessoa && pessoa.naoResidente ? 'proprietário não residente' : `apto ${eu}`}</p>
     ${proposta && html`<${PropostaAcordo} key=${proposta.id} estado=${estado} executar=${executar} acordo=${proposta} hoje=${hoje} eu=${eu} />`}
     ${ativo && html`<${MeuAcordo} estado=${estado} acordo=${ativo} hoje=${hoje} />`}
+    <${MudancasTaxa} estado=${estado} eu=${eu} hoje=${hoje} />
     <h2>Em aberto</h2>
     ${abertas.length
       ? abertas.map((c) => html`<${CartaoCobranca} key=${c.id} estado=${estado} cobranca=${c} executar=${executar} hoje=${hoje} />`)

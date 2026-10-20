@@ -48,6 +48,7 @@ export const ORDEM = [
   'src/ui/escala-portaria.js',
   'src/ui/portaria.js',
   'src/ui/financeiro-sindico.js',
+  'src/ui/composicao.js',
   'src/ui/acordos.js',
   'src/ui/manutencao-sindico.js',
   'src/ui/escala-sindico.js',
