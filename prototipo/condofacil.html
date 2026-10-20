@@ -469,6 +469,19 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 .fotos-reparo { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; max-width: 520px; }
 .faixa-urgente { margin: 0 0 12px; padding: 10px 14px; background: var(--perigo-bg); color: var(--perigo); font-weight: 600; border-left: 3px solid var(--perigo); border-radius: var(--raio); }
 .cel-abas.zelador { grid-template-columns: repeat(3, 1fr); }
+.grade-escala { display: flex; flex-direction: column; border: 1px solid var(--borda); border-radius: var(--raio); background: var(--sup); }
+.dia-escala { display: grid; grid-template-columns: minmax(110px, 160px) 1fr; gap: 6px 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--borda); }
+.dia-escala:last-child { border-bottom: 0; }
+.dia-escala.hoje { background: var(--laranja-tinta); }
+.dia-escala-data { font-weight: 600; color: var(--titulo); font-size: 13px; }
+.dia-escala-turnos { display: flex; flex-wrap: wrap; gap: 6px; }
+.turno-escala { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 2px; background: var(--sup-2); border: 1px solid var(--borda); }
+.turno-escala .btn-link { min-height: 28px; }
+.turno-escala.descoberto .btn-link { color: var(--perigo); }
+.buraco-escala { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 2px; background: var(--perigo-bg); color: var(--perigo); font-weight: 600; font-size: 13px; }
+@media (max-width: 560px) { .dia-escala { grid-template-columns: 1fr; } }
+.escala-porteiros { flex-wrap: wrap; padding: 0; background: none; border: 0; }
+.escala-porteiros button { flex: 1 1 110px; }
 
 </style>
 <div id="app"></div>
@@ -582,6 +595,9 @@ const RECURSOS_PLANO = {
   indicadorAtendimento: 'avancado',
   cotacoes: 'avancado',
   caixaPequeno: 'avancado',
+  escala: 'intermediario',
+  checkin: 'avancado',
+  relatorioHoras: 'avancado',
 };
 
 const ORDEM_PLANOS = ['basico', 'intermediario', 'avancado'];
@@ -1387,8 +1403,8 @@ function dadosIniciais(agora = new Date()) {
     { id: 'p704', nome: 'Vicente Moraes', unidade: '704', naoResidente: true, ...perfilVenda('704', em) },
   ];
 
-  return comAcordoInicial({
-    versao: 5,
+  return comEscalaInicial(comAcordoInicial({
+    versao: 6,
     geradoEm: hoje,
     proximoProtocolo: 44,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
@@ -1470,7 +1486,7 @@ function dadosIniciais(agora = new Date()) {
     manutencao: manutencaoInicial(em),
     plano: 'intermediario',
     financeiro: financeiroInicial(hoje, em, pessoas, UNIDADES),
-  });
+  }), agora);
 }
 
 // ---- src/regras.js ----
@@ -2261,6 +2277,406 @@ function reporCaixa(estado, perfil, agora) {
   };
 }
 
+// ---- src/escala/dados.js ----
+// Postos, porteiros, modelos de turno e feriados da escala (fase 2, parte 4).
+const POSTOS = { portaria: { nome: 'Portaria principal', abre: 0, fecha: 24 }, guarita: { nome: 'Guarita da garagem', abre: 7, fecha: 22 } };
+const PORTEIROS = [
+  { id: 'jose', nome: 'Seu José', vinculo: 'clt', empresa: null, telefone: '(11) 98811-2040', postos: ['portaria'] },
+  { id: 'marcos', nome: 'Marcos', vinculo: 'clt', empresa: null, telefone: '(11) 97720-3151', postos: ['portaria', 'guarita'] },
+  { id: 'edson', nome: 'Edson', vinculo: 'terceirizado', empresa: 'Vigilância Prisma', telefone: '(11) 96630-4262', postos: ['portaria'] },
+  { id: 'rita', nome: 'Rita', vinculo: 'terceirizado', empresa: 'Vigilância Prisma', telefone: '(11) 95540-5373', postos: ['portaria'] },
+  { id: 'claudia', nome: 'Cláudia', vinculo: 'clt', empresa: null, telefone: '(11) 94450-6484', postos: ['guarita'] },
+  { id: 'bruno', nome: 'Bruno', vinculo: 'clt', empresa: null, telefone: '(11) 93360-7595', postos: ['guarita', 'portaria'] },
+  { id: 'paulo', nome: 'Paulo', vinculo: 'folguista', empresa: null, telefone: '(11) 92270-8606', postos: ['portaria', 'guarita'] },
+];
+const EMPRESAS = { 'Vigilância Prisma': { contato: 'Central Prisma', telefone: '(11) 4433-9000' } };
+const NOMES_VINCULO = { clt: 'CLT do condomínio', terceirizado: 'Terceirizado', folguista: 'Folguista' };
+const MODELOS = { '12x36': { nome: '12x36', horas: 12, ciclo: 2 }, '6x1': { nome: '6x1 (8 h)', horas: 8, ciclo: 7 }, noturno: { nome: 'Noturno 12x36', horas: 12, ciclo: 2 } };
+const FERIADOS = { '01-01': 'Confraternização universal', '04-08': 'Aniversário de Santo André', '04-21': 'Tiradentes', '05-01': 'Dia do Trabalho', '09-07': 'Independência', '10-12': 'Nossa Senhora Aparecida', '11-02': 'Finados', '11-15': 'Proclamação da República', '11-20': 'Consciência Negra', '12-25': 'Natal' };
+const NOMES_MOTIVO = { ferias: 'férias', falta: 'falta', atestado: 'atestado' };
+
+function atribuicoesIniciais(mes) {
+  const ancora = `${mes}-01`;
+  return [
+    { porteiro: 'jose', posto: 'portaria', modelo: '12x36', inicio: 7, ancora, paridade: 0 },
+    { porteiro: 'marcos', posto: 'portaria', modelo: '12x36', inicio: 7, ancora, paridade: 1 },
+    { porteiro: 'edson', posto: 'portaria', modelo: 'noturno', inicio: 19, ancora, paridade: 0 },
+    { porteiro: 'rita', posto: 'portaria', modelo: 'noturno', inicio: 19, ancora, paridade: 1 },
+    { porteiro: 'claudia', posto: 'guarita', modelo: '6x1', inicio: 7, folga: 0 },
+    { porteiro: 'bruno', posto: 'guarita', modelo: '6x1', inicio: 15, folga: 1 },
+  ];
+}
+
+// ---- src/escala/regras.js ----
+
+// Turnos com horas locais "AAAA-MM-DDTHH:MM": comparáveis como texto e sem fuso.
+const DESCANSO_MINIMO = 11;
+const HORA_MS_ESCALA = 3600000;
+
+function dois(n) {
+  return String(n).padStart(2, '0');
+}
+
+function modulo(n, m) {
+  return ((n % m) + m) % m;
+}
+
+function horaLocal(dia, h) {
+  return `${somarDias(dia, Math.floor(h / 24))}T${dois(h % 24)}:00`;
+}
+
+function instanteLocal(agora) {
+  return `${isoDia(agora)}T${dois(agora.getHours())}:${dois(agora.getMinutes())}`;
+}
+
+function horasEntreLocal(a, b) {
+  return (new Date(b) - new Date(a)) / HORA_MS_ESCALA;
+}
+
+function mesAtual(agora) {
+  return isoDia(agora).slice(0, 7);
+}
+
+function porteiroPorId(id) {
+  return PORTEIROS.find((p) => p.id === id);
+}
+
+function trabalha(a, dia) {
+  if (MODELOS[a.modelo].ciclo === 2) return modulo(diferencaDias(dia, a.ancora), 2) === a.paridade;
+  return deIso(dia).getDay() !== a.folga;
+}
+
+function deFerias(escala, porteiro, dia) {
+  return escala.ferias.some((f) => f.porteiro === porteiro && dia >= f.de && dia <= f.ate);
+}
+
+function gerarTurnos(escala, mes) {
+  const turnos = [];
+  for (const a of escala.atribuicoes) {
+    for (const dia of diasDoMes(mes)) {
+      if (!trabalha(a, dia)) continue;
+      const ferias = deFerias(escala, a.porteiro, dia);
+      turnos.push({ id: `T-${dia}-${a.posto}-${dois(a.inicio)}`, posto: a.posto, porteiro: ferias ? null : a.porteiro, inicio: horaLocal(dia, a.inicio), fim: horaLocal(dia, a.inicio + MODELOS[a.modelo].horas), motivoDescoberto: ferias ? 'ferias' : null, porteiroOriginal: ferias ? a.porteiro : null, anexo: null, trocado: false, checkin: null, checkout: null });
+    }
+  }
+  return turnos.sort((x, y) => x.inicio.localeCompare(y.inicio) || x.posto.localeCompare(y.posto));
+}
+
+function todosTurnos(estado) {
+  return Object.values(estado.escala.meses).flatMap((m) => m.turnos);
+}
+
+function acharTurno(estado, id) {
+  return todosTurnos(estado).find((t) => t.id === id);
+}
+
+function turnosComVespera(estado, mes) {
+  const anterior = somarMes(mes, -1);
+  const ultimo = somarDias(`${mes}-01`, -1);
+  const guardado = estado.escala.meses[anterior];
+  const vespera = (guardado ? guardado.turnos : gerarTurnos(estado.escala, anterior)).filter((t) => t.inicio.startsWith(ultimo));
+  return [...vespera, ...(estado.escala.meses[mes] ? estado.escala.meses[mes].turnos : [])];
+}
+
+function buracos(estado, mes, posto) {
+  const turnos = turnosComVespera(estado, mes).filter((t) => t.posto === posto && t.porteiro);
+  const p = POSTOS[posto];
+  const lista = [];
+  let aberto = null;
+  for (const dia of diasDoMes(mes)) {
+    for (let h = 0; h < 24; h++) {
+      const hora = horaLocal(dia, h);
+      const dentro = h >= p.abre && h < p.fecha;
+      if (dentro && !turnos.some((t) => t.inicio <= hora && hora < t.fim)) {
+        if (aberto) aberto.fim = horaLocal(dia, h + 1);
+        else aberto = { inicio: hora, fim: horaLocal(dia, h + 1) };
+      } else if (aberto) {
+        lista.push(aberto);
+        aberto = null;
+      }
+    }
+  }
+  if (aberto) lista.push(aberto);
+  return lista;
+}
+
+function feriadosDoMes(mes) {
+  return diasDoMes(mes).filter((d) => FERIADOS[d.slice(5)]).map((d) => ({ dia: d, nome: FERIADOS[d.slice(5)] }));
+}
+
+function sobrepoeTurno(a, b) {
+  return a.inicio < b.fim && b.inicio < a.fim;
+}
+
+function conflita(estado, porteiro, turno) {
+  return todosTurnos(estado).some((t) => t.id !== turno.id && t.porteiro === porteiro && sobrepoeTurno(t, turno));
+}
+
+function menorDescanso(estado, porteiro, turno) {
+  const outros = todosTurnos(estado).filter((t) => t.id !== turno.id && t.porteiro === porteiro && !sobrepoeTurno(t, turno));
+  return outros.reduce((menor, t) => Math.min(menor, t.fim <= turno.inicio ? horasEntreLocal(t.fim, turno.inicio) : horasEntreLocal(turno.fim, t.inicio)), Infinity);
+}
+
+function descansoInsuficiente(estado, mes) {
+  const lista = [];
+  for (const p of PORTEIROS) {
+    const meus = todosTurnos(estado).filter((t) => t.porteiro === p.id).sort((a, b) => a.inicio.localeCompare(b.inicio));
+    for (let i = 1; i < meus.length; i++) {
+      const horas = horasEntreLocal(meus[i - 1].fim, meus[i].inicio);
+      if (horas < DESCANSO_MINIMO && meus[i].inicio.startsWith(mes)) lista.push({ porteiro: p.id, anterior: meus[i - 1].id, proximo: meus[i].id, horas });
+    }
+  }
+  return lista;
+}
+
+function sugestoesCobertura(estado, turnoId) {
+  const t = acharTurno(estado, turnoId);
+  const folguista = (id) => (porteiroPorId(id).vinculo === 'folguista' ? 1 : 0);
+  return PORTEIROS
+    .filter((p) => p.postos.includes(t.posto) && p.id !== t.porteiroOriginal && !deFerias(estado.escala, p.id, t.inicio.slice(0, 10)) && !conflita(estado, p.id, t))
+    .map((p) => {
+      const descanso = menorDescanso(estado, p.id, t);
+      return { porteiro: p.id, descanso, alerta11: descanso < DESCANSO_MINIMO };
+    })
+    .sort((a, b) => folguista(b.porteiro) - folguista(a.porteiro) || (b.descanso - a.descanso) || 0);
+}
+
+function plantaoAgora(estado, agora) {
+  const atual = instanteLocal(agora);
+  const seguinte = estado.escala.meses[somarMes(mesAtual(agora), 1)];
+  const turnos = [...turnosComVespera(estado, mesAtual(agora)), ...(seguinte ? seguinte.turnos : [])];
+  return Object.fromEntries(Object.keys(POSTOS).map((posto) => {
+    const doPosto = turnos.filter((t) => t.posto === posto).sort((a, b) => a.inicio.localeCompare(b.inicio));
+    return [posto, { atual: doPosto.find((t) => t.inicio <= atual && atual < t.fim) || null, proximo: doPosto.find((t) => t.inicio > atual) || null }];
+  }));
+}
+
+function turnosDoPorteiro(estado, porteiro, agora) {
+  const atual = instanteLocal(agora);
+  return todosTurnos(estado).filter((t) => t.porteiro === porteiro && t.fim > atual).sort((a, b) => a.inicio.localeCompare(b.inicio));
+}
+
+function fmtTurno(t) {
+  return `${fmtDataCurta(t.inicio.slice(0, 10)).slice(0, 5)} ${Number(t.inicio.slice(11, 13))}h–${Number(t.fim.slice(11, 13))}h`;
+}
+
+function relatorioHoras(estado, mes) {
+  const doMes = estado.escala.meses[mes] ? estado.escala.meses[mes].turnos : [];
+  const horas = (t) => horasEntreLocal(t.inicio, t.fim);
+  return PORTEIROS.map((p) => {
+    const meus = doMes.filter((t) => t.porteiro === p.id);
+    return {
+      porteiro: p.id,
+      escaladas: meus.reduce((s, t) => s + horas(t), 0),
+      comCheckin: meus.filter((t) => t.checkin && t.checkout).reduce((s, t) => s + horas(t), 0),
+      atrasos: meus.filter((t) => t.checkin && t.checkin.atrasoMin > 0).length,
+      faltas: doMes.filter((t) => t.porteiroOriginal === p.id && ['falta', 'atestado'].includes(t.motivoDescoberto)).length,
+      trocas: estado.escala.trocas.filter((x) => x.situacao === 'aprovada' && x.turno.startsWith(`T-${mes}`) && (x.de === p.id || x.para === p.id)).length,
+    };
+  });
+}
+
+function nomeDoMesEscala(mes) {
+  return nomeMes(mes).split(' de ')[0];
+}
+
+function alertasEscala(estado, agora) {
+  const itens = [];
+  const proximo = somarMes(mesAtual(agora), 1);
+  const m = estado.escala.meses[proximo];
+  if (!m) itens.push({ chave: 'esc-gerar', texto: `Gerar a escala de ${nomeDoMesEscala(proximo)}`, href: '#sindico.escala' });
+  else if (m.situacao === 'rascunho') itens.push({ chave: 'esc-publicar', texto: `Escala de ${nomeDoMesEscala(proximo)} em rascunho: publicar`, href: '#sindico.escala' });
+  for (const x of estado.escala.trocas.filter((t) => t.situacao === 'aceita')) {
+    itens.push({ chave: `troca-${x.id}`, texto: `Troca aguardando aprovação: ${porteiroPorId(x.de).nome} → ${porteiroPorId(x.para).nome}, ${fmtTurno(acharTurno(estado, x.turno)).split('–')[0]}`, href: '#sindico.escala.pendencias' });
+  }
+  const atual = instanteLocal(agora);
+  const limite = instanteLocal(new Date(agora.getTime() + 7 * 24 * HORA_MS_ESCALA));
+  for (const t of todosTurnos(estado).filter((x) => !x.porteiro && x.fim > atual && x.inicio < limite).sort((a, b) => a.inicio.localeCompare(b.inicio))) {
+    itens.push({ chave: `desc-${t.id}`, texto: `Turno descoberto: ${POSTOS[t.posto].nome} ${fmtTurno(t)} · ${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}${t.porteiroOriginal ? ` de ${porteiroPorId(t.porteiroOriginal).nome}` : ''}`, href: '#sindico.escala.pendencias' });
+  }
+  return itens;
+}
+
+// ---- src/escala/acoes.js ----
+
+// Ações da escala: o síndico gera, publica, aprova e atribui; o porteiro propõe, aceita, registra falta e faz check-in.
+const SO_SINDICO_ESC = 'Somente o síndico pode fazer isso';
+
+function erroEsc(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function guardaEsc(estado, perfil, soSindico) {
+  if (soSindico && perfil !== 'sindico') return SO_SINDICO_ESC;
+  if (!liberado(estado.plano, 'escala')) return 'Disponível no plano Intermediário';
+  return null;
+}
+
+function comEscala(estado, mudanca) {
+  return { ...estado, escala: { ...estado.escala, ...mudanca } };
+}
+
+function mudarTurno(estado, id, mudanca) {
+  const mes = id.slice(2, 9);
+  const m = estado.escala.meses[mes];
+  return comEscala(estado, { meses: { ...estado.escala.meses, [mes]: { ...m, turnos: m.turnos.map((t) => (t.id === id ? { ...t, ...mudanca } : t)) } } });
+}
+
+function alertaDescanso(estado, porteiro, turno) {
+  return menorDescanso(estado, porteiro, turno) < 11 ? `Menos de 11 h de descanso para ${porteiroPorId(porteiro).nome}` : undefined;
+}
+
+function inicioDoTurno(t) {
+  return fmtTurno(t).split('–')[0];
+}
+
+function gerarEscala(estado, mes, perfil) {
+  const falha = guardaEsc(estado, perfil, true);
+  if (falha) return erroEsc(estado, falha);
+  if (estado.escala.meses[mes]) return erroEsc(estado, `A escala de ${nomeDoMesEscala(mes)} já foi gerada`);
+  return { estado: comEscala(estado, { meses: { ...estado.escala.meses, [mes]: { situacao: 'rascunho', publicadaEm: null, turnos: gerarTurnos(estado.escala, mes) } } }) };
+}
+
+function publicarEscala(estado, mes, perfil, agora) {
+  const falha = guardaEsc(estado, perfil, true);
+  if (falha) return erroEsc(estado, falha);
+  const m = estado.escala.meses[mes];
+  if (!m) return erroEsc(estado, 'Gere a escala antes de publicar');
+  if (m.situacao === 'publicada') return erroEsc(estado, 'Escala já publicada');
+  const avisados = new Set(m.turnos.filter((t) => t.porteiro).map((t) => t.porteiro)).size;
+  return {
+    estado: comEscala(estado, { meses: { ...estado.escala.meses, [mes]: { ...m, situacao: 'publicada', publicadaEm: instanteLocal(agora) } } }),
+    notificacao: { canal: 'App', para: 'Porteiros', texto: `Escala de ${nomeDoMesEscala(mes)} publicada: ${avisados} porteiros avisados` },
+  };
+}
+
+function ajustarTurno(estado, turnoId, porteiro, perfil) {
+  const falha = guardaEsc(estado, perfil, true);
+  if (falha) return erroEsc(estado, falha);
+  const t = acharTurno(estado, turnoId);
+  if (!t) return erroEsc(estado, 'Turno não encontrado');
+  if (porteiro && conflita(estado, porteiro, t)) return erroEsc(estado, 'Este colega já tem turno nesse horário');
+  const novo = mudarTurno(estado, turnoId, porteiro ? { porteiro } : { porteiro: null, motivoDescoberto: t.motivoDescoberto || 'falta', porteiroOriginal: t.porteiroOriginal || t.porteiro });
+  const nomes = [...new Set([t.porteiro, porteiro].filter(Boolean))].map((id) => porteiroPorId(id).nome);
+  const publicada = estado.escala.meses[turnoId.slice(2, 9)].situacao === 'publicada';
+  return {
+    estado: novo,
+    alerta: porteiro ? alertaDescanso(estado, porteiro, t) : undefined,
+    notificacao: publicada && nomes.length ? { canal: 'App', para: nomes.join(' e '), texto: `Escala alterada: ${POSTOS[t.posto].nome} ${fmtTurno(t)}` } : undefined,
+  };
+}
+
+function proporTroca(estado, { turnoId, de, para }, perfil, agora) {
+  const falha = guardaEsc(estado, perfil, false);
+  if (falha) return erroEsc(estado, falha);
+  const t = turnoId ? acharTurno(estado, turnoId) : null;
+  if (!t || !para) return erroEsc(estado, 'Escolha o turno e o colega');
+  if (t.porteiro !== de) return erroEsc(estado, 'Só o porteiro do turno pode propor a troca');
+  if (conflita(estado, para, t)) return erroEsc(estado, 'Este colega já tem turno nesse horário');
+  const id = `TR-${String(estado.escala.proximaTroca).padStart(3, '0')}`;
+  return {
+    estado: comEscala(estado, { trocas: [...estado.escala.trocas, { id, turno: t.id, de, para, situacao: 'proposta', criadaEm: instanteLocal(agora) }], proximaTroca: estado.escala.proximaTroca + 1 }),
+    id,
+    notificacao: { canal: 'App', para: porteiroPorId(para).nome, texto: `${porteiroPorId(de).nome} propôs trocar o turno de ${fmtTurno(t)}` },
+  };
+}
+
+function mudarTroca(estado, id, mudanca) {
+  return comEscala(estado, { trocas: estado.escala.trocas.map((x) => (x.id === id ? { ...x, ...mudanca } : x)) });
+}
+
+function aceitarTroca(estado, id, quem) {
+  const x = estado.escala.trocas.find((t) => t.id === id);
+  if (!x || x.situacao !== 'proposta') return erroEsc(estado, 'Esta troca não está aguardando o colega');
+  if (x.para !== quem) return erroEsc(estado, 'Só o colega convidado pode aceitar');
+  return { estado: mudarTroca(estado, id, { situacao: 'aceita' }), notificacao: { canal: 'App', para: 'Síndico', texto: `Troca ${id} aceita: aguardando sua aprovação` } };
+}
+
+function recusarTroca(estado, id, quem, perfil) {
+  const x = estado.escala.trocas.find((t) => t.id === id);
+  if (!x || !['proposta', 'aceita'].includes(x.situacao)) return erroEsc(estado, 'Esta troca não pode mais ser recusada');
+  if (perfil !== 'sindico' && x.para !== quem) return erroEsc(estado, 'Só o colega convidado pode aceitar');
+  return { estado: mudarTroca(estado, id, { situacao: 'recusada' }), notificacao: { canal: 'App', para: porteiroPorId(x.de).nome, texto: `Troca ${id} recusada` } };
+}
+
+function aprovarTroca(estado, id, perfil) {
+  const falha = guardaEsc(estado, perfil, true);
+  if (falha) return erroEsc(estado, falha);
+  const x = estado.escala.trocas.find((t) => t.id === id);
+  if (!x || x.situacao !== 'aceita') return erroEsc(estado, 'Esta troca ainda não foi aceita pelo colega');
+  const t = acharTurno(estado, x.turno);
+  return {
+    estado: mudarTurno(mudarTroca(estado, id, { situacao: 'aprovada' }), t.id, { porteiro: x.para, trocado: true }),
+    alerta: alertaDescanso(estado, x.para, t),
+    notificacao: { canal: 'App', para: `${porteiroPorId(x.de).nome} e ${porteiroPorId(x.para).nome}`, texto: `Troca aprovada: ${POSTOS[t.posto].nome} ${fmtTurno(t)} fica com ${porteiroPorId(x.para).nome}` },
+  };
+}
+
+function registrarFalta(estado, turnoId, { quem, motivo, anexo = null }, perfil) {
+  const falha = guardaEsc(estado, perfil, false);
+  if (falha) return erroEsc(estado, falha);
+  const t = turnoId ? acharTurno(estado, turnoId) : null;
+  if (!t || !['falta', 'atestado'].includes(motivo)) return erroEsc(estado, 'Escolha o turno e o motivo');
+  if (perfil !== 'sindico' && t.porteiro !== quem) return erroEsc(estado, 'Só o porteiro do turno pode registrar a falta');
+  if (!t.porteiro) return erroEsc(estado, 'Este turno já está descoberto');
+  const p = porteiroPorId(t.porteiro);
+  const novo = mudarTurno(estado, t.id, { porteiro: null, motivoDescoberto: motivo, porteiroOriginal: t.porteiro, anexo });
+  const notificacao = p.vinculo === 'terceirizado'
+    ? { canal: 'WhatsApp', para: p.empresa, texto: `${p.empresa}: turno descoberto na ${POSTOS[t.posto].nome} ${inicioDoTurno(t)}` }
+    : { canal: 'App', para: 'Síndico', texto: `Turno descoberto: ${POSTOS[t.posto].nome} ${inicioDoTurno(t)} (${motivo} de ${p.nome})` };
+  return { estado: novo, notificacao };
+}
+
+function atribuirCobertura(estado, turnoId, porteiro, perfil) {
+  const falha = guardaEsc(estado, perfil, true);
+  if (falha) return erroEsc(estado, falha);
+  const t = acharTurno(estado, turnoId);
+  if (!t || t.porteiro) return erroEsc(estado, 'Este turno não está descoberto');
+  if (conflita(estado, porteiro, t)) return erroEsc(estado, 'Este colega já tem turno nesse horário');
+  return {
+    estado: mudarTurno(estado, t.id, { porteiro }),
+    alerta: alertaDescanso(estado, porteiro, t),
+    notificacao: { canal: 'App', para: porteiroPorId(porteiro).nome, texto: `Você cobre ${POSTOS[t.posto].nome} ${fmtTurno(t)}` },
+  };
+}
+
+function fazerCheckin(estado, porteiro, agora) {
+  if (!liberado(estado.plano, 'checkin')) return erroEsc(estado, 'Disponível no plano Avançado');
+  const atual = instanteLocal(agora);
+  const t = todosTurnos(estado).find((x) => x.porteiro === porteiro && x.inicio <= atual && atual < x.fim);
+  if (!t || t.checkin) return erroEsc(estado, 'Não há turno seu agora para fazer check-in');
+  const minutos = Math.round((new Date(atual) - new Date(t.inicio)) / 60000);
+  return { estado: mudarTurno(estado, t.id, { checkin: { em: atual, atrasoMin: minutos > 10 ? minutos : 0 } }) };
+}
+
+function fazerCheckout(estado, porteiro, agora) {
+  if (!liberado(estado.plano, 'checkin')) return erroEsc(estado, 'Disponível no plano Avançado');
+  const atual = instanteLocal(agora);
+  const t = todosTurnos(estado).find((x) => x.porteiro === porteiro && x.checkin && !x.checkout && x.inicio <= atual);
+  if (!t) return erroEsc(estado, 'Faça o check-in antes do check-out');
+  return { estado: mudarTurno(estado, t.id, { checkout: { em: atual } }) };
+}
+
+// Seed: mês atual publicado no dia 25 do mês anterior, check-in nos turnos encerrados, atestado de amanhã e uma troca aceita.
+function comEscalaInicial(estado, agora) {
+  const mes = mesAtual(agora);
+  const escala = { atribuicoes: atribuicoesIniciais(mes), ferias: [{ porteiro: 'rita', de: `${mes}-12`, ate: `${mes}-21` }], trocas: [], meses: {}, proximaTroca: 1 };
+  const atual = instanteLocal(agora);
+  const atrasos = { [`T-${mes}-02-portaria-07`]: 15, [`T-${mes}-03-portaria-19`]: 22 };
+  const turnos = gerarTurnos(escala, mes).map((t) => {
+    if (!t.porteiro || t.fim > atual) return t;
+    const atraso = atrasos[t.id] || 0;
+    return { ...t, checkin: { em: instanteLocal(new Date(new Date(t.inicio).getTime() + atraso * 60000)), atrasoMin: atraso }, checkout: { em: t.fim } };
+  });
+  let e = { ...estado, escala: { ...escala, meses: { [mes]: { situacao: 'publicada', publicadaEm: `${somarMes(mes, -1)}-25T18:00`, turnos } } } };
+  const amanha = somarDias(isoDia(agora), 1);
+  const atestado = turnos.find((t) => t.id === `T-${amanha}-guarita-07` && t.porteiro === 'claudia');
+  if (atestado) e = mudarTurno(e, atestado.id, { porteiro: null, motivoDescoberto: 'atestado', porteiroOriginal: 'claudia', anexo: 'atestado-claudia.pdf' });
+  const daTroca = turnos.find((t) => t.porteiro === 'marcos' && t.inicio > horaLocal(somarDias(isoDia(agora), 2), 23));
+  if (daTroca) e = comEscala(e, { trocas: [{ id: 'TR-001', turno: daTroca.id, de: 'marcos', para: 'paulo', situacao: 'aceita', criadaEm: instanteLocal(new Date(agora.getTime() - 20 * 3600000)) }], proximaTroca: 2 });
+  return e;
+}
+
 // ---- src/vendas/regras.js ----
 
 const VENDA_OK = { ok: true };
@@ -2703,7 +3119,7 @@ const CASOS_DADOS = [
       const e = dadosIniciais(AGORA_TESTE);
       igual(new Set(e.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, 20);
       igual(e.pessoas.filter((p) => p.naoResidente).map((p) => [p.unidade, p.nome, p.recebeOfertas, p.vendedor]), [['704', 'Vicente Moraes', false, 'nao']]);
-      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [5, 'Ana Souza']);
+      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [6, 'Ana Souza']);
     },
   },
   {
@@ -3844,7 +4260,7 @@ const CASOS_NOTIFICACOES = [
         ['OC-0037', 'eletrica', 'alta'], ['OC-0038', 'elogio', 'baixa'], ['OC-0039', 'vazamento', 'urgente'], ['OC-0040', 'elevador', 'alta'],
         ['OC-0041', 'barulho', 'normal'], ['OC-0042', 'vaga', 'normal'], ['OC-0043', 'obra', 'normal'],
       ]);
-      igual([e.proximoProtocolo, e.versao], [44, 5]);
+      igual([e.proximoProtocolo, e.versao], [44, 6]);
     },
   },
   {
@@ -4054,6 +4470,150 @@ const CASOS_MANUTENCAO = [
   },
 ];
 
+// ---- src/casos/escala.js ----
+
+function escalaBase() {
+  return { atribuicoes: atribuicoesIniciais('2026-10'), ferias: [{ porteiro: 'rita', de: '2026-10-12', ate: '2026-10-21' }], trocas: [], meses: {}, proximaTroca: 1 };
+}
+
+function estadoEscala() {
+  const escala = escalaBase();
+  escala.meses['2026-10'] = { situacao: 'publicada', publicadaEm: '2026-09-25T18:00', turnos: gerarTurnos(escala, '2026-10') };
+  return { plano: 'intermediario', escala };
+}
+
+function doDia(e, dia, posto) {
+  return e.escala.meses['2026-10'].turnos.filter((t) => t.inicio.startsWith(dia) && t.posto === posto).map((t) => [t.porteiro, t.inicio.slice(11), t.fim]);
+}
+
+const CASOS_ESCALA = [
+  {
+    nome: 'escala: geração de 12x36, noturno e 6x1',
+    rodar() {
+      const e = estadoEscala();
+      igual([horaLocal('2026-10-19', 7), horaLocal('2026-10-19', 31)], ['2026-10-19T07:00', '2026-10-20T07:00']);
+      igual(doDia(e, '2026-10-19', 'portaria'), [['jose', '07:00', '2026-10-19T19:00'], ['edson', '19:00', '2026-10-20T07:00']]);
+      igual(doDia(e, '2026-10-20', 'portaria'), [['marcos', '07:00', '2026-10-20T19:00'], [null, '19:00', '2026-10-21T07:00']]);
+      igual(doDia(e, '2026-10-18', 'guarita'), [['bruno', '15:00', '2026-10-18T23:00']]);
+      igual(doDia(e, '2026-10-19', 'guarita'), [['claudia', '07:00', '2026-10-19T15:00']]);
+      igual(e.escala.meses['2026-10'].turnos.find((t) => t.inicio === '2026-10-20T19:00').motivoDescoberto, 'ferias');
+    },
+  },
+  {
+    nome: 'escala: buracos de cobertura e feriados',
+    rodar() {
+      const e = estadoEscala();
+      igual(buracos(e, '2026-10', 'portaria').map((b) => b.inicio), ['2026-10-12T19:00', '2026-10-14T19:00', '2026-10-16T19:00', '2026-10-18T19:00', '2026-10-20T19:00']);
+      igual(buracos(e, '2026-10', 'portaria')[0].fim, '2026-10-13T07:00');
+      const g = buracos(e, '2026-10', 'guarita');
+      igual([g.length, g[0], g[1]], [8, { inicio: '2026-10-04T07:00', fim: '2026-10-04T15:00' }, { inicio: '2026-10-05T15:00', fim: '2026-10-05T22:00' }]);
+      igual(feriadosDoMes('2026-10'), [{ dia: '2026-10-12', nome: 'Nossa Senhora Aparecida' }]);
+      igual(descansoInsuficiente(e, '2026-10'), []);
+    },
+  },
+  {
+    nome: 'escala: plantão agora, sugestões e formato do turno',
+    rodar() {
+      const e = estadoEscala();
+      const p = plantaoAgora(e, AGORA_FASE2);
+      igual([p.portaria.atual.porteiro, p.portaria.proximo.porteiro, p.portaria.proximo.inicio, p.guarita.atual.porteiro, p.guarita.proximo.inicio], ['jose', 'edson', '2026-10-19T19:00', 'claudia', '2026-10-20T07:00']);
+      const s = sugestoesCobertura(e, 'T-2026-10-20-portaria-19');
+      igual(s.map((x) => [x.porteiro, x.alerta11]), [['paulo', false], ['edson', false], ['jose', true], ['marcos', true]]);
+      igual(fmtTurno(e.escala.meses['2026-10'].turnos.find((t) => t.id === 'T-2026-10-20-portaria-19')), '20/10 19h–7h');
+      igual([liberado('basico', 'escala'), liberado('intermediario', 'escala'), liberado('intermediario', 'checkin'), liberado('avancado', 'relatorioHoras')], [false, true, false, true]);
+    },
+  },
+  {
+    nome: 'escala: seed com publicação, check-ins, atestado e troca',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const m = e.escala.meses['2026-10'];
+      igual([m.situacao, e.versao, e.escala.meses['2026-11']], ['publicada', 6, undefined]);
+      const at = m.turnos.find((x) => x.id === 'T-2026-10-20-guarita-07');
+      igual([at.porteiro, at.motivoDescoberto, at.porteiroOriginal, at.anexo], [null, 'atestado', 'claudia', 'atestado-claudia.pdf']);
+      igual(e.escala.trocas.map((x) => [x.id, x.turno, x.de, x.para, x.situacao]), [['TR-001', 'T-2026-10-22-portaria-07', 'marcos', 'paulo', 'aceita']]);
+      igual(m.turnos.find((x) => x.id === 'T-2026-10-02-portaria-07').checkin, { em: '2026-10-02T07:15', atrasoMin: 15 });
+      igual(m.turnos.find((x) => x.id === 'T-2026-10-19-portaria-07').checkin, null);
+      igual(buracos(e, '2026-10', 'guarita').length, 9);
+      igual(alertasEscala(e, AGORA_FASE2).map((a) => a.texto), [
+        'Gerar a escala de novembro',
+        'Troca aguardando aprovação: Marcos → Paulo, 22/10 7h',
+        'Turno descoberto: Guarita da garagem 20/10 7h–15h · atestado de Cláudia',
+        'Turno descoberto: Portaria principal 20/10 19h–7h · férias de Rita',
+      ]);
+      const h = relatorioHoras(e, '2026-10');
+      igual(h.find((x) => x.porteiro === 'jose'), { porteiro: 'jose', escaladas: 192, comCheckin: 108, atrasos: 0, faltas: 0, trocas: 0 });
+      igual([h.find((x) => x.porteiro === 'marcos').atrasos, h.find((x) => x.porteiro === 'claudia').faltas, h.find((x) => x.porteiro === 'claudia').escaladas], [1, 1, 208]);
+    },
+  },
+  {
+    nome: 'escala: troca em três passos',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(proporTroca(e, { turnoId: '', de: 'marcos', para: 'paulo' }, 'portaria', AGORA_FASE2).erro, 'Escolha o turno e o colega');
+      igual(proporTroca(e, { turnoId: 'T-2026-10-24-portaria-07', de: 'jose', para: 'paulo' }, 'portaria', AGORA_FASE2).erro, 'Só o porteiro do turno pode propor a troca');
+      igual(proporTroca(e, { turnoId: 'T-2026-10-24-portaria-07', de: 'marcos', para: 'bruno' }, 'portaria', AGORA_FASE2).erro, 'Este colega já tem turno nesse horário');
+      const p = proporTroca(e, { turnoId: 'T-2026-10-24-portaria-07', de: 'marcos', para: 'paulo' }, 'portaria', AGORA_FASE2);
+      igual([p.id, p.notificacao.para], ['TR-002', 'Paulo']);
+      igual(aceitarTroca(p.estado, 'TR-002', 'jose').erro, 'Só o colega convidado pode aceitar');
+      const a = aceitarTroca(p.estado, 'TR-002', 'paulo');
+      igual(aprovarTroca(a.estado, 'TR-002', 'portaria').erro, 'Somente o síndico pode fazer isso');
+      const r = aprovarTroca(a.estado, 'TR-002', 'sindico');
+      const t = r.estado.escala.meses['2026-10'].turnos.find((x) => x.id === 'T-2026-10-24-portaria-07');
+      igual([t.porteiro, t.trocado, r.notificacao.para], ['paulo', true, 'Marcos e Paulo']);
+      igual(relatorioHoras(r.estado, '2026-10').find((x) => x.porteiro === 'paulo').trocas, 1);
+      igual(recusarTroca(e, 'TR-001', 'paulo', 'portaria').estado.escala.trocas[0].situacao, 'recusada');
+    },
+  },
+  {
+    nome: 'escala: falta, aviso à terceirizada e cobertura com alerta',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(registrarFalta(e, 'T-2026-10-21-portaria-19', { quem: 'edson', motivo: '' }, 'portaria').erro, 'Escolha o turno e o motivo');
+      igual(registrarFalta(e, 'T-2026-10-21-portaria-19', { quem: 'jose', motivo: 'falta' }, 'portaria').erro, 'Só o porteiro do turno pode registrar a falta');
+      const f = registrarFalta(e, 'T-2026-10-21-portaria-19', { quem: 'edson', motivo: 'atestado', anexo: 'atestado-edson.pdf' }, 'portaria');
+      igual([f.notificacao.para, f.notificacao.texto], ['Vigilância Prisma', 'Vigilância Prisma: turno descoberto na Portaria principal 21/10 19h']);
+      igual(sugestoesCobertura(f.estado, 'T-2026-10-21-portaria-19')[0].porteiro, 'paulo');
+      igual(atribuirCobertura(f.estado, 'T-2026-10-21-portaria-19', 'paulo', 'portaria').erro, 'Somente o síndico pode fazer isso');
+      const c = atribuirCobertura(f.estado, 'T-2026-10-21-portaria-19', 'paulo', 'sindico');
+      const t = c.estado.escala.meses['2026-10'].turnos.find((x) => x.id === 'T-2026-10-21-portaria-19');
+      igual([t.porteiro, t.porteiroOriginal, c.alerta], ['paulo', 'edson', undefined]);
+      igual(atribuirCobertura(f.estado, 'T-2026-10-21-portaria-19', 'jose', 'sindico').alerta, 'Menos de 11 h de descanso para Seu José');
+    },
+  },
+  {
+    nome: 'escala: gerar e publicar o mês seguinte',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(publicarEscala(e, '2026-11', 'sindico', AGORA_FASE2).erro, 'Gere a escala antes de publicar');
+      igual(gerarEscala(e, '2026-11', 'portaria').erro, 'Somente o síndico pode fazer isso');
+      igual(gerarEscala({ ...e, plano: 'basico' }, '2026-11', 'sindico').erro, 'Disponível no plano Intermediário');
+      const g = gerarEscala(e, '2026-11', 'sindico');
+      igual([g.estado.escala.meses['2026-11'].situacao, gerarEscala(g.estado, '2026-11', 'sindico').erro], ['rascunho', 'A escala de novembro já foi gerada']);
+      igual(alertasEscala(g.estado, AGORA_FASE2)[0].texto, 'Escala de novembro em rascunho: publicar');
+      const p = publicarEscala(g.estado, '2026-11', 'sindico', AGORA_FASE2);
+      igual([p.estado.escala.meses['2026-11'].situacao, p.notificacao.texto], ['publicada', 'Escala de novembro publicada: 6 porteiros avisados']);
+      igual(publicarEscala(p.estado, '2026-11', 'sindico', AGORA_FASE2).erro, 'Escala já publicada');
+      igual(feriadosDoMes('2026-11').map((x) => x.dia), ['2026-11-02', '2026-11-15', '2026-11-20']);
+      igual(buracos(p.estado, '2026-11', 'portaria'), []);
+    },
+  },
+  {
+    nome: 'escala: check-in e check-out no Avançado',
+    rodar() {
+      const e = { ...dadosIniciais(AGORA_FASE2), plano: 'avancado' };
+      igual(fazerCheckin(dadosIniciais(AGORA_FASE2), 'jose', AGORA_FASE2).erro, 'Disponível no plano Avançado');
+      igual(fazerCheckin(e, 'marcos', AGORA_FASE2).erro, 'Não há turno seu agora para fazer check-in');
+      igual(fazerCheckout(e, 'jose', AGORA_FASE2).erro, 'Faça o check-in antes do check-out');
+      const turno = (est) => est.escala.meses['2026-10'].turnos.find((x) => x.id === 'T-2026-10-19-portaria-07');
+      igual(turno(fazerCheckin(e, 'jose', new Date(2026, 9, 19, 7, 5)).estado).checkin, { em: '2026-10-19T07:05', atrasoMin: 0 });
+      const tarde = fazerCheckin(e, 'jose', new Date(2026, 9, 19, 7, 18));
+      igual(turno(tarde.estado).checkin.atrasoMin, 18);
+      igual(turno(fazerCheckout(tarde.estado, 'jose', new Date(2026, 9, 19, 19, 2)).estado).checkout, { em: '2026-10-19T19:02' });
+    },
+  },
+];
+
 // ---- src/armazenamento.js ----
 const CHAVE_ESTADO = 'condofacil-demo-v1';
 
@@ -4062,7 +4622,7 @@ function carregarEstado() {
     const texto = localStorage.getItem(CHAVE_ESTADO);
     if (!texto) return null;
     const estado = JSON.parse(texto);
-    return estado && estado.versao === 5 ? estado : null;
+    return estado && estado.versao === 6 ? estado : null;
   } catch {
     return null;
   }
@@ -4262,13 +4822,111 @@ function PrevDoc({ documento, aoFechar }) {
   </div>`;
 }
 
+// ---- src/ui/escala-portaria.js ----
+
+// O porteiro vê só a própria escala e o plantão dos postos: nada financeiro.
+function horaDoTurno(local) {
+  return `${Number(local.slice(11, 13))}h`;
+}
+
+function textoCheckin(t) {
+  const hora = `${Number(t.checkin.em.slice(11, 13))}h${t.checkin.em.slice(14, 16)}`;
+  return `Check-in às ${hora}${t.checkin.atrasoMin ? ` · ${t.checkin.atrasoMin} min de atraso` : ' · no horário'}`;
+}
+
+function PEscala({ estado, executar, agora }) {
+  const [porteiro, setPorteiro] = useState('jose');
+  const [abrindo, setAbrindo] = useState(null);
+  const [colega, setColega] = useState('');
+  const [motivo, setMotivo] = useState('falta');
+  const [anexo, setAnexo] = useState(null);
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  if (!liberado(estado.plano, 'escala')) return html`<section><h1>Escala</h1><${Bloqueado} estado=${estado} recurso="escala" titulo="Escala, trocas e faltas dos porteiros" /></section>`;
+  const plantao = plantaoAgora(estado, agora);
+  const comCheckin = liberado(estado.plano, 'checkin');
+  const meus = turnosDoPorteiro(estado, porteiro, agora).slice(0, 8);
+  const feriados = Object.fromEntries(Object.keys(estado.escala.meses).flatMap((m) => feriadosDoMes(m)).map((f) => [f.dia, f.nome]));
+  const recebidas = estado.escala.trocas.filter((x) => x.situacao === 'proposta' && x.para === porteiro);
+
+  function rodar(acao, sucesso) {
+    const r = executar(acao);
+    setErro(r.erro || null);
+    setMensagem(r.erro ? null : sucesso);
+    if (!r.erro) {
+      setAbrindo(null);
+      setAnexo(null);
+    }
+  }
+
+  function abrir(chave) {
+    setAbrindo(abrindo === chave ? null : chave);
+    setErro(null);
+    setMensagem(null);
+  }
+
+  return html`<section class="pilha">
+    <h1>Escala</h1>
+    <h2>De plantão agora</h2>
+    <div class="grade-cartoes">${Object.entries(POSTOS).map(([id, p]) => {
+      const { atual, proximo } = plantao[id];
+      return html`<div key=${id} class="cartao">
+        <strong>${p.nome}</strong>
+        <span>${atual ? `${atual.porteiro ? porteiroPorId(atual.porteiro).nome : 'Descoberto'} · ${horaDoTurno(atual.inicio)}–${horaDoTurno(atual.fim)}` : 'Posto fechado agora'}</span>
+        <small class="sub">${proximo ? `Próximo: ${proximo.porteiro ? porteiroPorId(proximo.porteiro).nome : 'descoberto'} às ${horaDoTurno(proximo.inicio)}` : 'Próximo turno ainda sem escala'}</small>
+        ${comCheckin && atual && atual.porteiro && (atual.checkin
+          ? html`<small class="sub">${textoCheckin(atual)}</small>${!atual.checkout && html`<button type="button" class="btn secundario" onClick=${() => rodar((e) => fazerCheckout(e, atual.porteiro, new Date()), 'Check-out registrado.')}>Fazer check-out</button>`}`
+          : html`<button type="button" class="btn primario" data-acao=${`checkin-${id}`} onClick=${() => rodar((e) => fazerCheckin(e, atual.porteiro, new Date()), 'Check-in registrado com foto.')}>Fazer check-in</button>`)}
+      </div>`;
+    })}</div>
+    <h2>Meus plantões</h2>
+    <div class="cel-pessoa escala-porteiros" role="group" aria-label="Porteiro">
+      ${PORTEIROS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${porteiro === p.id} onClick=${() => { setPorteiro(p.id); setAbrindo(null); setErro(null); setMensagem(null); }}>${p.nome}</button>`)}
+    </div>
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+    ${recebidas.length > 0 && html`<div class="cartao">
+      <strong>Trocas recebidas</strong>
+      ${recebidas.map((x) => html`<div key=${x.id} class="linha-entre">
+        <span>${porteiroPorId(x.de).nome} pede que você assuma ${fmtTurno(acharTurno(estado, x.turno))}</span>
+        <span class="acoes">
+          <button type="button" class="btn primario" onClick=${() => rodar((e) => aceitarTroca(e, x.id, porteiro), 'Troca aceita. Falta a aprovação do síndico.')}>Aceitar</button>
+          <button type="button" class="btn secundario" onClick=${() => rodar((e) => recusarTroca(e, x.id, porteiro, 'portaria'), 'Troca recusada.')}>Recusar</button>
+        </span>
+      </div>`)}
+    </div>`}
+    ${meus.length
+      ? html`<ul class="m-lista">${meus.map((t) => {
+          const dia = t.inicio.slice(0, 10);
+          const colegas = PORTEIROS.filter((p) => p.id !== porteiro && p.postos.includes(t.posto));
+          return html`<li key=${t.id} class="cartao">
+            <div class="linha-entre"><strong>${fmtTurno(t)}</strong><span>${POSTOS[t.posto].nome}${feriados[dia] ? html` <${Etiqueta} tipo="info">${feriados[dia]}<//>` : ''}${t.trocado ? html` <${Etiqueta}>troca<//>` : ''}</span></div>
+            <div class="acoes">
+              <button type="button" class="btn secundario" onClick=${() => { abrir(`troca-${t.id}`); setColega(colegas[0] ? colegas[0].id : ''); }}>Propor troca</button>
+              <button type="button" class="btn secundario" onClick=${() => abrir(`falta-${t.id}`)}>Registrar falta</button>
+            </div>
+            ${abrindo === `troca-${t.id}` && html`<div class="pilha">
+              <${Campo} rotulo="Colega"><select id="troca-colega" value=${colega} onChange=${(ev) => setColega(ev.target.value)}>${colegas.map((p) => html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}</select><//>
+              <button type="button" class="btn primario" onClick=${() => rodar((e) => proporTroca(e, { turnoId: t.id, de: porteiro, para: colega }, 'portaria', new Date()), 'Proposta enviada ao colega.')}>Enviar proposta de troca</button>
+            </div>`}
+            ${abrindo === `falta-${t.id}` && html`<div class="pilha">
+              <${Campo} rotulo="Motivo"><select id="falta-motivo" value=${motivo} onChange=${(ev) => setMotivo(ev.target.value)}><option value="falta">Falta</option><option value="atestado">Atestado</option></select><//>
+              <button type="button" class="btn secundario" onClick=${() => setAnexo(`atestado-${porteiro}.pdf`)}>${anexo ? `Anexado: ${anexo}` : 'Anexar atestado'}</button>
+              <button type="button" class="btn primario" onClick=${() => rodar((e) => registrarFalta(e, t.id, { quem: porteiro, motivo, anexo }, 'portaria'), 'Falta registrada. O síndico vai cobrir o turno.')}>Registrar</button>
+            </div>`}
+          </li>`;
+        })}</ul>`
+      : html`<${Vazio} texto="Nenhum plantão nos meses publicados." />`}
+  </section>`;
+}
+
 // ---- src/ui/portaria.js ----
 
-const ABAS_PORTARIA = [['registrar', 'Registrar', 'pacote'], ['entregar', 'Entregar', 'entrega'], ['hoje', 'Reservas de hoje', 'calendario']];
+const ABAS_PORTARIA = [['registrar', 'Registrar', 'pacote'], ['entregar', 'Entregar', 'entrega'], ['hoje', 'Reservas de hoje', 'calendario'], ['escala', 'Escala', 'pessoa']];
 
 function TelaPortaria(props) {
   const tela = ABAS_PORTARIA.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'registrar';
-  const Conteudo = { registrar: PRegistrar, entregar: PEntregar, hoje: PReservasHoje }[tela];
+  const Conteudo = { registrar: PRegistrar, entregar: PEntregar, hoje: PReservasHoje, escala: PEscala }[tela];
   return html`<div class="tablet">
     <header class="tab-topo">
       <strong>Portaria</strong>
@@ -5232,6 +5890,182 @@ function MCaixaSindico({ estado, executar }) {
     ${caixa.reposicoes.length > 0 && html`<small class="sub">Última reposição: ${fmtReais(caixa.reposicoes.at(-1).valor)} em ${fmtDataHora(caixa.reposicoes.at(-1).em)}</small>`}
     <${Erro} texto=${erro} />
     <${Sucesso} texto=${mensagem} />
+  </div>`;
+}
+
+// ---- src/ui/escala-sindico.js ----
+
+const ABAS_ESCALA = [['calendario', 'Calendário'], ['pendencias', 'Pendências'], ['equipe', 'Equipe'], ['horas', 'Horas']];
+
+function horaCurta(local) {
+  return `${Number(local.slice(11, 13))}h`;
+}
+
+function nomeOuDescoberto(t) {
+  return t.porteiro ? porteiroPorId(t.porteiro).nome : `Descoberto · ${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}`;
+}
+
+function SEscala(props) {
+  const { estado, rota } = props;
+  if (!liberado(estado.plano, 'escala')) {
+    return html`<section><h1>Escala</h1><${Bloqueado} estado=${estado} recurso="escala" titulo="Escala de porteiros com trocas, faltas e cobertura" /></section>`;
+  }
+  const aba = ABAS_ESCALA.some(([id]) => id === rota.id) ? rota.id : 'calendario';
+  const Conteudo = { calendario: ECalendario, pendencias: EPendencias, equipe: EEquipe, horas: EHoras }[aba];
+  return html`<section>
+    <h1>Escala</h1>
+    <p class="sub">Escala dos porteiros por posto. Trocas e faltas chegam aqui para aprovação; o sistema avisa (não bloqueia) quando o descanso entre turnos fica abaixo de 11 h.</p>
+    <nav class="chips" aria-label="Escala">${ABAS_ESCALA.map(([id, nome]) => html`<a key=${id} class="chip" href=${`#sindico.escala.${id}`} aria-current=${aba === id ? 'page' : undefined}>${nome}</a>`)}</nav>
+    <${Conteudo} ...${props} />
+  </section>`;
+}
+
+function ECalendario({ estado, executar, agora }) {
+  const atual = mesAtual(agora);
+  const meses = [atual, somarMes(atual, 1)];
+  const [mes, setMes] = useState(atual);
+  const [posto, setPosto] = useState('portaria');
+  const [editando, setEditando] = useState(null);
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const m = estado.escala.meses[mes];
+  const hoje = isoDia(agora);
+
+  function rodar(acao, sucesso) {
+    const r = executar(acao);
+    setErro(r.erro || r.alerta || null);
+    setMensagem(r.erro ? null : sucesso);
+    return r;
+  }
+
+  const seletores = html`<div class="edicao-anuncio">
+    <${Campo} rotulo="Mês"><select id="escala-mes" value=${mes} onChange=${(ev) => { setMes(ev.target.value); setEditando(null); }}>${meses.map((x) => html`<option key=${x} value=${x}>${nomeDoMesEscala(x)}</option>`)}</select><//>
+    <${Campo} rotulo="Posto"><select id="escala-posto" value=${posto} onChange=${(ev) => { setPosto(ev.target.value); setEditando(null); }}>${Object.entries(POSTOS).map(([id, p]) => html`<option key=${id} value=${id}>${p.nome}</option>`)}</select><//>
+  </div>`;
+
+  if (!m) {
+    return html`<div class="pilha">
+      ${seletores}
+      <p class="sub">A escala de ${nomeDoMesEscala(mes)} ainda não foi gerada. Ela é montada a partir dos modelos de turno de cada porteiro e já considera as férias.</p>
+      <button type="button" class="btn primario" data-acao="gerar-escala" onClick=${() => rodar((e) => gerarEscala(e, mes, 'sindico'), `Escala de ${nomeDoMesEscala(mes)} gerada em rascunho.`)}>Gerar escala de ${nomeDoMesEscala(mes)}</button>
+      <${Erro} texto=${erro} />
+    </div>`;
+  }
+
+  const lista = buracos(estado, mes, posto);
+  const descanso = descansoInsuficiente(estado, mes);
+  const feriados = Object.fromEntries(feriadosDoMes(mes).map((f) => [f.dia, f.nome]));
+  const turnos = m.turnos.filter((t) => t.posto === posto);
+  const podeCobrir = PORTEIROS.filter((p) => p.postos.includes(posto));
+
+  return html`<div class="pilha">
+    ${seletores}
+    <div class="linha-entre">
+      <p class="sub">${lista.length} buracos de cobertura · ${descanso.length} alertas de descanso · ${m.situacao === 'publicada' ? `publicada em ${fmtDataCurta(m.publicadaEm.slice(0, 10))}` : 'rascunho'}</p>
+      ${m.situacao === 'rascunho' && html`<button type="button" class="btn primario" data-acao="publicar-escala" onClick=${() => rodar((e) => publicarEscala(e, mes, 'sindico', new Date()), 'Escala publicada.')}>Publicar escala</button>`}
+    </div>
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+    <div class="grade-escala">${diasDoMes(mes).map((dia) => html`<div key=${dia} class=${`dia-escala${dia === hoje ? ' hoje' : ''}`}>
+      <span class="dia-escala-data">${fmtDia(dia)}${feriados[dia] ? html` <${Etiqueta} tipo="info">${feriados[dia]}<//>` : ''}${dia === hoje ? html` <${Etiqueta} tipo="alerta">hoje<//>` : ''}</span>
+      <span class="dia-escala-turnos">
+        ${turnos.filter((t) => t.inicio.startsWith(dia)).map((t) => html`<span key=${t.id} class=${`turno-escala${t.porteiro ? '' : ' descoberto'}`}>
+          <button type="button" class="btn-link" data-turno=${t.id} onClick=${() => setEditando(editando === t.id ? null : t.id)}>${nomeOuDescoberto(t)}</button>
+          <small>${horaCurta(t.inicio)}–${horaCurta(t.fim)}</small>${t.trocado ? html` <${Etiqueta}>troca<//>` : ''}
+          ${editando === t.id && html`<select aria-label="Trocar porteiro" value=${t.porteiro || ''} onChange=${(ev) => { rodar((e) => ajustarTurno(e, t.id, ev.target.value || null, 'sindico'), 'Turno ajustado.'); setEditando(null); }}>
+            <option value="">Ninguém (descoberto)</option>
+            ${podeCobrir.map((p) => html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}
+          </select>`}
+        </span>`)}
+        ${lista.filter((b) => b.inicio.startsWith(dia)).map((b) => html`<span key=${b.inicio} class="buraco-escala">${horaCurta(b.inicio)}–${horaCurta(b.fim)} sem ninguém</span>`)}
+      </span>
+    </div>`)}</div>
+  </div>`;
+}
+
+function EPendencias({ estado, executar, agora }) {
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const atual = instanteLocal(agora);
+  const trocas = estado.escala.trocas.filter((x) => x.situacao === 'aceita');
+  const descobertos = todosTurnos(estado).filter((t) => !t.porteiro && t.fim > atual).sort((a, b) => a.inicio.localeCompare(b.inicio)).slice(0, 8);
+
+  function rodar(acao, sucesso) {
+    const r = executar(acao);
+    setErro(r.erro || r.alerta || null);
+    setMensagem(r.erro ? null : sucesso);
+  }
+
+  return html`<div class="pilha">
+    <h2>Trocas aguardando aprovação</h2>
+    ${trocas.length
+      ? html`<ul class="m-lista">${trocas.map((x) => {
+          const t = acharTurno(estado, x.turno);
+          return html`<li key=${x.id} class="cartao">
+            <strong>${porteiroPorId(x.de).nome} → ${porteiroPorId(x.para).nome}</strong>
+            <small class="sub">${x.id} · ${POSTOS[t.posto].nome} · ${fmtTurno(t)} · o colega já aceitou</small>
+            <div class="acoes">
+              <button type="button" class="btn primario" data-aprovar=${x.id} onClick=${() => rodar((e) => aprovarTroca(e, x.id, 'sindico'), 'Troca aprovada.')}>Aprovar</button>
+              <button type="button" class="btn secundario" onClick=${() => rodar((e) => recusarTroca(e, x.id, null, 'sindico'), 'Troca recusada.')}>Recusar</button>
+            </div>
+          </li>`;
+        })}</ul>`
+      : html`<${Vazio} texto="Nenhuma troca aguardando." />`}
+    <h2>Turnos descobertos</h2>
+    ${descobertos.length
+      ? html`<ul class="m-lista">${descobertos.map((t) => html`<li key=${t.id} class="cartao">
+          <strong>${POSTOS[t.posto].nome} · ${fmtTurno(t)}</strong>
+          <small class="sub">${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}${t.porteiroOriginal ? ` de ${porteiroPorId(t.porteiroOriginal).nome}` : ''}${t.anexo ? ` · ${t.anexo}` : ''}</small>
+          <ul class="itens-sacola">${sugestoesCobertura(estado, t.id).map((s) => {
+            const p = porteiroPorId(s.porteiro);
+            return html`<li key=${s.porteiro}>
+              <span>${p.nome} · ${NOMES_VINCULO[p.vinculo]} · ${s.descanso === Infinity ? 'livre' : `${s.descanso} h de descanso`}${s.alerta11 ? ' · ⚠ menos de 11 h' : ''}</span>
+              <button type="button" class="btn secundario" data-atribuir=${`${t.id}-${s.porteiro}`} onClick=${() => rodar((e) => atribuirCobertura(e, t.id, s.porteiro, 'sindico'), `${p.nome} cobre o turno.`)}>Atribuir</button>
+            </li>`;
+          })}</ul>
+        </li>`)}</ul>`
+      : html`<${Vazio} texto="Nenhum turno descoberto." />`}
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+  </div>`;
+}
+
+function EEquipe({ estado }) {
+  return html`<div class="pilha">
+    <h2>Postos</h2>
+    <div class="tabela-rolagem"><table class="tabela">
+      <thead><tr><th>Posto</th><th>Funcionamento</th></tr></thead>
+      <tbody>${Object.entries(POSTOS).map(([id, p]) => html`<tr key=${id}><td>${p.nome}</td><td>${p.fecha - p.abre === 24 ? '24 h' : `${p.abre}h–${p.fecha}h`}</td></tr>`)}</tbody>
+    </table></div>
+    <h2>Porteiros</h2>
+    <div class="tabela-rolagem"><table class="tabela">
+      <thead><tr><th>Nome</th><th>Vínculo</th><th>Empresa</th><th>Telefone</th><th>Postos</th><th>Férias</th></tr></thead>
+      <tbody>${PORTEIROS.map((p) => {
+        const f = estado.escala.ferias.find((x) => x.porteiro === p.id);
+        return html`<tr key=${p.id}>
+          <td>${p.nome}</td>
+          <td>${NOMES_VINCULO[p.vinculo]}</td>
+          <td>${p.empresa ? `${p.empresa} · ${EMPRESAS[p.empresa].telefone}` : '—'}</td>
+          <td>${p.telefone}</td>
+          <td>${p.postos.map((x) => POSTOS[x].nome).join(', ')}</td>
+          <td>${f ? `${fmtDataCurta(f.de).slice(0, 5)} a ${fmtDataCurta(f.ate).slice(0, 5)}` : '—'}</td>
+        </tr>`;
+      })}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function EHoras({ estado, agora }) {
+  if (!liberado(estado.plano, 'relatorioHoras')) return html`<${Bloqueado} estado=${estado} recurso="relatorioHoras" titulo="Relatório de horas, atrasos, faltas e trocas por porteiro" />`;
+  const mes = mesAtual(agora);
+  const linhas = relatorioHoras(estado, mes);
+  return html`<div class="pilha">
+    <h2>Horas de ${nomeDoMesEscala(mes)}</h2>
+    <div class="tabela-rolagem"><table class="tabela">
+      <thead><tr><th>Porteiro</th><th>Escaladas</th><th>Com check-in</th><th>Atrasos</th><th>Faltas</th><th>Trocas</th></tr></thead>
+      <tbody>${linhas.map((l) => html`<tr key=${l.porteiro}><td>${porteiroPorId(l.porteiro).nome}</td><td>${l.escaladas} h</td><td>${l.comCheckin} h</td><td>${l.atrasos}</td><td>${l.faltas}</td><td>${l.trocas}</td></tr>`)}</tbody>
+    </table></div>
+    <small class="sub">O check-in confirma presença no posto; não substitui o ponto eletrônico legal. Exportação para Excel e PDF: em breve.</small>
   </div>`;
 }
 
@@ -6247,8 +7081,8 @@ function MPreferencias({ estado, executar, eu }) {
 
 // ---- src/ui/sindico.js ----
 
-const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
-const EM_BREVE = [['Escala de porteiros', 'Intermediário'], ['Estoque, checklist e rondas', 'Avançado']];
+const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
+const EM_BREVE = [['Estoque, checklist e rondas', 'Avançado']];
 const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
 const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
 
@@ -6272,7 +7106,7 @@ function tipoEtiquetaComunicado(c) {
 
 function TelaSindico(props) {
   const tela = MENU_SINDICO.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'inicio';
-  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, manutencao: SManutencao }[tela];
+  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, manutencao: SManutencao, escala: SEscala }[tela];
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
       <p class="painel-usuario"><strong>Roberto Lima</strong><small>Síndico · apto 801</small></p>
@@ -6291,7 +7125,7 @@ function SInicio({ estado, agora }) {
   const vendedoresPendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
   const pendCobranca = pendenciasCobranca(estado, isoDia(agora));
   const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
-  const pendOperacao = comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : [];
+  const pendOperacao = [...(comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : []), ...(liberado(estado.plano, 'escala') ? alertasEscala(estado, agora) : [])];
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
   const cartoes = [
     ['Reservas pendentes', ind.pendentes, '#sindico.reservas', ind.pendentes ? 'alerta' : 'ok', 'Aguardando sua aprovação', 'calendario'],
@@ -7151,7 +7985,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

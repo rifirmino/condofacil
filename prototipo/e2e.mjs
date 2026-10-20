@@ -459,10 +459,70 @@ const ROTEIROS = {
     await clicar('Intermediário');
   },
 
+  async escalaTroca() {
+    await clicar('Reiniciar demonstração');
+    await irPara('#portaria.escala');
+    await clicar('Marcos');
+    await esperarTexto('Meus plantões');
+    await clicar('Propor troca');
+    await preencher('Colega', 'paulo');
+    await clicar('Enviar proposta de troca');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Marcos propôs')`, 'o aviso ao Paulo');
+    await clicar('Paulo');
+    await clicar('Aceitar');
+    await esperarTexto('Falta a aprovação do síndico');
+    await irPara('#sindico.escala.pendencias');
+    await esperar(`document.querySelectorAll('[data-aprovar]').length > 0`, 'a troca nas pendências');
+    await js(`[...document.querySelectorAll('[data-aprovar]')].at(-1).click()`);
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Troca aprovada')`, 'a troca aprovada');
+  },
+
+  async escalaFalta() {
+    await irPara('#portaria.escala');
+    await clicar('Edson');
+    await clicar('Registrar falta');
+    await preencher('Motivo', 'atestado');
+    await clicar('Anexar atestado');
+    await clicar('Registrar');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Vigilância Prisma')`, 'o aviso à terceirizada');
+    await irPara('#sindico.escala.pendencias');
+    await esperarTexto('atestado de Edson');
+    await clicarSeletor('[data-atribuir$="-paulo"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Você cobre')`, 'a cobertura atribuída');
+  },
+
+  async escalaPublicar() {
+    await irPara('#sindico.escala');
+    await preencher('Mês', await js(`[...document.getElementById('escala-mes').options].at(-1).value`));
+    await clicarSeletor('[data-acao="gerar-escala"]');
+    await esperarTexto('rascunho');
+    await preencher('Posto', 'guarita');
+    await esperarTexto('sem ninguém');
+    await clicarSeletor('[data-acao="publicar-escala"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('porteiros avisados')`, 'a publicação');
+  },
+
+  async escalaAvancado() {
+    await clicar('Avançado');
+    await irPara('#portaria.escala');
+    await esperarTexto('De plantão agora');
+    const botao = await js(`document.querySelector('[data-acao^="checkin-"]') ? document.querySelector('[data-acao^="checkin-"]').dataset.acao : ''`);
+    if (botao) {
+      await clicarSeletor(`[data-acao="${botao}"]`);
+      await esperarTexto('Check-in às');
+    }
+    await irPara('#sindico.escala.horas');
+    await esperarTexto('Com check-in');
+    await clicar('Básico');
+    await irPara('#sindico.escala');
+    await esperarTexto('Disponível no plano Intermediário');
+    await clicar('Intermediário');
+  },
+
   async larguraCelular() {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await pausa(300);
-    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova']) {
+    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala']) {
       await irPara(hash);
       const largura = await js('document.documentElement.scrollWidth');
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);
