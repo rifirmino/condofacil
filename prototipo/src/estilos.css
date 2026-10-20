@@ -475,3 +475,5 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 .turno-escala.descoberto .btn-link { color: var(--perigo); }
 .buraco-escala { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 2px; background: var(--perigo-bg); color: var(--perigo); font-weight: 600; font-size: 13px; }
 @media (max-width: 560px) { .dia-escala { grid-template-columns: 1fr; } }
+.escala-porteiros { flex-wrap: wrap; padding: 0; background: none; border: 0; }
+.escala-porteiros button { flex: 1 1 110px; }

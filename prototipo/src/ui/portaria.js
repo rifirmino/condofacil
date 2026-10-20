@@ -1,16 +1,17 @@
 import { html, useState } from '../vendor.js';
 import { TRANSPORTADORAS, PORTEIRO_DIA, CATEGORIAS } from '../dados.js';
 import { urgentesAbertas } from '../notificacoes/regras.js';
+import { PEscala } from './escala-portaria.js';
 import { areaPorId, moradoresDaUnidade, encomendaParada } from '../regras.js';
 import { registrarEncomenda, entregarEncomenda } from '../acoes.js';
 import { isoDia, fmtHora, haQuanto } from '../datas.js';
 import { Campo, Erro, Vazio, FotoFalsa, Etiqueta, Icone } from './comum.js';
 
-const ABAS_PORTARIA = [['registrar', 'Registrar', 'pacote'], ['entregar', 'Entregar', 'entrega'], ['hoje', 'Reservas de hoje', 'calendario']];
+const ABAS_PORTARIA = [['registrar', 'Registrar', 'pacote'], ['entregar', 'Entregar', 'entrega'], ['hoje', 'Reservas de hoje', 'calendario'], ['escala', 'Escala', 'pessoa']];
 
 export function TelaPortaria(props) {
   const tela = ABAS_PORTARIA.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'registrar';
-  const Conteudo = { registrar: PRegistrar, entregar: PEntregar, hoje: PReservasHoje }[tela];
+  const Conteudo = { registrar: PRegistrar, entregar: PEntregar, hoje: PReservasHoje, escala: PEscala }[tela];
   return html`<div class="tablet">
     <header class="tab-topo">
       <strong>Portaria</strong>

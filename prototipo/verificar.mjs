@@ -69,6 +69,7 @@ const CHECAGENS = [
   ['#sindico.escala.equipe', ['Vigilância Prisma', 'Folguista', 'Guarita da garagem']],
   ['#sindico.escala.horas', ['Disponível no plano Avançado']],
   ['#sindico.inicio', ['Gerar a escala de', '!Escala de porteiros']],
+  ['#portaria.escala', ['De plantão agora', 'Portaria principal', 'Guarita da garagem', 'Próximo', 'Meus plantões', 'Seu José', 'Propor troca']],
 ];
 
 // Só larguras de desktop: o Chrome headless impõe janela mínima maior que um celular; a largura de 390 px é medida no e2e.
