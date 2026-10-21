@@ -35,6 +35,11 @@ function documentoMascarado(unidade) {
   return `***.${unidade}.${String(((Number(unidade) * 7) % 900) + 100)}-**`;
 }
 
+// Linhas anuais da previsão a partir do orçado mensal de cada categoria, com um reajuste percentual.
+export function linhasDoOrcado(orcamento, pct) {
+  return Object.keys(CATEGORIAS_DESPESA).map((categoria) => ({ categoria, nome: CATEGORIAS_DESPESA[categoria], valor: Math.round(orcamento[categoria] * 12 * (1 + pct / 100)) }));
+}
+
 // Fração ideal por tipo (convenção): 28 aptos tipo A e 4 coberturas somam 100%.
 export const FRACOES_TIPO = { A: 0.029385, cobertura: 0.044304 };
 
@@ -133,6 +138,13 @@ export function financeiroInicial(hoje, em, pessoas, unidades) {
   // Débitos de junho e julho da 304, substituídos pelo acordo AC-001 (ver comAcordoInicial).
   cobrancas.push(novaCobranca('304', somarMes(vigente, -4), mesmoDiaDoMes(vencimentoVigente, -4), 'aberta'));
   cobrancas.push(novaCobranca('304', somarMes(vigente, -3), mesmoDiaDoMes(vencimentoVigente, -3), 'aberta'));
+  const orcamento = { pessoal: 950000, concessionarias: 420000, manutencao: 200000, administracao: 120000, seguro: 100000 };
+  const anoPrevisao = Number(vigente.slice(0, 4)) + 1;
+  const linhas8 = linhasDoOrcado(orcamento, 8);
+  const previsoes = [
+    { id: 'PO-001', ano: anoPrevisao, nome: 'Proposta do síndico', linhas: linhas8, margemPct: 12.5, criadaEm: em(-6, 21), atualizadaEm: em(-6, 21), documento: null },
+    { id: 'PO-002', ano: anoPrevisao, nome: 'Com obra do telhado', linhas: [...linhas8, { categoria: null, nome: 'Obra do telhado', valor: 3600000 }], margemPct: 12.5, criadaEm: em(-4, 20), atualizadaEm: em(-4, 20), documento: null },
+  ];
   return {
     parametros: { diaVencimento: Number(vencimentoVigente.slice(8, 10)), diaFechamento: 20, multaPct: 2, jurosPct: 1, descontoPct: 0, descontoAprovadoEm: '', formas: ['boleto', 'pix', 'cartao'], tarifa: 'condominio' },
     composicao,
@@ -149,7 +161,9 @@ export function financeiroInicial(hoje, em, pessoas, unidades) {
     acordos: [],
     historico: HISTORICO_RECEITAS.map((receitas, i) => ({ mes: somarMes(vigente, i - 11), receitas, despesas: HISTORICO_DESPESAS[i] })),
     despesasMes: { pessoal: 980000, concessionarias: 390000, manutencao: 230000, administracao: 120000, seguro: 90000 },
-    orcamento: { pessoal: 950000, concessionarias: 420000, manutencao: 200000, administracao: 120000, seguro: 100000 },
+    orcamento,
+    previsoes,
+    proximaPrevisao: 3,
     saldo: 4835000,
     auditoria: [],
   };
