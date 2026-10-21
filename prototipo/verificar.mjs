@@ -64,7 +64,8 @@ const CHECAGENS = [
   ['#zelador.compras', ['CP-001', 'Aguardando aprovação', 'Nova compra']],
   ['#zelador.caixa', ['Disponível no plano Avançado']],
   ['#portaria.hoje', ['Notificação urgente: OC-0039']],
-  ['#sindico.escala', ['Escala', 'Portaria principal', 'sem ninguém', 'Nossa Senhora Aparecida', 'buracos de cobertura', 'publicada em']],
+  ['#sindico.escala', ['Semana de', 'Sem ninguém', 'Folga', 'Noite', 'Manhã', 'Tarde', 'Seu José', 'Paulo']],
+  ['#sindico.escala.calendario', ['Escala', 'Portaria principal', 'sem ninguém', 'Nossa Senhora Aparecida', 'buracos de cobertura', 'publicada em']],
   ['#sindico.escala.pendencias', ['Trocas aguardando aprovação', 'Turnos descobertos']],
   ['#sindico.escala.equipe', ['Vigilância Prisma', 'Folguista', 'Guarita da garagem']],
   ['#sindico.escala.horas', ['Disponível no plano Avançado']],
@@ -72,7 +73,7 @@ const CHECAGENS = [
   ['#sindico.cobranca.taxas', ['Em vigor', 'Pintura da fachada', 'Frações ideais', 'Nova composição', 'Histórico', 'AGO de 28/03', 'Valor fixo por tipo']],
   ['#sindico.cobranca.parametros', ['Parâmetros de cobrança', '!Composição da taxa']],
   ['#morador.financeiro', ['Mudanças na sua taxa', 'Pintura da fachada: R$ 150,00 por mês']],
-  ['#portaria.escala', ['De plantão agora', 'Portaria principal', 'Guarita da garagem', 'Próximo', 'Meus plantões', 'Seu José', 'Propor troca']],
+  ['#portaria.escala', ['Escala da semana', 'Sem ninguém', 'De plantão agora', 'Portaria principal', 'Guarita da garagem', 'Próximo', 'Meus plantões', 'Seu José', 'Propor troca']],
 ];
 
 // Só larguras de desktop: o Chrome headless impõe janela mínima maior que um celular; a largura de 390 px é medida no e2e.

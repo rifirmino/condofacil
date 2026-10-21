@@ -6,8 +6,9 @@ import { gerarEscala, publicarEscala, ajustarTurno, aprovarTroca, recusarTroca, 
 import { isoDia, somarMes, diasDoMes, fmtDia, fmtDataCurta, fmtDataHora } from '../datas.js';
 import { Campo, Erro, Sucesso, Vazio, Etiqueta } from './comum.js';
 import { Bloqueado } from './financeiro-sindico.js';
+import { SemanaEscala } from './escala-semana.js';
 
-const ABAS_ESCALA = [['calendario', 'Calendário'], ['pendencias', 'Pendências'], ['equipe', 'Equipe'], ['horas', 'Horas']];
+const ABAS_ESCALA = [['semana', 'Semana'], ['calendario', 'Calendário'], ['pendencias', 'Pendências'], ['equipe', 'Equipe'], ['horas', 'Horas']];
 
 function horaCurta(local) {
   return `${Number(local.slice(11, 13))}h`;
@@ -22,14 +23,18 @@ export function SEscala(props) {
   if (!liberado(estado.plano, 'escala')) {
     return html`<section><h1>Escala</h1><${Bloqueado} estado=${estado} recurso="escala" titulo="Escala de porteiros com trocas, faltas e cobertura" /></section>`;
   }
-  const aba = ABAS_ESCALA.some(([id]) => id === rota.id) ? rota.id : 'calendario';
-  const Conteudo = { calendario: ECalendario, pendencias: EPendencias, equipe: EEquipe, horas: EHoras }[aba];
+  const aba = ABAS_ESCALA.some(([id]) => id === rota.id) ? rota.id : 'semana';
+  const Conteudo = { semana: ESemana, calendario: ECalendario, pendencias: EPendencias, equipe: EEquipe, horas: EHoras }[aba];
   return html`<section>
     <h1>Escala</h1>
     <p class="sub">Escala dos porteiros por posto. Trocas e faltas chegam aqui para aprovação; o sistema avisa (não bloqueia) quando o descanso entre turnos fica abaixo de 11 h.</p>
     <nav class="chips" aria-label="Escala">${ABAS_ESCALA.map(([id, nome]) => html`<a key=${id} class="chip" href=${`#sindico.escala.${id}`} aria-current=${aba === id ? 'page' : undefined}>${nome}</a>`)}</nav>
     <${Conteudo} ...${props} />
   </section>`;
+}
+
+function ESemana({ estado, executar, agora }) {
+  return html`<${SemanaEscala} estado=${estado} executar=${executar} agora=${agora} editavel=${true} />`;
 }
 
 function ECalendario({ estado, executar, agora }) {

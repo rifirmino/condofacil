@@ -5,6 +5,7 @@ import { plantaoAgora, turnosDoPorteiro, feriadosDoMes, porteiroPorId, acharTurn
 import { proporTroca, aceitarTroca, recusarTroca, registrarFalta, fazerCheckin, fazerCheckout } from '../escala/acoes.js';
 import { Campo, Erro, Sucesso, Vazio, Etiqueta } from './comum.js';
 import { Bloqueado } from './financeiro-sindico.js';
+import { SemanaEscala } from './escala-semana.js';
 
 // O porteiro vê só a própria escala e o plantão dos postos: nada financeiro.
 function horaDoTurno(local) {
@@ -61,6 +62,8 @@ export function PEscala({ estado, executar, agora }) {
           : html`<button type="button" class="btn primario" data-acao=${`checkin-${id}`} onClick=${() => rodar((e) => fazerCheckin(e, atual.porteiro, new Date()), 'Check-in registrado com foto.')}>Fazer check-in</button>`)}
       </div>`;
     })}</div>
+    <h2>Escala da semana</h2>
+    <${SemanaEscala} estado=${estado} executar=${executar} agora=${agora} />
     <h2>Meus plantões</h2>
     <div class="cel-pessoa escala-porteiros" role="group" aria-label="Porteiro">
       ${PORTEIROS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${porteiro === p.id} onClick=${() => { setPorteiro(p.id); setAbrindo(null); setErro(null); setMensagem(null); }}>${p.nome}</button>`)}

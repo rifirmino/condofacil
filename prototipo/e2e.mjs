@@ -492,7 +492,7 @@ const ROTEIROS = {
   },
 
   async escalaPublicar() {
-    await irPara('#sindico.escala');
+    await irPara('#sindico.escala.calendario');
     await preencher('Mês', await js(`[...document.getElementById('escala-mes').options].at(-1).value`));
     await clicarSeletor('[data-acao="gerar-escala"]');
     await esperarTexto('rascunho');
@@ -517,6 +517,22 @@ const ROTEIROS = {
     await irPara('#sindico.escala');
     await esperarTexto('Disponível no plano Intermediário');
     await clicar('Intermediário');
+  },
+
+  async escalaSemana() {
+    await irPara('#sindico.escala.semana');
+    await esperarTexto('Sem ninguém');
+    const antes = await js(`document.querySelector('.pilha strong').innerText`);
+    await clicarSeletor('[data-acao="semana-proxima"]');
+    await esperar(`document.querySelector('.pilha strong').innerText !== ${JSON.stringify(antes)}`, 'a próxima semana');
+    await clicarSeletor('[data-acao="semana-anterior"]');
+    await esperar(`document.querySelector('.pilha strong').innerText === ${JSON.stringify(antes)}`, 'a volta para a semana');
+    await clicarSeletor('[data-semana-turno]');
+    await preencher('Porteiro do turno', 'paulo');
+    await esperarTexto('Turno ajustado');
+    await irPara('#portaria.escala');
+    await esperarTexto('Escala da semana');
+    await esperar(`!document.querySelector('[data-semana-turno]')`, 'a grade só de leitura na portaria');
   },
 
   async taxaReajuste() {
@@ -563,7 +579,7 @@ const ROTEIROS = {
   async larguraCelular() {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await pausa(300);
-    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas']) {
+    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas', '#sindico.escala.semana']) {
       await irPara(hash);
       const largura = await js('document.documentElement.scrollWidth');
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);

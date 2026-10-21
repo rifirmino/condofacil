@@ -37,6 +37,8 @@
   --neutro: #4f5754; --neutro-bg: #eceef0;
   --moldura: #2e3640;
   --papel: #ffffff; --papel-texto: #222222; --papel-suave: #666666; --papel-linha: #e3e3e3;
+  --turno-dia-bg: #e8a93a; --turno-dia: #2b1d00; --turno-noite-bg: #12343b; --turno-noite: #ffffff;
+  --turno-manha-bg: #f8e3a6; --turno-manha: #4a3500; --turno-tarde-bg: #f6c9a4; --turno-tarde: #5a2a08;
   --raio: 3px;
   --fonte: "Open Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
   color-scheme: light;
@@ -51,6 +53,8 @@
     --ok: #6fcf97; --ok-bg: #17301f; --alerta: #f2c14e; --alerta-bg: #3a2e0e;
     --perigo: #ff8a80; --perigo-bg: #3b1a17; --info: #8db4f0; --info-bg: #18263d;
     --neutro: #b5bdb9; --neutro-bg: #2e3640; --moldura: #0f1317;
+    --turno-dia-bg: #d9a03a; --turno-dia: #1c1300; --turno-noite-bg: #2e7380; --turno-noite: #ffffff;
+    --turno-manha-bg: #5a4a1c; --turno-manha: #f8e3a6; --turno-tarde-bg: #5b3520; --turno-tarde: #f6c9a4;
     color-scheme: dark;
   }
 }
@@ -63,6 +67,8 @@
   --ok: #6fcf97; --ok-bg: #17301f; --alerta: #f2c14e; --alerta-bg: #3a2e0e;
   --perigo: #ff8a80; --perigo-bg: #3b1a17; --info: #8db4f0; --info-bg: #18263d;
   --neutro: #b5bdb9; --neutro-bg: #2e3640; --moldura: #0f1317;
+    --turno-dia-bg: #d9a03a; --turno-dia: #1c1300; --turno-noite-bg: #2e7380; --turno-noite: #ffffff;
+    --turno-manha-bg: #5a4a1c; --turno-manha: #f8e3a6; --turno-tarde-bg: #5b3520; --turno-tarde: #f6c9a4;
   color-scheme: dark;
 }
 
@@ -482,6 +488,35 @@ legend { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-sp
 @media (max-width: 560px) { .dia-escala { grid-template-columns: 1fr; } }
 .escala-porteiros { flex-wrap: wrap; padding: 0; background: none; border: 0; }
 .escala-porteiros button { flex: 1 1 110px; }
+
+/* Escala da semana: grade porteiro × dia, com a coluna de nomes fixa ao rolar no celular. */
+.semana-rolagem { overflow-x: auto; border: 1px solid var(--borda); border-radius: var(--raio); background: var(--sup); }
+.semana-escala { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13px; }
+.semana-escala th, .semana-escala td { padding: 8px 6px; border-bottom: 1px solid var(--borda); border-left: 1px solid var(--borda); text-align: center; vertical-align: middle; }
+.semana-escala thead th { background: var(--sup-2); color: var(--suave); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-size: 12px; }
+.semana-escala thead th small { display: block; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.semana-escala th[scope="row"], .semana-escala thead th:first-child { position: sticky; left: 0; z-index: 1; background: var(--sup); text-align: left; border-left: 0; color: var(--titulo); font-weight: 700; white-space: nowrap; }
+.semana-escala thead th:first-child { background: var(--sup-2); }
+.semana-escala .hoje { background: var(--laranja-tinta); }
+.semana-escala tr:last-child th, .semana-escala tr:last-child td { border-bottom: 0; }
+.celula-turno { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; margin: 1px; }
+.etq-turno { display: inline-block; min-width: 56px; padding: 4px 8px; border-radius: 4px; border: 1px solid transparent; font: inherit; font-weight: 700; font-size: 12px; line-height: 1.3; text-align: center; }
+button.etq-turno { cursor: pointer; min-height: 28px; }
+button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--laranja); outline-offset: 1px; }
+.etq-posto { color: var(--suave); font-size: 11px; }
+.t-dia { background: var(--turno-dia-bg); color: var(--turno-dia); }
+.t-noite { background: var(--turno-noite-bg); color: var(--turno-noite); }
+.t-manha { background: var(--turno-manha-bg); color: var(--turno-manha); }
+.t-tarde { background: var(--turno-tarde-bg); color: var(--turno-tarde); }
+.t-folga { background: var(--neutro-bg); color: var(--suave); font-weight: 600; }
+.t-ferias { background: transparent; border-color: var(--suave); color: var(--texto); font-weight: 600; }
+.t-falta, .t-atestado, .t-buraco { background: var(--perigo-bg); color: var(--perigo); }
+.t-buraco { min-width: 0; white-space: nowrap; margin: 1px; }
+.t-semEscala { background: none; color: var(--suave); }
+.linha-descoberta th[scope="row"] { color: var(--perigo); }
+.legenda-turnos { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 0; padding: 0; list-style: none; }
+.legenda-turnos li { display: inline-flex; align-items: center; gap: 6px; }
+.legenda-turnos small { color: var(--suave); }
 
 </style>
 <div id="app"></div>
@@ -2773,6 +2808,53 @@ function alertasEscala(estado, agora) {
   return itens;
 }
 
+// Visão da semana por porteiro: uma célula por dia com os turnos dele, o turno que ele perdeu (férias, falta, atestado) ou a folga.
+const NOMES_CELULA = { dia: 'Dia', noite: 'Noite', manha: 'Manhã', tarde: 'Tarde', folga: 'Folga', ferias: 'Férias', falta: 'Falta', atestado: 'Atestado', semEscala: '—' };
+
+function inicioDaSemana(dia) {
+  return somarDias(dia, -modulo(deIso(dia).getDay() - 1, 7));
+}
+
+function tipoDoTurno(t) {
+  const h = Number(t.inicio.slice(11, 13));
+  if (h >= 18) return 'noite';
+  if (horasEntreLocal(t.inicio, t.fim) >= 12) return 'dia';
+  return h < 12 ? 'manha' : 'tarde';
+}
+
+function celulaEscala(estado, porteiro, dia) {
+  if (!estado.escala.meses[dia.slice(0, 7)]) return [{ tipo: 'semEscala' }];
+  const doDia = estado.escala.meses[dia.slice(0, 7)].turnos.filter((t) => t.inicio.startsWith(dia));
+  const itens = [
+    ...doDia.filter((t) => t.porteiro === porteiro).map((t) => ({ tipo: tipoDoTurno(t), turno: t.id, posto: t.posto, trocado: t.trocado })),
+    ...doDia.filter((t) => t.porteiroOriginal === porteiro && t.porteiro !== porteiro && t.motivoDescoberto).map((t) => ({ tipo: t.motivoDescoberto, turno: t.id, posto: t.posto, trocado: false })),
+  ];
+  if (itens.length) return itens;
+  return [{ tipo: deFerias(estado.escala, porteiro, dia) ? 'ferias' : 'folga' }];
+}
+
+function semanaDaEscala(estado, segunda) {
+  const dias = Array.from({ length: 7 }, (_, i) => somarDias(segunda, i));
+  const meses = [...new Set(dias.map((d) => d.slice(0, 7)))].filter((m) => estado.escala.meses[m]);
+  const vazios = meses.flatMap((m) => Object.keys(POSTOS).flatMap((posto) => buracos(estado, m, posto).map((b) => ({ posto, ...b }))));
+  return {
+    dias,
+    linhas: PORTEIROS.map((p) => ({ porteiro: p.id, celulas: dias.map((dia) => celulaEscala(estado, p.id, dia)) })),
+    descobertos: dias.map((dia) => vazios.filter((b) => b.inicio.startsWith(dia))),
+  };
+}
+
+function semanasComEscala(estado) {
+  const meses = Object.keys(estado.escala.meses).sort();
+  if (!meses.length) return [];
+  const fim = diasDoMes(meses.at(-1)).at(-1);
+  const semanas = [];
+  for (let s = inicioDaSemana(`${meses[0]}-01`); s <= fim; s = somarDias(s, 7)) {
+    if (Array.from({ length: 7 }, (_, i) => somarDias(s, i)).some((d) => estado.escala.meses[d.slice(0, 7)])) semanas.push(s);
+  }
+  return semanas;
+}
+
 // ---- src/escala/acoes.js ----
 
 // Ações da escala: o síndico gera, publica, aprova e atribui; o porteiro propõe, aceita, registra falta e faz check-in.
@@ -4762,7 +4844,36 @@ function doDia(e, dia, posto) {
   return e.escala.meses['2026-10'].turnos.filter((t) => t.inicio.startsWith(dia) && t.posto === posto).map((t) => [t.porteiro, t.inicio.slice(11), t.fim]);
 }
 
+function tiposDe(semana, porteiro) {
+  return semana.linhas.find((l) => l.porteiro === porteiro).celulas.map((c) => c.map((x) => x.tipo + (x.trocado ? '↔' : '')).join('+'));
+}
+
 const CASOS_ESCALA = [
+  {
+    nome: 'escala: semana por porteiro',
+    rodar() {
+      igual([inicioDaSemana('2026-10-19'), inicioDaSemana('2026-10-25'), inicioDaSemana('2026-11-01')], ['2026-10-19', '2026-10-19', '2026-10-26']);
+      const e = dadosIniciais(AGORA_FASE2);
+      const s = semanaDaEscala(e, '2026-10-19');
+      igual(s.dias[0], '2026-10-19');
+      igual(tiposDe(s, 'jose').slice(0, 2), ['dia', 'folga']);
+      igual(tiposDe(s, 'edson')[0], 'noite');
+      igual(tiposDe(s, 'rita').slice(0, 4), ['ferias', 'ferias', 'ferias', 'noite']);
+      igual(tiposDe(s, 'claudia').slice(0, 2), ['manha', 'atestado']);
+      igual(tiposDe(s, 'bruno').slice(0, 2), ['folga', 'tarde']);
+      igual(s.descobertos[1].map((b) => [b.posto, b.inicio.slice(11), b.fim.slice(11)]).some(([p, i]) => p === 'portaria' && i === '19:00'), true);
+      igual(s.descobertos[1].some((b) => b.posto === 'guarita' && b.inicio.endsWith('07:00')), true);
+      const r = aprovarTroca(e, 'TR-001', 'sindico').estado;
+      const turno = e.escala.trocas[0].turno;
+      const dia = turno.slice(2, 12);
+      const sr = semanaDaEscala(r, inicioDaSemana(dia));
+      const i = sr.dias.indexOf(dia);
+      igual([tiposDe(sr, 'paulo')[i].endsWith('↔'), tiposDe(sr, 'marcos')[i]], [true, 'folga']);
+      const nov = semanaDaEscala(e, '2026-10-26');
+      igual(tiposDe(nov, 'jose').slice(-1), ['semEscala']);
+      igual(semanasComEscala(e)[0], '2026-09-28');
+    },
+  },
   {
     nome: 'escala: geração de 12x36, noturno e 6x1',
     rodar() {
@@ -5204,6 +5315,93 @@ function PrevDoc({ documento, aoFechar }) {
   </div>`;
 }
 
+// ---- src/ui/escala-semana.js ----
+
+// Grade porteiro × dia da semana: o síndico ajusta o turno clicando na etiqueta; a portaria só consulta.
+const DIAS_SEMANA_CURTOS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+const LEGENDA_TURNOS = [['dia', '7h–19h'], ['noite', '19h–7h'], ['manha', '7h–15h'], ['tarde', '15h–23h'], ['folga', ''], ['ferias', ''], ['falta', ''], ['atestado', '']];
+const NOMES_POSTO_CURTO = { portaria: 'Portaria', guarita: 'Guarita' };
+
+function horaDoLocal(local) {
+  return `${Number(local.slice(11, 13))}h`;
+}
+
+function EtqTurno({ item, mostrarPosto, editavel, aoClicar }) {
+  const rotulo = html`${NOMES_CELULA[item.tipo]}${item.trocado ? ' ↔' : ''}`;
+  const posto = mostrarPosto && item.posto && html`<small class="etq-posto">${NOMES_POSTO_CURTO[item.posto]}</small>`;
+  const titulo = item.trocado ? 'Turno assumido por troca' : undefined;
+  return html`<span class="celula-turno">
+    ${editavel && item.turno
+      ? html`<button type="button" class=${`etq-turno t-${item.tipo}`} data-semana-turno=${item.turno} title=${titulo} onClick=${aoClicar}>${rotulo}</button>`
+      : html`<span class=${`etq-turno t-${item.tipo}`} title=${titulo}>${rotulo}</span>`}
+    ${posto}
+  </span>`;
+}
+
+function SemanaEscala({ estado, agora, executar, editavel = false }) {
+  const hoje = isoDia(agora);
+  const semanas = semanasComEscala(estado);
+  const [segunda, setSegunda] = useState(inicioDaSemana(hoje));
+  const [editando, setEditando] = useState(null);
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const s = semanaDaEscala(estado, segunda);
+  const pos = semanas.indexOf(segunda);
+  const feriados = Object.fromEntries([...new Set(s.dias.map((d) => d.slice(0, 7)))].flatMap((m) => feriadosDoMes(m)).map((f) => [f.dia, f.nome]));
+  const turnoEditado = editando && acharTurno(estado, editando);
+
+  function irSemana(passo) {
+    const alvo = semanas[pos + passo];
+    if (alvo) { setSegunda(alvo); setEditando(null); }
+  }
+
+  function trocar(porteiro) {
+    const r = executar((e) => ajustarTurno(e, editando, porteiro || null, 'sindico'));
+    setErro(r.erro || r.alerta || null);
+    setMensagem(r.erro ? null : 'Turno ajustado.');
+    setEditando(null);
+  }
+
+  return html`<div class="pilha">
+    <div class="linha-entre">
+      <strong>Semana de ${fmtDataCurta(s.dias[0])} a ${fmtDataCurta(s.dias[6])}</strong>
+      <span class="acoes">
+        <button type="button" class="btn secundario" aria-label="Semana anterior" data-acao="semana-anterior" disabled=${pos <= 0} onClick=${() => irSemana(-1)}>‹</button>
+        <button type="button" class="btn secundario" data-acao="semana-hoje" onClick=${() => { setSegunda(inicioDaSemana(hoje)); setEditando(null); }}>Hoje</button>
+        <button type="button" class="btn secundario" aria-label="Próxima semana" data-acao="semana-proxima" disabled=${pos < 0 || pos >= semanas.length - 1} onClick=${() => irSemana(1)}>›</button>
+      </span>
+    </div>
+    <ul class="legenda-turnos" aria-label="Legenda">${LEGENDA_TURNOS.map(([tipo, horas]) => html`<li key=${tipo}><span class=${`etq-turno t-${tipo}`}>${NOMES_CELULA[tipo]}</span>${horas && html`<small>${horas}</small>`}</li>`)}</ul>
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+    ${turnoEditado && html`<div class="cartao pilha">
+      <strong>${POSTOS[turnoEditado.posto].nome} · ${fmtDataCurta(turnoEditado.inicio.slice(0, 10))} · ${horaDoLocal(turnoEditado.inicio)}–${horaDoLocal(turnoEditado.fim)}</strong>
+      <label class="campo"><span>Porteiro do turno</span><select id="semana-porteiro" value=${turnoEditado.porteiro || ''} onChange=${(ev) => trocar(ev.target.value)}>
+        <option value="">Ninguém (descoberto)</option>
+        ${PORTEIROS.filter((p) => p.postos.includes(turnoEditado.posto)).map((p) => html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}
+      </select></label>
+      <div class="acoes"><button type="button" class="btn secundario" onClick=${() => setEditando(null)}>Fechar</button></div>
+    </div>`}
+    <div class="semana-rolagem"><table class="semana-escala">
+      <thead><tr><th scope="col">Porteiro</th>${s.dias.map((d, i) => html`<th key=${d} scope="col" class=${d === hoje ? 'hoje' : ''}>${DIAS_SEMANA_CURTOS[i]}<small>${d.slice(8, 10)}/${d.slice(5, 7)}${feriados[d] ? ' · feriado' : ''}</small></th>`)}</tr></thead>
+      <tbody>
+        ${s.linhas.map((l) => {
+          const p = porteiroPorId(l.porteiro);
+          return html`<tr key=${l.porteiro}>
+            <th scope="row">${p.nome}</th>
+            ${l.celulas.map((c, i) => html`<td key=${s.dias[i]} class=${s.dias[i] === hoje ? 'hoje' : ''}>${c.map((item, n) => html`<${EtqTurno} key=${n} item=${item} mostrarPosto=${p.postos.length > 1} editavel=${editavel} aoClicar=${() => { setEditando(item.turno); setErro(null); setMensagem(null); }} />`)}</td>`)}
+          </tr>`;
+        })}
+        <tr class="linha-descoberta">
+          <th scope="row">Sem ninguém</th>
+          ${s.descobertos.map((lista, i) => html`<td key=${s.dias[i]} class=${s.dias[i] === hoje ? 'hoje' : ''}>${lista.map((b) => html`<span key=${b.posto + b.inicio} class="etq-turno t-buraco">${NOMES_POSTO_CURTO[b.posto]} ${horaDoLocal(b.inicio)}–${horaDoLocal(b.fim)}</span>`)}</td>`)}
+        </tr>
+      </tbody>
+    </table></div>
+    ${Object.keys(feriados).filter((d) => s.dias.includes(d)).map((d) => html`<small key=${d} class="sub">Feriado em ${fmtDataCurta(d)}: ${feriados[d]}.</small>`)}
+  </div>`;
+}
+
 // ---- src/ui/escala-portaria.js ----
 
 // O porteiro vê só a própria escala e o plantão dos postos: nada financeiro.
@@ -5261,6 +5459,8 @@ function PEscala({ estado, executar, agora }) {
           : html`<button type="button" class="btn primario" data-acao=${`checkin-${id}`} onClick=${() => rodar((e) => fazerCheckin(e, atual.porteiro, new Date()), 'Check-in registrado com foto.')}>Fazer check-in</button>`)}
       </div>`;
     })}</div>
+    <h2>Escala da semana</h2>
+    <${SemanaEscala} estado=${estado} executar=${executar} agora=${agora} />
     <h2>Meus plantões</h2>
     <div class="cel-pessoa escala-porteiros" role="group" aria-label="Porteiro">
       ${PORTEIROS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${porteiro === p.id} onClick=${() => { setPorteiro(p.id); setAbrindo(null); setErro(null); setMensagem(null); }}>${p.nome}</button>`)}
@@ -6500,7 +6700,7 @@ function MCaixaSindico({ estado, executar }) {
 
 // ---- src/ui/escala-sindico.js ----
 
-const ABAS_ESCALA = [['calendario', 'Calendário'], ['pendencias', 'Pendências'], ['equipe', 'Equipe'], ['horas', 'Horas']];
+const ABAS_ESCALA = [['semana', 'Semana'], ['calendario', 'Calendário'], ['pendencias', 'Pendências'], ['equipe', 'Equipe'], ['horas', 'Horas']];
 
 function horaCurta(local) {
   return `${Number(local.slice(11, 13))}h`;
@@ -6515,14 +6715,18 @@ function SEscala(props) {
   if (!liberado(estado.plano, 'escala')) {
     return html`<section><h1>Escala</h1><${Bloqueado} estado=${estado} recurso="escala" titulo="Escala de porteiros com trocas, faltas e cobertura" /></section>`;
   }
-  const aba = ABAS_ESCALA.some(([id]) => id === rota.id) ? rota.id : 'calendario';
-  const Conteudo = { calendario: ECalendario, pendencias: EPendencias, equipe: EEquipe, horas: EHoras }[aba];
+  const aba = ABAS_ESCALA.some(([id]) => id === rota.id) ? rota.id : 'semana';
+  const Conteudo = { semana: ESemana, calendario: ECalendario, pendencias: EPendencias, equipe: EEquipe, horas: EHoras }[aba];
   return html`<section>
     <h1>Escala</h1>
     <p class="sub">Escala dos porteiros por posto. Trocas e faltas chegam aqui para aprovação; o sistema avisa (não bloqueia) quando o descanso entre turnos fica abaixo de 11 h.</p>
     <nav class="chips" aria-label="Escala">${ABAS_ESCALA.map(([id, nome]) => html`<a key=${id} class="chip" href=${`#sindico.escala.${id}`} aria-current=${aba === id ? 'page' : undefined}>${nome}</a>`)}</nav>
     <${Conteudo} ...${props} />
   </section>`;
+}
+
+function ESemana({ estado, executar, agora }) {
+  return html`<${SemanaEscala} estado=${estado} executar=${executar} agora=${agora} editavel=${true} />`;
 }
 
 function ECalendario({ estado, executar, agora }) {

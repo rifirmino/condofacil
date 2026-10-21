@@ -45,6 +45,7 @@ export const ORDEM = [
   'src/casos/composicao.js',
   'src/armazenamento.js',
   'src/ui/comum.js',
+  'src/ui/escala-semana.js',
   'src/ui/escala-portaria.js',
   'src/ui/portaria.js',
   'src/ui/financeiro-sindico.js',
