@@ -24,6 +24,7 @@ const RECURSOS_PLANO = {
   cotacoes: 'avancado',
   caixaPequeno: 'avancado',
   escala: 'intermediario',
+  multasDefesa: 'intermediario',
   checkin: 'avancado',
   relatorioHoras: 'avancado',
 };

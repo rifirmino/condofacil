@@ -4,6 +4,7 @@ import { financeiroInicial } from './cobranca/dados.js';
 import { manutencaoInicial } from './manutencao/dados.js';
 import { comAcordoInicial } from './cobranca/acordos.js';
 import { comEscalaInicial } from './escala/acoes.js';
+import { comInfracaoInicial } from './infracoes/acoes.js';
 
 export const UNIDADES = Array.from({ length: 32 }, (_, i) => `${Math.floor(i / 4) + 1}0${(i % 4) + 1}`);
 export const UNIDADE_ANA = '302';
@@ -85,10 +86,12 @@ export function dadosIniciais(agora = new Date()) {
     { id: 'p704', nome: 'Vicente Moraes', unidade: '704', naoResidente: true, ...perfilVenda('704', em) },
   ];
 
-  return comEscalaInicial(comAcordoInicial({
-    versao: 7,
+  return comInfracaoInicial(comEscalaInicial(comAcordoInicial({
+    versao: 8,
     geradoEm: hoje,
     proximoProtocolo: 44,
+    infracoes: [],
+    proximaInfracao: 1,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
     pessoas,
     areas: [
@@ -132,7 +135,7 @@ export function dadosIniciais(agora = new Date()) {
         { em: em(-1, 20, 30), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
         { em: em(-1, 21), status: 'em_andamento', texto: 'Técnico da empresa de elevadores acionado', autor: 'Síndico' },
       ], avaliacao: null, arquivada: false, criadaEm: em(-1, 20) },
-      { id: 'OC-0041', categoria: 'barulho', descricao: 'Música alta depois das 22h, aparentemente no 4º andar.', local: '4º andar', unidade: '303', anonima: true, publica: false, foto: false, status: 'em_analise', eutambem: [], linha: [
+      { id: 'OC-0041', categoria: 'barulho', descricao: 'Música alta depois das 22h, aparentemente no 1º andar.', local: '1º andar', unidade: '303', anonima: true, publica: false, foto: false, status: 'em_analise', eutambem: [], linha: [
         { em: em(-1, 23), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Anônimo' },
         { em: em(0, 0, 5), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
       ], avaliacao: null, arquivada: false, criadaEm: em(-1, 23) },
@@ -142,7 +145,7 @@ export function dadosIniciais(agora = new Date()) {
       { id: 'OC-0043', categoria: 'obra', descricao: 'Furadeira no domingo às 8h no 5º andar, parece ser no 503.', local: '5º andar', unidade: '702', anonima: false, publica: false, foto: false, status: 'aberta', eutambem: [], linha: [
         { em: em(0, 5), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Sônia Araújo' },
       ], avaliacao: null, arquivada: false, criadaEm: em(0, 5) },
-    ].map((o) => ({ prioridade: CATEGORIAS[o.categoria].prioridade, os: null, advertencia: null, motivoArquivamento: null, ...o })),
+    ].map((o) => ({ prioridade: CATEGORIAS[o.categoria].prioridade, os: null, processos: [], motivoArquivamento: null, ...o })),
     documentos: [
       { id: 'd1', pasta: 'Convenção', titulo: 'Convenção do condomínio', versoes: [{ versao: 1, data: '2019-03-10' }], visibilidade: 'todos' },
       { id: 'd2', pasta: 'Regimento interno', titulo: 'Regimento interno', versoes: [{ versao: 1, data: '2019-03-10' }, { versao: 2, data: '2024-05-20' }], visibilidade: 'todos' },
@@ -168,5 +171,5 @@ export function dadosIniciais(agora = new Date()) {
     manutencao: manutencaoInicial(em),
     plano: 'intermediario',
     financeiro: financeiroInicial(hoje, em, pessoas, UNIDADES),
-  }), agora);
+  }), agora), agora);
 }

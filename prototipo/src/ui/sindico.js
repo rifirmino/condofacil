@@ -7,7 +7,7 @@ import { nomeVizinho, fmtCentavos } from '../vendas/regras.js';
 import { PainelFinanceiro, pendenciasCobranca, SCobranca } from './financeiro-sindico.js';
 import { liberado } from '../planos.js';
 import { caixaDeEntrada, prazosDe, prazosVencidos, textoAtraso, alertasNotificacoes, indicadorAtendimento } from '../notificacoes/regras.js';
-import { definirPrioridade, pedirInformacao, gerarAdvertencia, arquivarComJustificativa } from '../notificacoes/acoes.js';
+import { definirPrioridade, pedirInformacao, arquivarComJustificativa } from '../notificacoes/acoes.js';
 import { ZELADOR } from '../manutencao/dados.js';
 import { alertasManutencao } from '../manutencao/regras.js';
 import { gerarOS } from '../manutencao/acoes.js';

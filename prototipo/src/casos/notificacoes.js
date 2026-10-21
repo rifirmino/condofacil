@@ -3,7 +3,7 @@ import { liberado } from '../planos.js';
 import { slaVencido } from '../regras.js';
 import { prazosVencidos, textoAtraso, caixaDeEntrada, parecidas, alertasNotificacoes, indicadorAtendimento, urgentesAbertas } from '../notificacoes/regras.js';
 import { abrirOcorrencia, euTambem } from '../acoes.js';
-import { definirPrioridade, pedirInformacao, gerarAdvertencia, arquivarComJustificativa } from '../notificacoes/acoes.js';
+import { definirPrioridade, pedirInformacao, arquivarComJustificativa } from '../notificacoes/acoes.js';
 import { igual, AGORA_FASE2 } from './afirmar.js';
 
 function estadoNotif() {
@@ -31,7 +31,7 @@ export const CASOS_NOTIFICACOES = [
         ['OC-0037', 'eletrica', 'alta'], ['OC-0038', 'elogio', 'baixa'], ['OC-0039', 'vazamento', 'urgente'], ['OC-0040', 'elevador', 'alta'],
         ['OC-0041', 'barulho', 'normal'], ['OC-0042', 'vaga', 'normal'], ['OC-0043', 'obra', 'normal'],
       ]);
-      igual([e.proximoProtocolo, e.versao], [44, 7]);
+      igual([e.proximoProtocolo, e.versao], [44, 8]);
     },
   },
   {
@@ -84,18 +84,6 @@ export const CASOS_NOTIFICACOES = [
       igual(ocDe(definirPrioridade(e, 'OC-0042', 'alta', 'sindico', AGORA_FASE2).estado, 'OC-0042').prioridade, 'alta');
       const r = pedirInformacao(e, 'OC-0042', 'Qual a placa do carro?', 'sindico', AGORA_FASE2);
       igual([ocDe(r.estado, 'OC-0042').status, prazosVencidos(ocDe(r.estado, 'OC-0042'), AGORA_FASE2).resposta], ['em_analise', null]);
-    },
-  },
-  {
-    nome: 'notificações: advertência só para irregularidade e sem expor o denunciante',
-    rodar() {
-      const e = estadoNotif();
-      igual(gerarAdvertencia(e, 'OC-0039', '503', 'sindico', AGORA_FASE2).erro, 'Advertência só vale para irregularidades');
-      igual(gerarAdvertencia(e, 'OC-0043', '', 'sindico', AGORA_FASE2).erro, 'Informe a unidade advertida');
-      const r = gerarAdvertencia(e, 'OC-0043', '503', 'sindico', AGORA_FASE2);
-      igual([ocDe(r.estado, 'OC-0043').advertencia.unidade, r.notificacao.para], ['503', 'Apto 503']);
-      igual([r.notificacao.texto.includes('702'), r.notificacao.texto.includes('Sônia')], [false, false]);
-      igual(ocDe(r.estado, 'OC-0043').linha.at(-1).texto, 'Advertência enviada ao apto 503');
     },
   },
   {

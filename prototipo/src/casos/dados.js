@@ -15,7 +15,7 @@ export const CASOS_DADOS = [
       const e = dadosIniciais(AGORA_TESTE);
       igual(new Set(e.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, 20);
       igual(e.pessoas.filter((p) => p.naoResidente).map((p) => [p.unidade, p.nome, p.recebeOfertas, p.vendedor]), [['704', 'Vicente Moraes', false, 'nao']]);
-      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [7, 'Ana Souza']);
+      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [8, 'Ana Souza']);
     },
   },
   {

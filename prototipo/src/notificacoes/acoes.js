@@ -41,19 +41,6 @@ export function pedirInformacao(estado, id, texto, perfil, agora) {
   };
 }
 
-export function gerarAdvertencia(estado, id, unidade, perfil, agora) {
-  const falha = guardaNotif(estado, id, perfil);
-  if (falha) return erroNotif(estado, falha);
-  const oc = estado.ocorrencias.find((o) => o.id === id);
-  if (CATEGORIAS[oc.categoria].tipo !== 'irregularidade') return erroNotif(estado, 'Advertência só vale para irregularidades');
-  const alvo = String(unidade || '').trim();
-  if (!alvo) return erroNotif(estado, 'Informe a unidade advertida');
-  return {
-    estado: comEntrada(estado, id, { advertencia: { unidade: alvo, em: agora.toISOString() } }, { em: agora.toISOString(), status: null, texto: `Advertência enviada ao apto ${alvo}`, autor: 'Síndico' }),
-    notificacao: { canal: 'App + e-mail', para: `Apto ${alvo}`, texto: `Advertência do condomínio: ${CATEGORIAS[oc.categoria].nome.toLowerCase()} (regimento interno). Responda ao síndico pelo app.` },
-  };
-}
-
 export function arquivarComJustificativa(estado, id, motivo, perfil, agora) {
   if (perfil !== 'sindico') return erroNotif(estado, SO_SINDICO_NOTIF);
   const texto = String(motivo || '').trim();

@@ -11,5 +11,6 @@ import { CASOS_NOTIFICACOES } from '../src/casos/notificacoes.js';
 import { CASOS_MANUTENCAO } from '../src/casos/manutencao.js';
 import { CASOS_ESCALA } from '../src/casos/escala.js';
 import { CASOS_COMPOSICAO } from '../src/casos/composicao.js';
+import { CASOS_INFRACOES } from '../src/casos/infracoes.js';
 
-for (const caso of [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO]) test(caso.nome, () => caso.rodar());
+for (const caso of [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES]) test(caso.nome, () => caso.rodar());

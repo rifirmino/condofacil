@@ -144,7 +144,7 @@ export function abrirOcorrencia(estado, dados, agora) {
   if (!descricao) return erroAcao(estado, 'Descreva a ocorrência');
   const id = `OC-${String(estado.proximoProtocolo).padStart(4, '0')}`;
   const em = agora.toISOString();
-  const ocorrencia = { id, categoria: dados.categoria, descricao, local: String(dados.local || '').trim(), unidade: dados.unidade, anonima: !!dados.anonima, publica: !!dados.publica, foto: !!dados.foto, status: 'aberta', eutambem: [], linha: [{ em, status: 'aberta', texto: 'Ocorrência aberta', autor: dados.anonima ? 'Anônimo' : nomesDaUnidade(estado, dados.unidade) }], avaliacao: null, arquivada: false, criadaEm: em, prioridade: CATEGORIAS[dados.categoria].prioridade, os: null, advertencia: null, motivoArquivamento: null };
+  const ocorrencia = { id, categoria: dados.categoria, descricao, local: String(dados.local || '').trim(), unidade: dados.unidade, anonima: !!dados.anonima, publica: !!dados.publica, foto: !!dados.foto, status: 'aberta', eutambem: [], linha: [{ em, status: 'aberta', texto: 'Ocorrência aberta', autor: dados.anonima ? 'Anônimo' : nomesDaUnidade(estado, dados.unidade) }], avaliacao: null, arquivada: false, criadaEm: em, prioridade: CATEGORIAS[dados.categoria].prioridade, os: null, processos: [], motivoArquivamento: null };
   return {
     estado: { ...estado, ocorrencias: [ocorrencia, ...estado.ocorrencias], proximoProtocolo: estado.proximoProtocolo + 1 },
     id,
