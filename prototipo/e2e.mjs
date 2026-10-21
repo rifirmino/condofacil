@@ -443,10 +443,39 @@ const ROTEIROS = {
 
   async advertencia() {
     await irPara('#sindico.ocorrencias.OC-0043');
-    await preencher('Unidade advertida', '503');
-    await clicar('Gerar advertência');
-    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Apto 503') && !document.querySelector('.selo').innerText.includes('Sônia')`, 'a advertência sem o denunciante');
-    await esperarTexto('Advertência enviada ao apto 503');
+    await preencher('Unidade infratora', '503');
+    await clicarSeletor('[data-acao="abrir-processo"]');
+    await esperarTexto('Informe o artigo do regimento');
+    await preencher('Artigo do regimento', 'Art. 18 (obras só em dias úteis)');
+    await preencher('Valor da multa (R$)', '150,00');
+    await clicarSeletor('[data-acao="abrir-processo"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Notificação formal') && !document.querySelector('.selo').innerText.includes('Sônia') && !document.querySelector('.selo').innerText.includes('OC-0043')`, 'a notificação formal sem o denunciante');
+    await esperarTexto('Processo PI-002 aberto');
+  },
+
+  async multaDefesa() {
+    await irPara('#morador.inicio');
+    await clicar('Juliana · 104');
+    await esperarTexto('Notificação formal do condomínio');
+    await irPara('#morador.ocorrencias');
+    await esperarTexto('Notificações para o seu apartamento');
+    await irPara('#morador.ocorrencias.PI-001');
+    await preencher('Sua defesa', 'Era aniversário e encerramos a música às 22h30.');
+    await clicar('Anexar documento');
+    await clicarSeletor('[data-acao="enviar-defesa"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('defesa apresentada')`, 'o aviso da defesa');
+    await esperarTexto('Sua defesa ·');
+    await clicar('Ana · 302');
+    await irPara('#morador.ocorrencias');
+    await esperar(`!document.body.innerText.includes('PI-001')`, 'a Ana sem o processo da Juliana');
+    await irPara('#sindico.inicio');
+    await esperarTexto('PI-001: defesa recebida, decida');
+    await irPara('#sindico.ocorrencias.PI-001');
+    await esperarTexto('encerramos a música');
+    await preencher('Justificativa', 'Barulho confirmado por três vizinhos.');
+    await clicarSeletor('[data-acao="decidir-processo"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Decisão do processo PI-001: mantida')`, 'o aviso da decisão');
+    await esperarTexto('Multa no boleto de');
   },
 
   async planosManutencao() {
@@ -579,7 +608,7 @@ const ROTEIROS = {
   async larguraCelular() {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await pausa(300);
-    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas', '#sindico.escala.semana']) {
+    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas', '#sindico.escala.semana', '#sindico.ocorrencias.PI-001', '#sindico.ocorrencias.OC-0043']) {
       await irPara(hash);
       const largura = await js('document.documentElement.scrollWidth');
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);

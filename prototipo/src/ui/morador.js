@@ -7,6 +7,8 @@ import { pessoaDaUnidade, anunciosVisiveis } from '../vendas/regras.js';
 import { trocarMorador, alternarOfertas } from '../vendas/acoes.js';
 import { TelaVendas, CartaoAnuncio } from './vendas.js';
 import { MFinanceiro, CartaoCobrancaInicio } from './financeiro-morador.js';
+import { infracaoPorId } from '../infracoes/regras.js';
+import { MBlocoInfracoes, MDetalheInfracao, CartaoInfracaoInicio } from './infracoes.js';
 import { areaPorId, statusDia, horariosDaArea, comunicadosDaUnidade, avisoCancelamento, encomendaParada, STATUS_ATIVOS } from '../regras.js';
 import { solicitarReserva, cancelarReserva, marcarLido, reagir, abrirOcorrencia, avaliarOcorrencia, euTambem } from '../acoes.js';
 import { isoDia, somarMes, diferencaDias, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
@@ -78,6 +80,7 @@ function MInicio({ estado, agora, eu }) {
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Olá, ${pessoaDaUnidade(estado, eu).nome.split(' ')[0]}</h1>
     <p class="m-sub">Apto ${eu} · Residencial Ipê Amarelo</p>
+    <${CartaoInfracaoInicio} estado=${estado} eu=${eu} agora=${agora} />
     <${CartaoCobrancaInicio} estado=${estado} eu=${eu} agora=${agora} />
     <a class="cartao link com-icone" href="#morador.avisos"><${QuadroIcone} nome="megafone" /><span><strong>Avisos</strong><span class="sub">${naoLidos ? `${naoLidos} não ${naoLidos === 1 ? 'lido' : 'lidos'}` : 'Tudo lido'}</span></span></a>
     <h2>Encomendas na portaria</h2>
@@ -260,6 +263,8 @@ function MAvisos({ estado, rota, executar, eu }) {
 function MOcorrencias(props) {
   const { estado, rota, eu } = props;
   if (rota.id === 'nova') return html`<${MNovaOcorrencia} ...${props} />`;
+  const processo = rota.id ? infracaoPorId(estado, rota.id) : null;
+  if (processo && processo.unidade === eu) return html`<${MDetalheInfracao} estado=${estado} executar=${props.executar} agora=${props.agora} p=${processo} eu=${eu} />`;
   const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id && (o.unidade === eu || o.publica || o.eutambem.includes(eu))) : null;
   if (oc) return html`<${MDetalheOcorrencia} estado=${estado} executar=${props.executar} oc=${oc} eu=${eu} />`;
   const minhas = estado.ocorrencias.filter((o) => o.unidade === eu);
@@ -272,6 +277,7 @@ function MOcorrencias(props) {
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Notificações</h1>
     <a class="btn primario bloco" href="#morador.ocorrencias.nova">Abrir notificação</a>
+    <${MBlocoInfracoes} estado=${estado} eu=${eu} agora=${props.agora} />
     <h2>Minhas</h2>
     ${minhas.length ? html`<ul class="m-lista">${minhas.map(item)}</ul>` : html`<${Vazio} texto="Você não abriu notificações." />`}
     <h2>Públicas do condomínio</h2>

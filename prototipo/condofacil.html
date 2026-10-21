@@ -633,6 +633,7 @@ const RECURSOS_PLANO = {
   cotacoes: 'avancado',
   caixaPequeno: 'avancado',
   escala: 'intermediario',
+  multasDefesa: 'intermediario',
   checkin: 'avancado',
   relatorioHoras: 'avancado',
 };
@@ -1602,10 +1603,12 @@ function dadosIniciais(agora = new Date()) {
     { id: 'p704', nome: 'Vicente Moraes', unidade: '704', naoResidente: true, ...perfilVenda('704', em) },
   ];
 
-  return comEscalaInicial(comAcordoInicial({
-    versao: 7,
+  return comInfracaoInicial(comEscalaInicial(comAcordoInicial({
+    versao: 8,
     geradoEm: hoje,
     proximoProtocolo: 44,
+    infracoes: [],
+    proximaInfracao: 1,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
     pessoas,
     areas: [
@@ -1649,7 +1652,7 @@ function dadosIniciais(agora = new Date()) {
         { em: em(-1, 20, 30), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
         { em: em(-1, 21), status: 'em_andamento', texto: 'Técnico da empresa de elevadores acionado', autor: 'Síndico' },
       ], avaliacao: null, arquivada: false, criadaEm: em(-1, 20) },
-      { id: 'OC-0041', categoria: 'barulho', descricao: 'Música alta depois das 22h, aparentemente no 4º andar.', local: '4º andar', unidade: '303', anonima: true, publica: false, foto: false, status: 'em_analise', eutambem: [], linha: [
+      { id: 'OC-0041', categoria: 'barulho', descricao: 'Música alta depois das 22h, aparentemente no 1º andar.', local: '1º andar', unidade: '303', anonima: true, publica: false, foto: false, status: 'em_analise', eutambem: [], linha: [
         { em: em(-1, 23), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Anônimo' },
         { em: em(0, 0, 5), status: 'em_analise', texto: 'Status alterado para Em análise', autor: 'Síndico' },
       ], avaliacao: null, arquivada: false, criadaEm: em(-1, 23) },
@@ -1659,7 +1662,7 @@ function dadosIniciais(agora = new Date()) {
       { id: 'OC-0043', categoria: 'obra', descricao: 'Furadeira no domingo às 8h no 5º andar, parece ser no 503.', local: '5º andar', unidade: '702', anonima: false, publica: false, foto: false, status: 'aberta', eutambem: [], linha: [
         { em: em(0, 5), status: 'aberta', texto: 'Ocorrência aberta', autor: 'Sônia Araújo' },
       ], avaliacao: null, arquivada: false, criadaEm: em(0, 5) },
-    ].map((o) => ({ prioridade: CATEGORIAS[o.categoria].prioridade, os: null, advertencia: null, motivoArquivamento: null, ...o })),
+    ].map((o) => ({ prioridade: CATEGORIAS[o.categoria].prioridade, os: null, processos: [], motivoArquivamento: null, ...o })),
     documentos: [
       { id: 'd1', pasta: 'Convenção', titulo: 'Convenção do condomínio', versoes: [{ versao: 1, data: '2019-03-10' }], visibilidade: 'todos' },
       { id: 'd2', pasta: 'Regimento interno', titulo: 'Regimento interno', versoes: [{ versao: 1, data: '2019-03-10' }, { versao: 2, data: '2024-05-20' }], visibilidade: 'todos' },
@@ -1685,7 +1688,7 @@ function dadosIniciais(agora = new Date()) {
     manutencao: manutencaoInicial(em),
     plano: 'intermediario',
     financeiro: financeiroInicial(hoje, em, pessoas, UNIDADES),
-  }), agora);
+  }), agora), agora);
 }
 
 // ---- src/regras.js ----
@@ -2075,7 +2078,7 @@ function abrirOcorrencia(estado, dados, agora) {
   if (!descricao) return erroAcao(estado, 'Descreva a ocorrência');
   const id = `OC-${String(estado.proximoProtocolo).padStart(4, '0')}`;
   const em = agora.toISOString();
-  const ocorrencia = { id, categoria: dados.categoria, descricao, local: String(dados.local || '').trim(), unidade: dados.unidade, anonima: !!dados.anonima, publica: !!dados.publica, foto: !!dados.foto, status: 'aberta', eutambem: [], linha: [{ em, status: 'aberta', texto: 'Ocorrência aberta', autor: dados.anonima ? 'Anônimo' : nomesDaUnidade(estado, dados.unidade) }], avaliacao: null, arquivada: false, criadaEm: em, prioridade: CATEGORIAS[dados.categoria].prioridade, os: null, advertencia: null, motivoArquivamento: null };
+  const ocorrencia = { id, categoria: dados.categoria, descricao, local: String(dados.local || '').trim(), unidade: dados.unidade, anonima: !!dados.anonima, publica: !!dados.publica, foto: !!dados.foto, status: 'aberta', eutambem: [], linha: [{ em, status: 'aberta', texto: 'Ocorrência aberta', autor: dados.anonima ? 'Anônimo' : nomesDaUnidade(estado, dados.unidade) }], avaliacao: null, arquivada: false, criadaEm: em, prioridade: CATEGORIAS[dados.categoria].prioridade, os: null, processos: [], motivoArquivamento: null };
   return {
     estado: { ...estado, ocorrencias: [ocorrencia, ...estado.ocorrencias], proximoProtocolo: estado.proximoProtocolo + 1 },
     id,
@@ -2173,19 +2176,6 @@ function pedirInformacao(estado, id, texto, perfil, agora) {
   return {
     estado: comEntrada(estado, id, { status }, { em: agora.toISOString(), status: status !== oc.status ? status : null, texto: `Pedido de informação: ${mensagem}`, autor: 'Síndico' }),
     notificacao: { canal: 'Push', para: `Apto ${oc.unidade}`, texto: `${id}: o síndico pediu mais informações` },
-  };
-}
-
-function gerarAdvertencia(estado, id, unidade, perfil, agora) {
-  const falha = guardaNotif(estado, id, perfil);
-  if (falha) return erroNotif(estado, falha);
-  const oc = estado.ocorrencias.find((o) => o.id === id);
-  if (CATEGORIAS[oc.categoria].tipo !== 'irregularidade') return erroNotif(estado, 'Advertência só vale para irregularidades');
-  const alvo = String(unidade || '').trim();
-  if (!alvo) return erroNotif(estado, 'Informe a unidade advertida');
-  return {
-    estado: comEntrada(estado, id, { advertencia: { unidade: alvo, em: agora.toISOString() } }, { em: agora.toISOString(), status: null, texto: `Advertência enviada ao apto ${alvo}`, autor: 'Síndico' }),
-    notificacao: { canal: 'App + e-mail', para: `Apto ${alvo}`, texto: `Advertência do condomínio: ${CATEGORIAS[oc.categoria].nome.toLowerCase()} (regimento interno). Responda ao síndico pelo app.` },
   };
 }
 
@@ -2307,6 +2297,170 @@ function encerrarTaxaExtra(estado, id, motivo, perfil, agora) {
     desfeitos,
     notificacao: { canal: 'App + e-mail + WhatsApp', para: `${responsaveisAvisados(fin)} responsáveis`, texto: `Taxa extra ${extra.descricao} encerrada${ultimaCompetencia ? `: última parcela em ${nomeMes(ultimaCompetencia)}` : ' antes da primeira parcela'}` },
   };
+}
+
+// ---- src/infracoes/regras.js ----
+
+// Processo de infração: advertência ou multa com prazo de defesa, decidida pelo síndico com justificativa.
+const NOMES_TIPO_INFRACAO = { advertencia: 'Advertência', multa: 'Multa' };
+const NOMES_SITUACAO_INFRACAO = { defesa: 'Aguardando defesa', analise: 'Em análise', decidido: 'Decidido' };
+const NOMES_RESULTADO_INFRACAO = { mantida: 'Mantida', convertida: 'Convertida em advertência', cancelada: 'Cancelada' };
+const PRAZO_DEFESA_PADRAO = 10;
+
+function infracaoPorId(estado, id) {
+  return estado.infracoes.find((p) => p.id === id) || null;
+}
+
+function prazoVencido(p, hoje) {
+  return p.prazoEncerrado || hoje > p.prazoAte;
+}
+
+function situacaoInfracao(p, hoje) {
+  return p.situacao === 'defesa' && prazoVencido(p, hoje) ? 'analise' : p.situacao;
+}
+
+function podeDecidir(p, hoje) {
+  return p.situacao !== 'decidido' && (!!p.defesa || prazoVencido(p, hoje));
+}
+
+function infracoesDaUnidade(estado, unidade) {
+  return estado.infracoes.filter((p) => p.unidade === unidade).sort((a, b) => b.abertoEm.localeCompare(a.abertoEm));
+}
+
+function infracoesAbertas(estado) {
+  return estado.infracoes.filter((p) => p.situacao !== 'decidido').sort((a, b) => a.prazoAte.localeCompare(b.prazoAte));
+}
+
+function alertasInfracoes(estado, hoje) {
+  return infracoesAbertas(estado).filter((p) => podeDecidir(p, hoje)).map((p) => ({
+    chave: `infracao-${p.id}`,
+    href: `#sindico.ocorrencias.${p.id}`,
+    texto: `${p.id}: ${p.defesa ? 'defesa recebida' : 'prazo de defesa encerrado'}, decida`,
+  }));
+}
+
+function fatoPadrao(oc) {
+  return `${CATEGORIAS[oc.categoria].nome} (registro de ${fmtDataCurta(isoDia(new Date(oc.criadaEm)))})`;
+}
+
+// ---- src/infracoes/acoes.js ----
+
+// Ações do processo de infração. O infrator vê só o fato descrito pelo síndico, nunca a notificação original.
+const SO_SINDICO_INFRACAO = 'Somente o síndico pode fazer isso';
+
+function erroInfracao(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function guardaInfracao(estado, perfil) {
+  if (perfil !== 'sindico') return SO_SINDICO_INFRACAO;
+  if (!liberado(estado.plano, 'multasDefesa')) return 'Disponível no plano Intermediário';
+  return null;
+}
+
+function comEntradaInfracao(estado, id, mudanca, texto, autor, agora) {
+  const p = infracaoPorId(estado, id);
+  return { ...estado, infracoes: trocarItem(estado.infracoes, id, { ...mudanca, linha: [...p.linha, { em: agora.toISOString(), texto, autor }] }) };
+}
+
+function comEntradaNaOcorrencia(estado, ocId, texto, agora, mudanca = {}) {
+  const oc = estado.ocorrencias.find((o) => o.id === ocId);
+  return { ...estado, ocorrencias: trocarItem(estado.ocorrencias, ocId, { ...mudanca, linha: [...oc.linha, { em: agora.toISOString(), status: null, texto, autor: 'Síndico' }] }) };
+}
+
+function abrirProcesso(estado, ocId, dados, perfil, agora) {
+  const falha = guardaInfracao(estado, perfil);
+  if (falha) return erroInfracao(estado, falha);
+  const oc = estado.ocorrencias.find((o) => o.id === ocId);
+  if (!oc) return erroInfracao(estado, 'Ocorrência não encontrada');
+  if (CATEGORIAS[oc.categoria].tipo !== 'irregularidade') return erroInfracao(estado, 'Processo só vale para irregularidades');
+  const unidade = String(dados.unidade || '').trim();
+  if (!estado.condominio.unidades.includes(unidade)) return erroInfracao(estado, 'Informe a unidade infratora');
+  const tipo = dados.tipo === 'advertencia' ? 'advertencia' : 'multa';
+  const artigo = String(dados.artigo || '').trim();
+  if (!artigo) return erroInfracao(estado, 'Informe o artigo do regimento');
+  const fato = String(dados.fato || '').trim();
+  if (!fato) return erroInfracao(estado, 'Descreva o fato');
+  if (tipo === 'multa' && !(dados.valor > 0)) return erroInfracao(estado, 'Informe o valor da multa');
+  const prazoDias = Number(dados.prazoDias);
+  if (!Number.isInteger(prazoDias) || prazoDias < 5 || prazoDias > 30) return erroInfracao(estado, 'O prazo de defesa deve ser de 5 a 30 dias');
+  if (estado.infracoes.some((p) => p.ocorrencia === ocId && p.unidade === unidade && p.situacao !== 'decidido')) return erroInfracao(estado, 'Já existe um processo aberto para esta unidade nesta notificação');
+  const id = `PI-${String(estado.proximaInfracao).padStart(3, '0')}`;
+  const prazoAte = somarDias(isoDia(agora), prazoDias);
+  const nome = NOMES_TIPO_INFRACAO[tipo];
+  const processo = {
+    id, ocorrencia: ocId, unidade, tipo, artigo, fato, valor: tipo === 'multa' ? Math.round(dados.valor) : null, prazoDias,
+    abertoEm: agora.toISOString(), prazoAte, situacao: 'defesa', defesa: null, prazoEncerrado: false, decisao: null, lancamento: null,
+    linha: [{ em: agora.toISOString(), texto: `${nome} aberta com base no ${artigo}. Prazo de defesa até ${fmtDataCurta(prazoAte)}`, autor: 'Síndico' }],
+  };
+  const novo = comEntradaNaOcorrencia({ ...estado, infracoes: [...estado.infracoes, processo], proximaInfracao: estado.proximaInfracao + 1 }, ocId, `Processo ${id} aberto: ${nome.toLowerCase()} ao apto ${unidade}`, agora, { processos: [...(oc.processos || []), id] });
+  return {
+    estado: novo,
+    id,
+    notificacao: { canal: 'App + e-mail', para: nomesDaUnidade(estado, unidade), texto: `Notificação formal do condomínio (${id}): ${fato}. ${artigo}.${processo.valor ? ` Multa de ${fmtReais(processo.valor)}.` : ''} Defesa até ${fmtDataCurta(prazoAte)}.` },
+  };
+}
+
+function apresentarDefesa(estado, id, { unidade, autor, texto, anexo }, agora) {
+  const p = infracaoPorId(estado, id);
+  if (!p) return erroInfracao(estado, 'Processo não encontrado');
+  if (unidade !== p.unidade) return erroInfracao(estado, `Só moradores do apto ${p.unidade} podem apresentar defesa`);
+  if (p.situacao === 'decidido') return erroInfracao(estado, 'O processo já foi decidido');
+  if (p.defesa) return erroInfracao(estado, 'A defesa já foi apresentada');
+  if (prazoVencido(p, isoDia(agora))) return erroInfracao(estado, 'O prazo de defesa terminou');
+  const escrita = String(texto || '').trim();
+  if (!escrita) return erroInfracao(estado, 'Escreva a sua defesa');
+  const defesa = { texto: escrita, anexo: anexo || null, autor, em: agora.toISOString() };
+  return {
+    estado: comEntradaInfracao(estado, id, { defesa, situacao: 'analise' }, `Defesa apresentada${anexo ? ' com anexo' : ''}`, autor, agora),
+    notificacao: { canal: 'Painel do síndico', para: 'Síndico', texto: `${id}: defesa apresentada pelo apto ${p.unidade}` },
+  };
+}
+
+function encerrarPrazo(estado, id, perfil, agora) {
+  const falha = guardaInfracao(estado, perfil);
+  if (falha) return erroInfracao(estado, falha);
+  const p = infracaoPorId(estado, id);
+  if (!p || p.situacao !== 'defesa' || p.defesa) return erroInfracao(estado, 'Só processos aguardando defesa');
+  return { estado: comEntradaInfracao(estado, id, { prazoEncerrado: true, situacao: 'analise' }, 'Prazo de defesa encerrado sem defesa', 'Síndico', agora) };
+}
+
+function decidirProcesso(estado, id, { resultado, justificativa }, perfil, agora) {
+  const falha = guardaInfracao(estado, perfil);
+  if (falha) return erroInfracao(estado, falha);
+  const p = infracaoPorId(estado, id);
+  if (!p) return erroInfracao(estado, 'Processo não encontrado');
+  if (p.situacao === 'decidido') return erroInfracao(estado, 'O processo já foi decidido');
+  if (!podeDecidir(p, isoDia(agora))) return erroInfracao(estado, 'Aguarde a defesa ou o fim do prazo');
+  if (!NOMES_RESULTADO_INFRACAO[resultado]) return erroInfracao(estado, 'Escolha a decisão');
+  if (resultado === 'convertida' && p.tipo !== 'multa') return erroInfracao(estado, 'Só multas podem ser convertidas em advertência');
+  const motivo = String(justificativa || '').trim();
+  if (!motivo) return erroInfracao(estado, 'Informe a justificativa da decisão');
+  const lanca = resultado === 'mantida' && p.tipo === 'multa';
+  let novo = estado;
+  let lancamento = null;
+  if (lanca) {
+    const fin = estado.financeiro;
+    lancamento = primeiraNaoEmitida(fin);
+    const item = { tipo: 'multa', descricao: `Multa por infração ${id} (${p.artigo})`, valor: p.valor };
+    const ajuste = fin.ajustesPrevia[lancamento] && fin.ajustesPrevia[lancamento][p.unidade];
+    const ajustesPrevia = ajuste ? { ...fin.ajustesPrevia, [lancamento]: { ...fin.ajustesPrevia[lancamento], [p.unidade]: [...ajuste, item] } } : fin.ajustesPrevia;
+    novo = { ...estado, financeiro: { ...fin, avulsos: [...fin.avulsos, { unidade: p.unidade, competencia: lancamento, ...item }], ajustesPrevia } };
+  }
+  const texto = `Decisão: ${NOMES_RESULTADO_INFRACAO[resultado].toLowerCase()}. ${motivo}${lanca ? `. Multa de ${fmtReais(p.valor)} no boleto de ${nomeMes(lancamento)}` : ''}`;
+  novo = comEntradaInfracao(novo, id, { situacao: 'decidido', decisao: { resultado, justificativa: motivo, em: agora.toISOString() }, lancamento }, texto, 'Síndico', agora);
+  novo = comEntradaNaOcorrencia(novo, p.ocorrencia, `Decisão do processo ${id}: ${NOMES_RESULTADO_INFRACAO[resultado].toLowerCase()}`, agora);
+  return {
+    estado: novo,
+    notificacao: { canal: 'App + e-mail', para: nomesDaUnidade(estado, p.unidade), texto: `Decisão do processo ${id}: ${NOMES_RESULTADO_INFRACAO[resultado].toLowerCase()}.${lanca ? ` Multa de ${fmtReais(p.valor)} no boleto de ${nomeMes(lancamento)}.` : ''}` },
+  };
+}
+
+// Semente: multa aguardando defesa para o apto 104 (Juliana), aberta pela própria ação como faria o síndico.
+function comInfracaoInicial(estado, agora) {
+  const abertura = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate(), 0, 10);
+  const r = abrirProcesso(estado, 'OC-0041', { unidade: '104', tipo: 'multa', artigo: 'Art. 12 do regimento interno (silêncio depois das 22h)', fato: 'Música alta depois das 22h na unidade, registrada na noite anterior', valor: 20000, prazoDias: 10 }, 'sindico', abertura);
+  return r.erro ? estado : r.estado;
 }
 
 // ---- src/manutencao/dados.js ----
@@ -3477,7 +3631,7 @@ const CASOS_DADOS = [
       const e = dadosIniciais(AGORA_TESTE);
       igual(new Set(e.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, 20);
       igual(e.pessoas.filter((p) => p.naoResidente).map((p) => [p.unidade, p.nome, p.recebeOfertas, p.vendedor]), [['704', 'Vicente Moraes', false, 'nao']]);
-      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [7, 'Ana Souza']);
+      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [8, 'Ana Souza']);
     },
   },
   {
@@ -4618,7 +4772,7 @@ const CASOS_NOTIFICACOES = [
         ['OC-0037', 'eletrica', 'alta'], ['OC-0038', 'elogio', 'baixa'], ['OC-0039', 'vazamento', 'urgente'], ['OC-0040', 'elevador', 'alta'],
         ['OC-0041', 'barulho', 'normal'], ['OC-0042', 'vaga', 'normal'], ['OC-0043', 'obra', 'normal'],
       ]);
-      igual([e.proximoProtocolo, e.versao], [44, 7]);
+      igual([e.proximoProtocolo, e.versao], [44, 8]);
     },
   },
   {
@@ -4671,18 +4825,6 @@ const CASOS_NOTIFICACOES = [
       igual(ocDe(definirPrioridade(e, 'OC-0042', 'alta', 'sindico', AGORA_FASE2).estado, 'OC-0042').prioridade, 'alta');
       const r = pedirInformacao(e, 'OC-0042', 'Qual a placa do carro?', 'sindico', AGORA_FASE2);
       igual([ocDe(r.estado, 'OC-0042').status, prazosVencidos(ocDe(r.estado, 'OC-0042'), AGORA_FASE2).resposta], ['em_analise', null]);
-    },
-  },
-  {
-    nome: 'notificações: advertência só para irregularidade e sem expor o denunciante',
-    rodar() {
-      const e = estadoNotif();
-      igual(gerarAdvertencia(e, 'OC-0039', '503', 'sindico', AGORA_FASE2).erro, 'Advertência só vale para irregularidades');
-      igual(gerarAdvertencia(e, 'OC-0043', '', 'sindico', AGORA_FASE2).erro, 'Informe a unidade advertida');
-      const r = gerarAdvertencia(e, 'OC-0043', '503', 'sindico', AGORA_FASE2);
-      igual([ocDe(r.estado, 'OC-0043').advertencia.unidade, r.notificacao.para], ['503', 'Apto 503']);
-      igual([r.notificacao.texto.includes('702'), r.notificacao.texto.includes('Sônia')], [false, false]);
-      igual(ocDe(r.estado, 'OC-0043').linha.at(-1).texto, 'Advertência enviada ao apto 503');
     },
   },
   {
@@ -4915,7 +5057,7 @@ const CASOS_ESCALA = [
     rodar() {
       const e = dadosIniciais(AGORA_FASE2);
       const m = e.escala.meses['2026-10'];
-      igual([m.situacao, e.versao, e.escala.meses['2026-11']], ['publicada', 7, undefined]);
+      igual([m.situacao, e.versao, e.escala.meses['2026-11']], ['publicada', 8, undefined]);
       const at = m.turnos.find((x) => x.id === 'T-2026-10-20-guarita-07');
       igual([at.porteiro, at.motivoDescoberto, at.porteiroOriginal, at.anexo], [null, 'atestado', 'claudia', 'atestado-claudia.pdf']);
       igual(e.escala.trocas.map((x) => [x.id, x.turno, x.de, x.para, x.situacao]), [['TR-001', 'T-2026-10-22-portaria-07', 'marcos', 'paulo', 'aceita']]);
@@ -5107,6 +5249,100 @@ const CASOS_COMPOSICAO = [
   },
 ];
 
+// ---- src/casos/infracoes.js ----
+
+const MULTA_503 = { unidade: '503', tipo: 'multa', artigo: 'Art. 18 (obras só em dias úteis)', fato: 'Obra no domingo às 8h', valor: 15000, prazoDias: 10 };
+const DEPOIS_DO_PRAZO = new Date(2026, 9, 30, 10, 0);
+
+function itensDaPrevia(estado, unidade) {
+  return previaCompetencia(estado, '2026-11').linhas.find((l) => l.unidade === unidade).itens;
+}
+
+function defesaJuliana(estado, extra = {}) {
+  return apresentarDefesa(estado, 'PI-001', { unidade: '104', autor: 'Juliana Costa', texto: 'Era aniversário e encerramos às 22h30.', anexo: 'convite.pdf', ...extra }, AGORA_FASE2);
+}
+
+const CASOS_INFRACOES = [
+  {
+    nome: 'multas: semente PI-001 aguardando defesa do 104',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const p = infracaoPorId(e, 'PI-001');
+      igual([p.unidade, p.tipo, p.valor, p.prazoAte, p.situacao, e.proximaInfracao], ['104', 'multa', 20000, '2026-10-29', 'defesa', 2]);
+      igual(e.ocorrencias.find((o) => o.id === 'OC-0041').processos, ['PI-001']);
+      igual([infracoesDaUnidade(e, '104').length, infracoesDaUnidade(e, '302').length], [1, 0]);
+      igual(alertasInfracoes(e, '2026-10-19'), []);
+      igual(situacaoInfracao(p, '2026-10-30'), 'analise');
+    },
+  },
+  {
+    nome: 'multas: abertura valida e não revela o denunciante',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(abrirProcesso(e, 'OC-0039', MULTA_503, 'sindico', AGORA_FASE2).erro, 'Processo só vale para irregularidades');
+      igual(abrirProcesso(e, 'OC-0043', MULTA_503, 'zelador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      igual(abrirProcesso(e, 'OC-0043', { ...MULTA_503, unidade: '999' }, 'sindico', AGORA_FASE2).erro, 'Informe a unidade infratora');
+      igual(abrirProcesso(e, 'OC-0043', { ...MULTA_503, artigo: ' ' }, 'sindico', AGORA_FASE2).erro, 'Informe o artigo do regimento');
+      igual(abrirProcesso(e, 'OC-0043', { ...MULTA_503, valor: 0 }, 'sindico', AGORA_FASE2).erro, 'Informe o valor da multa');
+      igual(abrirProcesso(e, 'OC-0043', { ...MULTA_503, prazoDias: 4 }, 'sindico', AGORA_FASE2).erro, 'O prazo de defesa deve ser de 5 a 30 dias');
+      igual(abrirProcesso(e, 'OC-0043', { ...MULTA_503, tipo: 'advertencia', valor: 0 }, 'sindico', AGORA_FASE2).erro, undefined);
+      igual(abrirProcesso(trocarPlano(e, 'basico').estado, 'OC-0043', MULTA_503, 'sindico', AGORA_FASE2).erro, 'Disponível no plano Intermediário');
+      const r = abrirProcesso(e, 'OC-0043', MULTA_503, 'sindico', AGORA_FASE2);
+      igual([r.id, r.notificacao.para.includes('Apto 503') || r.notificacao.para.length > 0], ['PI-002', true]);
+      igual([r.notificacao.texto.includes('Sônia'), r.notificacao.texto.includes('702'), r.notificacao.texto.includes('OC-0043')], [false, false, false]);
+      igual(r.notificacao.texto, 'Notificação formal do condomínio (PI-002): Obra no domingo às 8h. Art. 18 (obras só em dias úteis). Multa de R$ 150,00. Defesa até 29/10/2026.');
+      igual(r.estado.ocorrencias.find((o) => o.id === 'OC-0043').linha.at(-1).texto, 'Processo PI-002 aberto: multa ao apto 503');
+      igual(abrirProcesso(r.estado, 'OC-0043', MULTA_503, 'sindico', AGORA_FASE2).erro, 'Já existe um processo aberto para esta unidade nesta notificação');
+    },
+  },
+  {
+    nome: 'multas: defesa só da unidade, uma vez e dentro do prazo',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(apresentarDefesa(e, 'PI-001', { unidade: '302', autor: 'Ana Souza', texto: 'x' }, AGORA_FASE2).erro, 'Só moradores do apto 104 podem apresentar defesa');
+      igual(defesaJuliana(e, { texto: ' ' }).erro, 'Escreva a sua defesa');
+      igual(apresentarDefesa(e, 'PI-001', { unidade: '104', autor: 'Juliana Costa', texto: 'x' }, DEPOIS_DO_PRAZO).erro, 'O prazo de defesa terminou');
+      const r = defesaJuliana(e);
+      const p = infracaoPorId(r.estado, 'PI-001');
+      igual([p.situacao, p.defesa.anexo, r.notificacao.para], ['analise', 'convite.pdf', 'Síndico']);
+      igual(defesaJuliana(r.estado).erro, 'A defesa já foi apresentada');
+      igual(alertasInfracoes(r.estado, '2026-10-19').map((a) => a.texto), ['PI-001: defesa recebida, decida']);
+    },
+  },
+  {
+    nome: 'multas: fim do prazo e decisão',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(decidirProcesso(e, 'PI-001', { resultado: 'mantida', justificativa: 'x' }, 'sindico', AGORA_FASE2).erro, 'Aguarde a defesa ou o fim do prazo');
+      const fim = encerrarPrazo(e, 'PI-001', 'sindico', AGORA_FASE2).estado;
+      igual([podeDecidir(infracaoPorId(fim, 'PI-001'), '2026-10-19'), encerrarPrazo(fim, 'PI-001', 'sindico', AGORA_FASE2).erro], [true, 'Só processos aguardando defesa']);
+      igual(alertasInfracoes(fim, '2026-10-19').map((a) => a.texto), ['PI-001: prazo de defesa encerrado, decida']);
+      igual(decidirProcesso(fim, 'PI-001', { resultado: 'mantida', justificativa: ' ' }, 'sindico', AGORA_FASE2).erro, 'Informe a justificativa da decisão');
+      const m = decidirProcesso(fim, 'PI-001', { resultado: 'mantida', justificativa: 'Sem defesa no prazo' }, 'sindico', AGORA_FASE2);
+      const multa = itensDaPrevia(m.estado, '104').find((i) => i.tipo === 'multa');
+      igual([multa.descricao.startsWith('Multa por infração PI-001'), multa.valor, infracaoPorId(m.estado, 'PI-001').lancamento], [true, 20000, '2026-11']);
+      igual(m.notificacao.texto, 'Decisão do processo PI-001: mantida. Multa de R$ 200,00 no boleto de novembro de 2026.');
+      igual(decidirProcesso(m.estado, 'PI-001', { resultado: 'cancelada', justificativa: 'x' }, 'sindico', AGORA_FASE2).erro, 'O processo já foi decidido');
+      igual(m.estado.ocorrencias.find((o) => o.id === 'OC-0041').linha.at(-1).texto, 'Decisão do processo PI-001: mantida');
+      const c = decidirProcesso(defesaJuliana(e).estado, 'PI-001', { resultado: 'convertida', justificativa: 'Primeira ocorrência' }, 'sindico', AGORA_FASE2);
+      igual([itensDaPrevia(c.estado, '104').some((i) => i.tipo === 'multa'), infracaoPorId(c.estado, 'PI-001').lancamento], [false, null]);
+      const adv = abrirProcesso(e, 'OC-0043', { ...MULTA_503, tipo: 'advertencia', valor: 0 }, 'sindico', AGORA_FASE2).estado;
+      const advFim = encerrarPrazo(adv, 'PI-002', 'sindico', AGORA_FASE2).estado;
+      igual(decidirProcesso(advFim, 'PI-002', { resultado: 'convertida', justificativa: 'x' }, 'sindico', AGORA_FASE2).erro, 'Só multas podem ser convertidas em advertência');
+    },
+  },
+  {
+    nome: 'multas: lançamento respeita ajuste manual da prévia',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const ajustado = editarItemPrevia(e, '2026-11', '104', [{ tipo: 'ordinaria', descricao: 'Taxa ordinária', valor: 65000 }]).estado;
+      const fim = encerrarPrazo(ajustado, 'PI-001', 'sindico', AGORA_FASE2).estado;
+      const m = decidirProcesso(fim, 'PI-001', { resultado: 'mantida', justificativa: 'Sem defesa' }, 'sindico', AGORA_FASE2).estado;
+      igual(itensDaPrevia(m, '104').map((i) => i.tipo), ['ordinaria', 'multa']);
+    },
+  },
+];
+
 // ---- src/armazenamento.js ----
 const CHAVE_ESTADO = 'condofacil-demo-v1';
 
@@ -5115,7 +5351,7 @@ function carregarEstado() {
     const texto = localStorage.getItem(CHAVE_ESTADO);
     if (!texto) return null;
     const estado = JSON.parse(texto);
-    return estado && estado.versao === 7 ? estado : null;
+    return estado && estado.versao === 8 ? estado : null;
   } catch {
     return null;
   }
@@ -6264,6 +6500,189 @@ function MudancasTaxa({ estado, eu, hoje }) {
     <strong>Mudanças na sua taxa</strong>
     <ul class="m-lista">${linhas.map((l) => html`<li key=${l.chave}><span class="sub">${l.titulo}</span><div>${l.texto}</div>${l.detalhe && html`<small class="sub">${l.detalhe}</small>`}</li>`)}</ul>
   </div>`;
+}
+
+// ---- src/ui/infracoes.js ----
+
+// Processo de infração: cartão na notificação, lista e detalhe do síndico, e a defesa do morador.
+const ETQ_SITUACAO_INFRACAO = { defesa: 'alerta', analise: 'info', decidido: 'neutro' };
+
+function EtqInfracao({ p, hoje }) {
+  const s = situacaoInfracao(p, hoje);
+  return html`<${Etiqueta} tipo=${ETQ_SITUACAO_INFRACAO[s]}>${s === 'decidido' ? NOMES_RESULTADO_INFRACAO[p.decisao.resultado] : NOMES_SITUACAO_INFRACAO[s]}<//>`;
+}
+
+function LinhaProcesso({ linha }) {
+  return html`<ol class="linha-tempo">${linha.map((l, i) => html`<li key=${i} class="marco">
+    <span class="lt-quando">${fmtDataHora(l.em)}</span>
+    <strong>${l.texto}</strong>
+    <span>${l.autor}</span>
+  </li>`)}</ol>`;
+}
+
+function ResumoProcesso({ p }) {
+  return html`<dl class="resumo">
+    <dt>Tipo</dt><dd>${NOMES_TIPO_INFRACAO[p.tipo]}${p.valor ? ` · ${fmtReais(p.valor)}` : ''}</dd>
+    <dt>Fato</dt><dd>${p.fato}</dd>
+    <dt>Base</dt><dd>${p.artigo}</dd>
+    <dt>Prazo de defesa</dt><dd>até ${fmtDataCurta(p.prazoAte)} (${p.prazoDias} dias)</dd>
+    ${p.decisao && html`<dt>Decisão</dt><dd>${NOMES_RESULTADO_INFRACAO[p.decisao.resultado]}: ${p.decisao.justificativa}</dd>`}
+    ${p.lancamento && html`<dt>Lançamento</dt><dd>Multa no boleto de ${nomeMes(p.lancamento)}</dd>`}
+  </dl>`;
+}
+
+function CartaoProcessoOcorrencia({ estado, executar, oc }) {
+  const [form, setForm] = useState({ unidade: '', tipo: 'multa', artigo: '', fato: fatoPadrao(oc), valor: '', prazoDias: String(PRAZO_DEFESA_PADRAO) });
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  if (!liberado(estado.plano, 'multasDefesa')) return html`<${Bloqueado} estado=${estado} recurso="multasDefesa" titulo="Advertência ou multa com direito de defesa" />`;
+  const hoje = isoDia(new Date());
+  const processos = (oc.processos || []).map((id) => infracaoPorId(estado, id)).filter(Boolean);
+  const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.value });
+
+  function abrir() {
+    const r = executar((e) => abrirProcesso(e, oc.id, { ...form, valor: lerPreco(form.valor), prazoDias: Number(form.prazoDias) }, 'sindico', new Date()));
+    setErro(r.erro || null);
+    setMensagem(r.erro ? null : `Processo ${r.id} aberto. A unidade foi notificada.`);
+  }
+
+  return html`<div class="cartao pilha">
+    <strong>Advertência ou multa</strong>
+    ${processos.length > 0 && html`<ul class="itens-sacola">${processos.map((p) => html`<li key=${p.id}><a href=${`#sindico.ocorrencias.${p.id}`}>${p.id} · ${NOMES_TIPO_INFRACAO[p.tipo].toLowerCase()} ao apto ${p.unidade}</a><${EtqInfracao} p=${p} hoje=${hoje} /></li>`)}</ul>`}
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Unidade infratora"><input id="infracao-unidade" value=${form.unidade} onInput=${campo('unidade')} placeholder="Ex.: 503" /><//>
+      <${Campo} rotulo="Tipo"><select id="infracao-tipo" value=${form.tipo} onChange=${campo('tipo')}><option value="multa">Multa</option><option value="advertencia">Advertência</option></select><//>
+      <${Campo} rotulo="Artigo do regimento"><input id="infracao-artigo" value=${form.artigo} onInput=${campo('artigo')} placeholder="Ex.: Art. 18 (obras só em dias úteis)" /><//>
+      ${form.tipo === 'multa' && html`<${Campo} rotulo="Valor da multa (R$)"><input id="infracao-valor" inputmode="decimal" value=${form.valor} onInput=${campo('valor')} placeholder="Ex.: 150,00" /><//>`}
+      <${Campo} rotulo="Prazo de defesa (dias)" dica="De 5 a 30 dias"><input id="infracao-prazo" type="number" min="5" max="30" value=${form.prazoDias} onInput=${campo('prazoDias')} /><//>
+    </div>
+    <${Campo} rotulo="Descrição do fato" dica="É o que o morador vê. A notificação original e quem a enviou nunca são mostrados."><textarea id="infracao-fato" rows="2" value=${form.fato} onInput=${campo('fato')}></textarea><//>
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+    <button type="button" class="btn secundario" data-acao="abrir-processo" onClick=${abrir}>Abrir processo</button>
+  </div>`;
+}
+
+function BlocoProcessos({ estado, agora }) {
+  if (!liberado(estado.plano, 'multasDefesa')) return null;
+  const hoje = isoDia(agora);
+  const abertos = infracoesAbertas(estado);
+  return html`<div class="pilha">
+    <h2>Processos de infração</h2>
+    ${abertos.length
+      ? html`<div class="tabela-rolagem"><table class="tabela">
+          <thead><tr><th>Processo</th><th>Unidade</th><th>Tipo</th><th>Situação</th><th>Prazo de defesa</th></tr></thead>
+          <tbody>${abertos.map((p) => html`<tr key=${p.id}>
+            <td><a href=${`#sindico.ocorrencias.${p.id}`}>${p.id}</a></td>
+            <td>${p.unidade}</td>
+            <td>${NOMES_TIPO_INFRACAO[p.tipo]}${p.valor ? ` · ${fmtReais(p.valor)}` : ''}</td>
+            <td><${EtqInfracao} p=${p} hoje=${hoje} />${podeDecidir(p, hoje) ? html` <small class="sub">decida</small>` : ''}</td>
+            <td>${fmtDataCurta(p.prazoAte)}</td>
+          </tr>`)}</tbody>
+        </table></div>`
+      : html`<${Vazio} texto="Nenhum processo em andamento." />`}
+  </div>`;
+}
+
+function SDetalheInfracao({ estado, executar, agora, p }) {
+  const [resultado, setResultado] = useState('mantida');
+  const [justificativa, setJustificativa] = useState('');
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const hoje = isoDia(agora);
+
+  function rodar(acao, sucesso) {
+    const r = executar(acao);
+    setErro(r.erro || null);
+    setMensagem(r.erro ? null : sucesso);
+  }
+
+  return html`<section class="pilha">
+    <a class="voltar" href="#sindico.ocorrencias">‹ Notificações</a>
+    <p class="protocolo">Processo ${p.id}</p>
+    <div class="linha-entre"><h1>${NOMES_TIPO_INFRACAO[p.tipo]} · apto ${p.unidade}</h1><${EtqInfracao} p=${p} hoje=${hoje} /></div>
+    <p class="sub">Aberto a partir da notificação <a href=${`#sindico.ocorrencias.${p.ocorrencia}`}>${p.ocorrencia}</a>. O morador vê só o fato descrito abaixo.</p>
+    <${ResumoProcesso} p=${p} />
+    <h2>Defesa</h2>
+    ${p.defesa
+      ? html`<div class="cartao"><strong>${p.defesa.autor} · ${fmtDataHora(p.defesa.em)}</strong><p class="texto-longo">${p.defesa.texto}</p>${p.defesa.anexo && html`<small class="sub">Anexo: ${p.defesa.anexo}</small>`}</div>`
+      : html`<p class="sub">${prazoVencido(p, hoje) ? 'O prazo terminou sem defesa.' : `Aguardando a defesa até ${fmtDataCurta(p.prazoAte)}.`}</p>`}
+    ${p.situacao === 'defesa' && !p.defesa && !prazoVencido(p, hoje) && html`<div class="acoes"><button type="button" class="btn secundario" data-acao="encerrar-prazo" onClick=${() => rodar((e) => encerrarPrazo(e, p.id, 'sindico', new Date()), 'Prazo encerrado. Agora você pode decidir.')}>Simular fim do prazo (demonstração)</button></div>`}
+    ${podeDecidir(p, hoje) && html`<div class="cartao pilha">
+      <strong>Decisão</strong>
+      <div class="edicao-anuncio">
+        <${Campo} rotulo="Decisão"><select id="infracao-decisao" value=${resultado} onChange=${(ev) => setResultado(ev.target.value)}>
+          <option value="mantida">Manter ${p.tipo === 'multa' ? `a multa (lança ${fmtReais(p.valor)} no próximo boleto)` : 'a advertência'}</option>
+          ${p.tipo === 'multa' && html`<option value="convertida">Converter em advertência</option>`}
+          <option value="cancelada">Cancelar</option>
+        </select><//>
+      </div>
+      <${Campo} rotulo="Justificativa" dica="O morador recebe a decisão com esta justificativa."><textarea id="infracao-justificativa" rows="2" value=${justificativa} onInput=${(ev) => setJustificativa(ev.target.value)}></textarea><//>
+      <button type="button" class="btn primario" data-acao="decidir-processo" onClick=${() => rodar((e) => decidirProcesso(e, p.id, { resultado, justificativa }, 'sindico', new Date()), 'Decisão registrada e enviada à unidade.')}>Registrar decisão</button>
+    </div>`}
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+    <h2>Linha do tempo</h2>
+    <${LinhaProcesso} linha=${p.linha} />
+  </section>`;
+}
+
+function MBlocoInfracoes({ estado, eu, agora }) {
+  const lista = infracoesDaUnidade(estado, eu);
+  if (!lista.length) return null;
+  const hoje = isoDia(agora);
+  return html`<h2>Notificações para o seu apartamento</h2>
+    <ul class="m-lista">${lista.map((p) => html`<li key=${p.id}><a class="cartao link" href=${`#morador.ocorrencias.${p.id}`}>
+      <div class="linha-entre"><strong>${NOMES_TIPO_INFRACAO[p.tipo]}${p.valor ? ` · ${fmtReais(p.valor)}` : ''}</strong><${EtqInfracao} p=${p} hoje=${hoje} /></div>
+      <span>${p.fato}</span>
+      <small class="sub">${p.id} · ${situacaoInfracao(p, hoje) === 'defesa' ? `defesa até ${fmtDataCurta(p.prazoAte)}` : p.artigo}</small>
+    </a></li>`)}</ul>`;
+}
+
+function MDetalheInfracao({ estado, executar, agora, p, eu }) {
+  const [texto, setTexto] = useState('');
+  const [anexo, setAnexo] = useState(null);
+  const [erro, setErro] = useState(null);
+  const hoje = isoDia(agora);
+  const aberta = situacaoInfracao(p, hoje) === 'defesa' && !p.defesa;
+  const autor = pessoaDaUnidade(estado, eu) ? pessoaDaUnidade(estado, eu).nome : `Apto ${eu}`;
+
+  function enviar() {
+    const r = executar((e) => apresentarDefesa(e, p.id, { unidade: eu, autor, texto, anexo }, new Date()));
+    setErro(r.erro || null);
+  }
+
+  return html`<section class="m-pagina">
+    <a class="voltar" href="#morador.ocorrencias">‹ Notificações</a>
+    <p class="protocolo">Processo ${p.id}</p>
+    <h1 class="m-titulo">Notificação formal do condomínio</h1>
+    <div class="etq-linha"><${EtqInfracao} p=${p} hoje=${hoje} /><span class="sub">${NOMES_TIPO_INFRACAO[p.tipo]} · apto ${p.unidade}</span></div>
+    <${ResumoProcesso} p=${p} />
+    ${aberta && html`<div class="cartao pilha">
+      <strong>Você tem até ${fmtDataCurta(p.prazoAte)} para apresentar sua defesa</strong>
+      <small class="sub">O síndico só decide depois da sua defesa ou do fim do prazo.</small>
+      <${Campo} rotulo="Sua defesa"><textarea id="defesa-texto" rows="4" value=${texto} onInput=${(ev) => setTexto(ev.target.value)}></textarea><//>
+      <button type="button" class="btn secundario" onClick=${() => setAnexo(`defesa-${p.id}.pdf`)}>${anexo ? `Anexado: ${anexo}` : 'Anexar documento'}</button>
+      <${Erro} texto=${erro} />
+      <button type="button" class="btn primario" data-acao="enviar-defesa" onClick=${enviar}>Enviar defesa</button>
+    </div>`}
+    ${p.defesa && html`<div class="cartao"><strong>Sua defesa · ${fmtDataHora(p.defesa.em)}</strong><p class="m-texto">${p.defesa.texto}</p>${p.defesa.anexo && html`<small class="sub">Anexo: ${p.defesa.anexo}</small>`}</div>`}
+    ${!p.defesa && !aberta && p.situacao !== 'decidido' && html`<p class="m-sub">O prazo de defesa terminou. Aguarde a decisão do síndico.</p>`}
+    <h2>Andamento</h2>
+    <${LinhaProcesso} linha=${p.linha} />
+  </section>`;
+}
+
+function CartaoInfracaoInicio({ estado, eu, agora }) {
+  const hoje = isoDia(agora);
+  const p = infracoesDaUnidade(estado, eu).find((x) => situacaoInfracao(x, hoje) === 'defesa' && !x.defesa);
+  if (!p) return null;
+  return html`<a class="cartao link cobranca-inicio vencida" href=${`#morador.ocorrencias.${p.id}`}>
+    <strong>Notificação formal do condomínio</strong>
+    <span>${NOMES_TIPO_INFRACAO[p.tipo]}${p.valor ? ` de ${fmtReais(p.valor)}` : ''}: ${p.fato}</span>
+    <small class="sub">Você pode apresentar defesa até ${fmtDataCurta(p.prazoAte)}</small>
+    <span class="btn primario">Ver e responder</span>
+  </a>`;
 }
 
 // ---- src/ui/acordos.js ----
@@ -7530,6 +7949,7 @@ function MInicio({ estado, agora, eu }) {
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Olá, ${pessoaDaUnidade(estado, eu).nome.split(' ')[0]}</h1>
     <p class="m-sub">Apto ${eu} · Residencial Ipê Amarelo</p>
+    <${CartaoInfracaoInicio} estado=${estado} eu=${eu} agora=${agora} />
     <${CartaoCobrancaInicio} estado=${estado} eu=${eu} agora=${agora} />
     <a class="cartao link com-icone" href="#morador.avisos"><${QuadroIcone} nome="megafone" /><span><strong>Avisos</strong><span class="sub">${naoLidos ? `${naoLidos} não ${naoLidos === 1 ? 'lido' : 'lidos'}` : 'Tudo lido'}</span></span></a>
     <h2>Encomendas na portaria</h2>
@@ -7712,6 +8132,8 @@ function MAvisos({ estado, rota, executar, eu }) {
 function MOcorrencias(props) {
   const { estado, rota, eu } = props;
   if (rota.id === 'nova') return html`<${MNovaOcorrencia} ...${props} />`;
+  const processo = rota.id ? infracaoPorId(estado, rota.id) : null;
+  if (processo && processo.unidade === eu) return html`<${MDetalheInfracao} estado=${estado} executar=${props.executar} agora=${props.agora} p=${processo} eu=${eu} />`;
   const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id && (o.unidade === eu || o.publica || o.eutambem.includes(eu))) : null;
   if (oc) return html`<${MDetalheOcorrencia} estado=${estado} executar=${props.executar} oc=${oc} eu=${eu} />`;
   const minhas = estado.ocorrencias.filter((o) => o.unidade === eu);
@@ -7724,6 +8146,7 @@ function MOcorrencias(props) {
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Notificações</h1>
     <a class="btn primario bloco" href="#morador.ocorrencias.nova">Abrir notificação</a>
+    <${MBlocoInfracoes} estado=${estado} eu=${eu} agora=${props.agora} />
     <h2>Minhas</h2>
     ${minhas.length ? html`<ul class="m-lista">${minhas.map(item)}</ul>` : html`<${Vazio} texto="Você não abriu notificações." />`}
     <h2>Públicas do condomínio</h2>
@@ -7935,7 +8358,7 @@ function SInicio({ estado, agora }) {
   const vendedoresPendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
   const pendCobranca = pendenciasCobranca(estado, isoDia(agora));
   const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
-  const pendOperacao = [...(comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : []), ...(liberado(estado.plano, 'escala') ? alertasEscala(estado, agora) : [])];
+  const pendOperacao = [...(comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : []), ...(liberado(estado.plano, 'escala') ? alertasEscala(estado, agora) : []), ...(liberado(estado.plano, 'multasDefesa') ? alertasInfracoes(estado, isoDia(agora)) : [])];
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
   const cartoes = [
     ['Reservas pendentes', ind.pendentes, '#sindico.reservas', ind.pendentes ? 'alerta' : 'ok', 'Aguardando sua aprovação', 'calendario'],
@@ -8181,6 +8604,8 @@ function SOcorrencias(props) {
   const [tipo, setTipo] = useState('todos');
   const [prioridade, setPrioridade] = useState('todas');
   const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
+  const processo = rota.id ? infracaoPorId(estado, rota.id) : null;
+  if (processo) return html`<${SDetalheInfracao} estado=${estado} executar=${props.executar} agora=${agora} p=${processo} />`;
   const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id) : null;
   if (oc) return html`<${SDetalheOcorrencia} estado=${estado} executar=${props.executar} agora=${agora} oc=${oc} />`;
   const lista = comPrazo
@@ -8196,6 +8621,7 @@ function SOcorrencias(props) {
       .sort((a, b) => b.criadaEm.localeCompare(a.criadaEm));
   return html`<section>
     <h1>Notificações</h1>
+    <${BlocoProcessos} estado=${estado} agora=${agora} />
     <div class="edicao-anuncio filtros-notificacao">
       <${Campo} rotulo="Mostrar"><select id="notificacoes-status" value=${filtro} onChange=${(ev) => setFiltro(ev.target.value)}>${FILTROS_OCORRENCIA.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>
       ${comPrazo && html`<${Campo} rotulo="Tipo"><select id="notificacoes-tipo" value=${tipo} onChange=${(ev) => setTipo(ev.target.value)}>${FILTROS_TIPO.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>`}
@@ -8235,7 +8661,6 @@ function SDetalheOcorrencia({ estado, executar, agora, oc }) {
   const [mensagem, setMensagem] = useState(null);
   const [responsavel, setResponsavel] = useState('zelador');
   const [prestador, setPrestador] = useState('');
-  const [unidade, setUnidade] = useState('');
   const [motivo, setMotivo] = useState('');
   const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
   const encerrada = ['resolvida', 'fechada'].includes(oc.status);
@@ -8299,13 +8724,7 @@ function SDetalheOcorrencia({ estado, executar, agora, oc }) {
             </div>
             <button type="button" class="btn primario" data-acao="gerar-os" onClick=${() => rodar((e) => gerarOS(e, oc.id, { responsavel, prestador }, 'sindico', new Date()), 'OS aberta.')}>Gerar OS</button>
           </div>`}
-          ${comPrazo && irregularidade && html`<div class="cartao">
-            <strong>Gerar advertência</strong>
-            ${oc.advertencia
-              ? html`<span class="sub">Advertência enviada ao apto ${oc.advertencia.unidade}. Quem denunciou nunca é revelado.</span>`
-              : html`<${Campo} rotulo="Unidade advertida" dica="O aviso não revela quem enviou a notificação."><input id="advertencia-unidade" value=${unidade} onInput=${(ev) => setUnidade(ev.target.value)} placeholder="Ex.: 503" /><//>
-                <button type="button" class="btn secundario" onClick=${() => rodar((e) => gerarAdvertencia(e, oc.id, unidade, 'sindico', new Date()), 'Advertência enviada.')}>Gerar advertência</button>`}
-          </div>`}
+          ${irregularidade && html`<${CartaoProcessoOcorrencia} key=${oc.id} estado=${estado} executar=${executar} oc=${oc} />`}
           ${comPrazo && html`<div class="cartao">
             <strong>Arquivar com justificativa</strong>
             <${Campo} rotulo="Motivo do arquivamento"><input id="arquivar-motivo" value=${motivo} onInput=${(ev) => setMotivo(ev.target.value)} placeholder="Ex.: improcedente, duplicada da OC-0042" /><//>
@@ -8795,7 +9214,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

@@ -14,6 +14,8 @@ import { gerarOS } from '../manutencao/acoes.js';
 import { SManutencao } from './manutencao-sindico.js';
 import { SEscala } from './escala-sindico.js';
 import { alertasEscala } from '../escala/regras.js';
+import { infracaoPorId, alertasInfracoes } from '../infracoes/regras.js';
+import { CartaoProcessoOcorrencia, BlocoProcessos, SDetalheInfracao } from './infracoes.js';
 import { isoDia, somarMes, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
 import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
@@ -61,7 +63,7 @@ function SInicio({ estado, agora }) {
   const vendedoresPendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
   const pendCobranca = pendenciasCobranca(estado, isoDia(agora));
   const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
-  const pendOperacao = [...(comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : []), ...(liberado(estado.plano, 'escala') ? alertasEscala(estado, agora) : [])];
+  const pendOperacao = [...(comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : []), ...(liberado(estado.plano, 'escala') ? alertasEscala(estado, agora) : []), ...(liberado(estado.plano, 'multasDefesa') ? alertasInfracoes(estado, isoDia(agora)) : [])];
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
   const cartoes = [
     ['Reservas pendentes', ind.pendentes, '#sindico.reservas', ind.pendentes ? 'alerta' : 'ok', 'Aguardando sua aprovação', 'calendario'],
@@ -307,6 +309,8 @@ function SOcorrencias(props) {
   const [tipo, setTipo] = useState('todos');
   const [prioridade, setPrioridade] = useState('todas');
   const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
+  const processo = rota.id ? infracaoPorId(estado, rota.id) : null;
+  if (processo) return html`<${SDetalheInfracao} estado=${estado} executar=${props.executar} agora=${agora} p=${processo} />`;
   const oc = rota.id ? estado.ocorrencias.find((o) => o.id === rota.id) : null;
   if (oc) return html`<${SDetalheOcorrencia} estado=${estado} executar=${props.executar} agora=${agora} oc=${oc} />`;
   const lista = comPrazo
@@ -322,6 +326,7 @@ function SOcorrencias(props) {
       .sort((a, b) => b.criadaEm.localeCompare(a.criadaEm));
   return html`<section>
     <h1>Notificações</h1>
+    <${BlocoProcessos} estado=${estado} agora=${agora} />
     <div class="edicao-anuncio filtros-notificacao">
       <${Campo} rotulo="Mostrar"><select id="notificacoes-status" value=${filtro} onChange=${(ev) => setFiltro(ev.target.value)}>${FILTROS_OCORRENCIA.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>
       ${comPrazo && html`<${Campo} rotulo="Tipo"><select id="notificacoes-tipo" value=${tipo} onChange=${(ev) => setTipo(ev.target.value)}>${FILTROS_TIPO.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>`}
@@ -361,7 +366,6 @@ function SDetalheOcorrencia({ estado, executar, agora, oc }) {
   const [mensagem, setMensagem] = useState(null);
   const [responsavel, setResponsavel] = useState('zelador');
   const [prestador, setPrestador] = useState('');
-  const [unidade, setUnidade] = useState('');
   const [motivo, setMotivo] = useState('');
   const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
   const encerrada = ['resolvida', 'fechada'].includes(oc.status);
@@ -425,13 +429,7 @@ function SDetalheOcorrencia({ estado, executar, agora, oc }) {
             </div>
             <button type="button" class="btn primario" data-acao="gerar-os" onClick=${() => rodar((e) => gerarOS(e, oc.id, { responsavel, prestador }, 'sindico', new Date()), 'OS aberta.')}>Gerar OS</button>
           </div>`}
-          ${comPrazo && irregularidade && html`<div class="cartao">
-            <strong>Gerar advertência</strong>
-            ${oc.advertencia
-              ? html`<span class="sub">Advertência enviada ao apto ${oc.advertencia.unidade}. Quem denunciou nunca é revelado.</span>`
-              : html`<${Campo} rotulo="Unidade advertida" dica="O aviso não revela quem enviou a notificação."><input id="advertencia-unidade" value=${unidade} onInput=${(ev) => setUnidade(ev.target.value)} placeholder="Ex.: 503" /><//>
-                <button type="button" class="btn secundario" onClick=${() => rodar((e) => gerarAdvertencia(e, oc.id, unidade, 'sindico', new Date()), 'Advertência enviada.')}>Gerar advertência</button>`}
-          </div>`}
+          ${irregularidade && html`<${CartaoProcessoOcorrencia} key=${oc.id} estado=${estado} executar=${executar} oc=${oc} />`}
           ${comPrazo && html`<div class="cartao">
             <strong>Arquivar com justificativa</strong>
             <${Campo} rotulo="Motivo do arquivamento"><input id="arquivar-motivo" value=${motivo} onInput=${(ev) => setMotivo(ev.target.value)} placeholder="Ex.: improcedente, duplicada da OC-0042" /><//>

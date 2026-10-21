@@ -40,11 +40,5 @@ export function alertasInfracoes(estado, hoje) {
 }
 
 export function fatoPadrao(oc) {
-  return `${CATEGORIAS[oc.categoria].nome} registrada em ${fmtDataCurta(isoDia(new Date(oc.criadaEm)))}`;
-}
-
-export function textoDecisao(p) {
-  if (!p.decisao) return null;
-  const multa = p.decisao.resultado === 'mantida' && p.tipo === 'multa';
-  return `${NOMES_RESULTADO_INFRACAO[p.decisao.resultado]}${multa ? ' · multa no boleto do próximo mês' : ''}`;
+  return `${CATEGORIAS[oc.categoria].nome} (registro de ${fmtDataCurta(isoDia(new Date(oc.criadaEm)))})`;
 }

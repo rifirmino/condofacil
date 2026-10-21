@@ -44,7 +44,7 @@ Base:
 - **`alertasInfracoes(estado, hoje)`:**
   - "PI-001: defesa recebida, decida";
   - "PI-001: prazo de defesa encerrado, decida".
-- **`fatoPadrao(oc)`:** "{Categoria} registrada em {dd/mm/aaaa}".
+- **`fatoPadrao(oc)`:** "{Categoria} (registro de {dd/mm/aaaa})".
 
 ## Ações (`src/infracoes/acoes.js`)
 
