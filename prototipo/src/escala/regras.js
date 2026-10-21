@@ -188,3 +188,50 @@ export function alertasEscala(estado, agora) {
   }
   return itens;
 }
+
+// Visão da semana por porteiro: uma célula por dia com os turnos dele, o turno que ele perdeu (férias, falta, atestado) ou a folga.
+export const NOMES_CELULA = { dia: 'Dia', noite: 'Noite', manha: 'Manhã', tarde: 'Tarde', folga: 'Folga', ferias: 'Férias', falta: 'Falta', atestado: 'Atestado', semEscala: '—' };
+
+export function inicioDaSemana(dia) {
+  return somarDias(dia, -modulo(deIso(dia).getDay() - 1, 7));
+}
+
+export function tipoDoTurno(t) {
+  const h = Number(t.inicio.slice(11, 13));
+  if (h >= 18) return 'noite';
+  if (horasEntreLocal(t.inicio, t.fim) >= 12) return 'dia';
+  return h < 12 ? 'manha' : 'tarde';
+}
+
+export function celulaEscala(estado, porteiro, dia) {
+  if (!estado.escala.meses[dia.slice(0, 7)]) return [{ tipo: 'semEscala' }];
+  const doDia = estado.escala.meses[dia.slice(0, 7)].turnos.filter((t) => t.inicio.startsWith(dia));
+  const itens = [
+    ...doDia.filter((t) => t.porteiro === porteiro).map((t) => ({ tipo: tipoDoTurno(t), turno: t.id, posto: t.posto, trocado: t.trocado })),
+    ...doDia.filter((t) => t.porteiroOriginal === porteiro && t.porteiro !== porteiro && t.motivoDescoberto).map((t) => ({ tipo: t.motivoDescoberto, turno: t.id, posto: t.posto, trocado: false })),
+  ];
+  if (itens.length) return itens;
+  return [{ tipo: deFerias(estado.escala, porteiro, dia) ? 'ferias' : 'folga' }];
+}
+
+export function semanaDaEscala(estado, segunda) {
+  const dias = Array.from({ length: 7 }, (_, i) => somarDias(segunda, i));
+  const meses = [...new Set(dias.map((d) => d.slice(0, 7)))].filter((m) => estado.escala.meses[m]);
+  const vazios = meses.flatMap((m) => Object.keys(POSTOS).flatMap((posto) => buracos(estado, m, posto).map((b) => ({ posto, ...b }))));
+  return {
+    dias,
+    linhas: PORTEIROS.map((p) => ({ porteiro: p.id, celulas: dias.map((dia) => celulaEscala(estado, p.id, dia)) })),
+    descobertos: dias.map((dia) => vazios.filter((b) => b.inicio.startsWith(dia))),
+  };
+}
+
+export function semanasComEscala(estado) {
+  const meses = Object.keys(estado.escala.meses).sort();
+  if (!meses.length) return [];
+  const fim = diasDoMes(meses.at(-1)).at(-1);
+  const semanas = [];
+  for (let s = inicioDaSemana(`${meses[0]}-01`); s <= fim; s = somarDias(s, 7)) {
+    if (Array.from({ length: 7 }, (_, i) => somarDias(s, i)).some((d) => estado.escala.meses[d.slice(0, 7)])) semanas.push(s);
+  }
+  return semanas;
+}

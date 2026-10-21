@@ -1,5 +1,5 @@
 import { atribuicoesIniciais } from '../escala/dados.js';
-import { gerarTurnos, buracos, feriadosDoMes, sugestoesCobertura, plantaoAgora, descansoInsuficiente, horaLocal, fmtTurno, alertasEscala, relatorioHoras } from '../escala/regras.js';
+import { gerarTurnos, buracos, feriadosDoMes, sugestoesCobertura, plantaoAgora, descansoInsuficiente, horaLocal, fmtTurno, alertasEscala, relatorioHoras, inicioDaSemana, semanaDaEscala, semanasComEscala } from '../escala/regras.js';
 import { gerarEscala, publicarEscala, proporTroca, aceitarTroca, recusarTroca, aprovarTroca, registrarFalta, atribuirCobertura, fazerCheckin, fazerCheckout } from '../escala/acoes.js';
 import { dadosIniciais } from '../dados.js';
 import { liberado } from '../planos.js';
@@ -19,7 +19,36 @@ function doDia(e, dia, posto) {
   return e.escala.meses['2026-10'].turnos.filter((t) => t.inicio.startsWith(dia) && t.posto === posto).map((t) => [t.porteiro, t.inicio.slice(11), t.fim]);
 }
 
+function tiposDe(semana, porteiro) {
+  return semana.linhas.find((l) => l.porteiro === porteiro).celulas.map((c) => c.map((x) => x.tipo + (x.trocado ? '↔' : '')).join('+'));
+}
+
 export const CASOS_ESCALA = [
+  {
+    nome: 'escala: semana por porteiro',
+    rodar() {
+      igual([inicioDaSemana('2026-10-19'), inicioDaSemana('2026-10-25'), inicioDaSemana('2026-11-01')], ['2026-10-19', '2026-10-19', '2026-10-26']);
+      const e = dadosIniciais(AGORA_FASE2);
+      const s = semanaDaEscala(e, '2026-10-19');
+      igual(s.dias[0], '2026-10-19');
+      igual(tiposDe(s, 'jose').slice(0, 2), ['dia', 'folga']);
+      igual(tiposDe(s, 'edson')[0], 'noite');
+      igual(tiposDe(s, 'rita').slice(0, 4), ['ferias', 'ferias', 'ferias', 'noite']);
+      igual(tiposDe(s, 'claudia').slice(0, 2), ['manha', 'atestado']);
+      igual(tiposDe(s, 'bruno').slice(0, 2), ['folga', 'tarde']);
+      igual(s.descobertos[1].map((b) => [b.posto, b.inicio.slice(11), b.fim.slice(11)]).some(([p, i]) => p === 'portaria' && i === '19:00'), true);
+      igual(s.descobertos[1].some((b) => b.posto === 'guarita' && b.inicio.endsWith('07:00')), true);
+      const r = aprovarTroca(e, 'TR-001', 'sindico').estado;
+      const turno = e.escala.trocas[0].turno;
+      const dia = turno.slice(2, 12);
+      const sr = semanaDaEscala(r, inicioDaSemana(dia));
+      const i = sr.dias.indexOf(dia);
+      igual([tiposDe(sr, 'paulo')[i].endsWith('↔'), tiposDe(sr, 'marcos')[i]], [true, 'folga']);
+      const nov = semanaDaEscala(e, '2026-10-26');
+      igual(tiposDe(nov, 'jose').slice(-1), ['semEscala']);
+      igual(semanasComEscala(e)[0], '2026-09-28');
+    },
+  },
   {
     nome: 'escala: geração de 12x36, noturno e 6x1',
     rodar() {
