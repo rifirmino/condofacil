@@ -10,6 +10,7 @@ import { isoDia, nomeMes, fmtDataCurta, fmtDataHora } from '../datas.js';
 import { Campo, Erro, Sucesso, Vazio, Etiqueta, QuadroIcone } from './comum.js';
 import { CAcordos } from './acordos.js';
 import { CTaxas } from './composicao.js';
+import { COrcamento } from './orcamento.js';
 
 const ETQ_COBRANCA = { aberta: 'info', vencida: 'perigo', paga: 'ok', cancelada: 'neutro' };
 const NOMES_SITUACAO_COBRANCA = { aberta: 'Em aberto', vencida: 'Vencida', paga: 'Paga', cancelada: 'Cancelada' };
@@ -131,14 +132,14 @@ export function PainelFinanceiro({ estado, agora }) {
   </div>`;
 }
 
-const ABAS_COBRANCA = [['previa', 'Prévia e emissão'], ['emitidas', 'Cobranças emitidas'], ['acordos', 'Acordos'], ['regua', 'Régua'], ['taxas', 'Taxa e reajustes'], ['parametros', 'Parâmetros']];
+const ABAS_COBRANCA = [['previa', 'Prévia e emissão'], ['emitidas', 'Cobranças emitidas'], ['acordos', 'Acordos'], ['regua', 'Régua'], ['taxas', 'Taxa e reajustes'], ['orcamento', 'Orçamento'], ['parametros', 'Parâmetros']];
 const FILTROS_COBRANCA = [['todas', 'Todas'], ['aberta', 'Em aberto'], ['vencida', 'Vencidas'], ['paga', 'Pagas'], ['cancelada', 'Canceladas']];
 
 export function SCobranca(props) {
   const idRota = props.rota.id || '';
   const deAcordo = idRota.startsWith('novoacordo') || idRota.startsWith('AC-');
   const aba = deAcordo ? 'acordos' : ABAS_COBRANCA.some(([id]) => id === idRota) ? idRota : 'previa';
-  const Conteudo = { previa: CPrevia, emitidas: CEmitidas, acordos: CAcordos, regua: CRegua, taxas: CTaxas, parametros: CParametros }[aba];
+  const Conteudo = { previa: CPrevia, emitidas: CEmitidas, acordos: CAcordos, regua: CRegua, taxas: CTaxas, orcamento: COrcamento, parametros: CParametros }[aba];
   return html`<section>
     <h1>Cobrança</h1>
     <p class="faixa-asaas">Conta Asaas ativa · subconta do condomínio. O dinheiro cai direto na conta do condomínio; o CondoFácil só organiza emissão, baixa e relatórios.</p>

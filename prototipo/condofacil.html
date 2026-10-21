@@ -634,6 +634,7 @@ const RECURSOS_PLANO = {
   caixaPequeno: 'avancado',
   escala: 'intermediario',
   multasDefesa: 'intermediario',
+  simuladorTaxa: 'intermediario',
   checkin: 'avancado',
   relatorioHoras: 'avancado',
 };
@@ -688,6 +689,11 @@ function diferencaMeses(a, b) {
 
 function documentoMascarado(unidade) {
   return `***.${unidade}.${String(((Number(unidade) * 7) % 900) + 100)}-**`;
+}
+
+// Linhas anuais da previsão a partir do orçado mensal de cada categoria, com um reajuste percentual.
+function linhasDoOrcado(orcamento, pct) {
+  return Object.keys(CATEGORIAS_DESPESA).map((categoria) => ({ categoria, nome: CATEGORIAS_DESPESA[categoria], valor: Math.round(orcamento[categoria] * 12 * (1 + pct / 100)) }));
 }
 
 // Fração ideal por tipo (convenção): 28 aptos tipo A e 4 coberturas somam 100%.
@@ -788,6 +794,13 @@ function financeiroInicial(hoje, em, pessoas, unidades) {
   // Débitos de junho e julho da 304, substituídos pelo acordo AC-001 (ver comAcordoInicial).
   cobrancas.push(novaCobranca('304', somarMes(vigente, -4), mesmoDiaDoMes(vencimentoVigente, -4), 'aberta'));
   cobrancas.push(novaCobranca('304', somarMes(vigente, -3), mesmoDiaDoMes(vencimentoVigente, -3), 'aberta'));
+  const orcamento = { pessoal: 950000, concessionarias: 420000, manutencao: 200000, administracao: 120000, seguro: 100000 };
+  const anoPrevisao = Number(vigente.slice(0, 4)) + 1;
+  const linhas8 = linhasDoOrcado(orcamento, 8);
+  const previsoes = [
+    { id: 'PO-001', ano: anoPrevisao, nome: 'Proposta do síndico', linhas: linhas8, margemPct: 12.5, criadaEm: em(-6, 21), atualizadaEm: em(-6, 21), documento: null },
+    { id: 'PO-002', ano: anoPrevisao, nome: 'Com obra do telhado', linhas: [...linhas8, { categoria: null, nome: 'Obra do telhado', valor: 3600000 }], margemPct: 12.5, criadaEm: em(-4, 20), atualizadaEm: em(-4, 20), documento: null },
+  ];
   return {
     parametros: { diaVencimento: Number(vencimentoVigente.slice(8, 10)), diaFechamento: 20, multaPct: 2, jurosPct: 1, descontoPct: 0, descontoAprovadoEm: '', formas: ['boleto', 'pix', 'cartao'], tarifa: 'condominio' },
     composicao,
@@ -804,7 +817,9 @@ function financeiroInicial(hoje, em, pessoas, unidades) {
     acordos: [],
     historico: HISTORICO_RECEITAS.map((receitas, i) => ({ mes: somarMes(vigente, i - 11), receitas, despesas: HISTORICO_DESPESAS[i] })),
     despesasMes: { pessoal: 980000, concessionarias: 390000, manutencao: 230000, administracao: 120000, seguro: 90000 },
-    orcamento: { pessoal: 950000, concessionarias: 420000, manutencao: 200000, administracao: 120000, seguro: 100000 },
+    orcamento,
+    previsoes,
+    proximaPrevisao: 3,
     saldo: 4835000,
     auditoria: [],
   };
@@ -1604,7 +1619,7 @@ function dadosIniciais(agora = new Date()) {
   ];
 
   return comInfracaoInicial(comEscalaInicial(comAcordoInicial({
-    versao: 8,
+    versao: 9,
     geradoEm: hoje,
     proximoProtocolo: 44,
     infracoes: [],
@@ -2297,6 +2312,119 @@ function encerrarTaxaExtra(estado, id, motivo, perfil, agora) {
     desfeitos,
     notificacao: { canal: 'App + e-mail + WhatsApp', para: `${responsaveisAvisados(fin)} responsáveis`, texto: `Taxa extra ${extra.descricao} encerrada${ultimaCompetencia ? `: última parcela em ${nomeMes(ultimaCompetencia)}` : ' antes da primeira parcela'}` },
   };
+}
+
+// ---- src/cobranca/orcamento.js ----
+
+// Previsão orçamentária do ano: despesa por categoria, margem de inadimplência e a taxa que fecha a conta.
+function despesaAnual(linhas) {
+  return linhas.reduce((soma, l) => soma + l.valor, 0);
+}
+
+function ordinariaNecessaria(linhas, margemPct) {
+  return Math.round(despesaAnual(linhas) / 12 / (1 - margemPct / 100));
+}
+
+function ordinariaTotal(fin, versao) {
+  return Object.keys(fin.unidades).reduce((soma, u) => soma + ordinariaDe(fin, versao, u), 0);
+}
+
+function candidataDaPrevisao(fin, previsao) {
+  const base = versaoVigente(fin);
+  const necessaria = ordinariaNecessaria(previsao.linhas, previsao.margemPct);
+  const comum = { vigencia: primeiraNaoEmitida(fin), modo: base.modo, fundoPct: base.fundoPct };
+  if (base.modo === 'fracao') return { ...comum, ordinaria: null, orcamento: necessaria };
+  const fator = necessaria / ordinariaTotal(fin, base);
+  return { ...comum, ordinaria: { A: Math.round(base.ordinaria.A * fator), cobertura: Math.round(base.ordinaria.cobertura * fator) }, orcamento: null };
+}
+
+function simularPrevisao(fin, previsao) {
+  return simularComposicao(fin, candidataDaPrevisao(fin, previsao));
+}
+
+function resultadoComTaxaAtual(fin, previsao) {
+  return Math.round(ordinariaTotal(fin, versaoVigente(fin)) * 12 * (1 - previsao.margemPct / 100)) - despesaAnual(previsao.linhas);
+}
+
+function margemAtual(estado, hoje) {
+  return indicadoresFinanceiros(estado, hoje).inadimplencia.pct;
+}
+
+function nomeDaLinha(linha) {
+  return linha.categoria ? CATEGORIAS_DESPESA[linha.categoria] : linha.nome;
+}
+
+function compararPrevisoes(fin, a, b) {
+  const nomes = [...new Set([...a.linhas, ...b.linhas].map(nomeDaLinha))];
+  const valorDe = (p, nome) => (p.linhas.find((l) => nomeDaLinha(l) === nome) || { valor: 0 }).valor;
+  const sa = simularPrevisao(fin, a);
+  const sb = simularPrevisao(fin, b);
+  return {
+    linhas: nomes.map((nome) => ({ nome, a: valorDe(a, nome), b: valorDe(b, nome) })),
+    total: { a: despesaAnual(a.linhas), b: despesaAnual(b.linhas) },
+    ordinaria: { a: ordinariaNecessaria(a.linhas, a.margemPct), b: ordinariaNecessaria(b.linhas, b.margemPct) },
+    tipos: sa.tipos.map((t, i) => ({ tipo: t.tipo, a: t.depois, b: sb.tipos[i].depois })),
+  };
+}
+
+// ---- src/cobranca/acoes-orcamento.js ----
+
+// Previsões orçamentárias salvas e o documento levado à AGO.
+function erroOrcamento(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function guardaOrcamento(estado, perfil) {
+  if (!podeOperar(perfil)) return SO_SINDICO;
+  if (!liberado(estado.plano, 'simuladorTaxa')) return 'Disponível no plano Intermediário';
+  return null;
+}
+
+function salvarPrevisao(estado, dados, perfil, agora) {
+  const falha = guardaOrcamento(estado, perfil);
+  if (falha) return erroOrcamento(estado, falha);
+  const nome = String(dados.nome || '').trim();
+  if (!nome) return erroOrcamento(estado, 'Informe o nome da previsão');
+  const linhas = (dados.linhas || []).map((l) => ({ categoria: l.categoria || null, nome: String(l.nome || '').trim(), valor: l.valor }));
+  if (!linhas.length || linhas.some((l) => (!l.categoria && !l.nome) || !Number.isFinite(l.valor) || l.valor < 0)) return erroOrcamento(estado, 'Cada linha precisa de nome e valor');
+  const margemPct = Number(dados.margemPct);
+  if (!Number.isFinite(margemPct) || margemPct < 0 || margemPct > 50) return erroOrcamento(estado, 'A margem de inadimplência deve ser de 0% a 50%');
+  const fin = estado.financeiro;
+  const em = agora.toISOString();
+  const existente = dados.id && fin.previsoes.find((p) => p.id === dados.id);
+  if (existente) {
+    const atualizada = { ...existente, ano: dados.ano, nome, linhas, margemPct, atualizadaEm: em };
+    return { estado: comFinanceiro(estado, { previsoes: fin.previsoes.map((p) => (p.id === existente.id ? atualizada : p)) }), id: existente.id };
+  }
+  const id = `PO-${String(fin.proximaPrevisao).padStart(3, '0')}`;
+  const previsao = { id, ano: dados.ano, nome, linhas, margemPct, criadaEm: em, atualizadaEm: em, documento: null };
+  return { estado: comFinanceiro(estado, { previsoes: [...fin.previsoes, previsao], proximaPrevisao: fin.proximaPrevisao + 1 }), id };
+}
+
+function excluirPrevisao(estado, id, perfil) {
+  const falha = guardaOrcamento(estado, perfil);
+  if (falha) return erroOrcamento(estado, falha);
+  if (!estado.financeiro.previsoes.some((p) => p.id === id)) return erroOrcamento(estado, 'Previsão não encontrada');
+  return { estado: comFinanceiro(estado, { previsoes: estado.financeiro.previsoes.filter((p) => p.id !== id) }) };
+}
+
+function gerarDocumentoPrevisao(estado, id, perfil, agora) {
+  const falha = guardaOrcamento(estado, perfil);
+  if (falha) return erroOrcamento(estado, falha);
+  const previsao = estado.financeiro.previsoes.find((p) => p.id === id);
+  if (!previsao) return erroOrcamento(estado, 'Salve a previsão antes de gerar o documento');
+  const titulo = `Previsão orçamentária ${previsao.ano} · ${previsao.nome}`;
+  const data = isoDia(agora);
+  const atual = previsao.documento && estado.documentos.find((d) => d.id === previsao.documento);
+  if (atual) {
+    const versao = atual.versoes.length + 1;
+    const documentos = estado.documentos.map((d) => (d.id === atual.id ? { ...d, titulo, versoes: [...d.versoes, { versao, data }] } : d));
+    return { estado: { ...estado, documentos }, id: atual.id, versao, notificacao: { canal: 'Documentos', para: 'Todos os moradores', texto: `${titulo}: versão ${versao} publicada` } };
+  }
+  const docId = `d${estado.documentos.reduce((m, d) => Math.max(m, Number(d.id.slice(1)) || 0), 0) + 1}`;
+  const documento = { id: docId, pasta: 'Previsão orçamentária', titulo, versoes: [{ versao: 1, data }], visibilidade: 'todos' };
+  const novo = comFinanceiro({ ...estado, documentos: [...estado.documentos, documento] }, { previsoes: estado.financeiro.previsoes.map((p) => (p.id === id ? { ...p, documento: docId } : p)) });
+  return { estado: novo, id: docId, versao: 1, notificacao: { canal: 'Documentos', para: 'Todos os moradores', texto: `${titulo} publicada para a AGO` } };
 }
 
 // ---- src/infracoes/regras.js ----
@@ -3631,7 +3759,7 @@ const CASOS_DADOS = [
       const e = dadosIniciais(AGORA_TESTE);
       igual(new Set(e.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, 20);
       igual(e.pessoas.filter((p) => p.naoResidente).map((p) => [p.unidade, p.nome, p.recebeOfertas, p.vendedor]), [['704', 'Vicente Moraes', false, 'nao']]);
-      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [8, 'Ana Souza']);
+      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [9, 'Ana Souza']);
     },
   },
   {
@@ -4772,7 +4900,7 @@ const CASOS_NOTIFICACOES = [
         ['OC-0037', 'eletrica', 'alta'], ['OC-0038', 'elogio', 'baixa'], ['OC-0039', 'vazamento', 'urgente'], ['OC-0040', 'elevador', 'alta'],
         ['OC-0041', 'barulho', 'normal'], ['OC-0042', 'vaga', 'normal'], ['OC-0043', 'obra', 'normal'],
       ]);
-      igual([e.proximoProtocolo, e.versao], [44, 8]);
+      igual([e.proximoProtocolo, e.versao], [44, 9]);
     },
   },
   {
@@ -5057,7 +5185,7 @@ const CASOS_ESCALA = [
     rodar() {
       const e = dadosIniciais(AGORA_FASE2);
       const m = e.escala.meses['2026-10'];
-      igual([m.situacao, e.versao, e.escala.meses['2026-11']], ['publicada', 8, undefined]);
+      igual([m.situacao, e.versao, e.escala.meses['2026-11']], ['publicada', 9, undefined]);
       const at = m.turnos.find((x) => x.id === 'T-2026-10-20-guarita-07');
       igual([at.porteiro, at.motivoDescoberto, at.porteiroOriginal, at.anexo], [null, 'atestado', 'claudia', 'atestado-claudia.pdf']);
       igual(e.escala.trocas.map((x) => [x.id, x.turno, x.de, x.para, x.situacao]), [['TR-001', 'T-2026-10-22-portaria-07', 'marcos', 'paulo', 'aceita']]);
@@ -5343,6 +5471,72 @@ const CASOS_INFRACOES = [
   },
 ];
 
+// ---- src/casos/orcamento.js ----
+
+function previsaoDe(estado, id) {
+  return estado.financeiro.previsoes.find((p) => p.id === id);
+}
+
+const CASOS_ORCAMENTO = [
+  {
+    nome: 'orçamento: cálculo da previsão com 8% e margem de 12,5%',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const fin = e.financeiro;
+      const po1 = previsaoDe(e, 'PO-001');
+      igual([po1.ano, despesaAnual(po1.linhas), ordinariaNecessaria(po1.linhas, 12.5)], [2027, 23198400, 2209371]);
+      igual(linhasDoOrcado(fin.orcamento, 0)[0], { categoria: 'pessoal', nome: 'Pessoal', valor: 11400000 });
+      igual(candidataDaPrevisao(fin, po1).ordinaria, { A: 64923, cobertura: 97884 });
+      igual(simularPrevisao(fin, po1).tipos[0].antes, 71500);
+      igual(resultadoComTaxaAtual(fin, po1), 27600);
+      igual(margemAtual(e, '2026-10-19'), 12.5);
+      const po2 = previsaoDe(e, 'PO-002');
+      igual([despesaAnual(po2.linhas), candidataDaPrevisao(fin, po2).ordinaria.A, resultadoComTaxaAtual(fin, po2) < 0], [26798400, 74998, true]);
+    },
+  },
+  {
+    nome: 'orçamento: modo fração usa o orçamento necessário',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const fin = { ...e.financeiro, composicao: { ...e.financeiro.composicao, versoes: [...e.financeiro.composicao.versoes, { id: 'CV-009', vigencia: '2026-10', modo: 'fracao', ordinaria: null, orcamento: 2212000, fundoPct: 10 }] } };
+      const v = candidataDaPrevisao(fin, previsaoDe(e, 'PO-001'));
+      igual([v.modo, v.orcamento, v.vigencia, ordinariaDe(fin, v, '302')], ['fracao', 2209371, '2026-11', 64922]);
+    },
+  },
+  {
+    nome: 'orçamento: salvar, salvar por cima, excluir e comparar',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const base = { ano: 2027, nome: 'Enxuta', linhas: linhasDoOrcado(e.financeiro.orcamento, 5), margemPct: 10 };
+      igual(salvarPrevisao(e, { ...base, nome: ' ' }, 'sindico', AGORA_FASE2).erro, 'Informe o nome da previsão');
+      igual(salvarPrevisao(e, { ...base, linhas: [...base.linhas, { categoria: null, nome: '', valor: 100 }] }, 'sindico', AGORA_FASE2).erro, 'Cada linha precisa de nome e valor');
+      igual(salvarPrevisao(e, { ...base, margemPct: 51 }, 'sindico', AGORA_FASE2).erro, 'A margem de inadimplência deve ser de 0% a 50%');
+      igual(salvarPrevisao(e, base, 'zelador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      igual(salvarPrevisao(trocarPlano(e, 'basico').estado, base, 'sindico', AGORA_FASE2).erro, 'Disponível no plano Intermediário');
+      const r = salvarPrevisao(e, base, 'sindico', AGORA_FASE2);
+      igual([r.id, r.estado.financeiro.previsoes.length], ['PO-003', 3]);
+      const por = salvarPrevisao(r.estado, { ...base, id: 'PO-003', nome: 'Enxuta revisada' }, 'sindico', AGORA_FASE2);
+      igual([por.id, previsaoDe(por.estado, 'PO-003').nome, por.estado.financeiro.previsoes.length], ['PO-003', 'Enxuta revisada', 3]);
+      igual(excluirPrevisao(por.estado, 'PO-003', 'sindico').estado.financeiro.previsoes.length, 2);
+      const c = compararPrevisoes(e.financeiro, previsaoDe(e, 'PO-001'), previsaoDe(e, 'PO-002'));
+      igual(c.linhas.at(-1), { nome: 'Obra do telhado', a: 0, b: 3600000 });
+      igual([c.total.b - c.total.a, c.tipos[0].tipo, c.tipos[0].b > c.tipos[0].a], [3600000, 'A', true]);
+    },
+  },
+  {
+    nome: 'orçamento: documento para a AGO cria e depois versiona',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(gerarDocumentoPrevisao(e, 'PO-009', 'sindico', AGORA_FASE2).erro, 'Salve a previsão antes de gerar o documento');
+      const r = gerarDocumentoPrevisao(e, 'PO-001', 'sindico', AGORA_FASE2);
+      const doc = r.estado.documentos.find((d) => d.id === r.id);
+      igual([r.id, doc.pasta, doc.titulo, doc.visibilidade, previsaoDe(r.estado, 'PO-001').documento], ['d9', 'Previsão orçamentária', 'Previsão orçamentária 2027 · Proposta do síndico', 'todos', 'd9']);
+      const r2 = gerarDocumentoPrevisao(r.estado, 'PO-001', 'sindico', AGORA_FASE2);
+      igual([r2.versao, r2.estado.documentos.length, r2.estado.documentos.find((d) => d.id === 'd9').versoes.length], [2, e.documentos.length + 1, 2]);
+    },
+  },
+];
+
 // ---- src/armazenamento.js ----
 const CHAVE_ESTADO = 'condofacil-demo-v1';
 
@@ -5351,7 +5545,7 @@ function carregarEstado() {
     const texto = localStorage.getItem(CHAVE_ESTADO);
     if (!texto) return null;
     const estado = JSON.parse(texto);
-    return estado && estado.versao === 8 ? estado : null;
+    return estado && estado.versao === 9 ? estado : null;
   } catch {
     return null;
   }
@@ -6032,14 +6226,14 @@ function PainelFinanceiro({ estado, agora }) {
   </div>`;
 }
 
-const ABAS_COBRANCA = [['previa', 'Prévia e emissão'], ['emitidas', 'Cobranças emitidas'], ['acordos', 'Acordos'], ['regua', 'Régua'], ['taxas', 'Taxa e reajustes'], ['parametros', 'Parâmetros']];
+const ABAS_COBRANCA = [['previa', 'Prévia e emissão'], ['emitidas', 'Cobranças emitidas'], ['acordos', 'Acordos'], ['regua', 'Régua'], ['taxas', 'Taxa e reajustes'], ['orcamento', 'Orçamento'], ['parametros', 'Parâmetros']];
 const FILTROS_COBRANCA = [['todas', 'Todas'], ['aberta', 'Em aberto'], ['vencida', 'Vencidas'], ['paga', 'Pagas'], ['cancelada', 'Canceladas']];
 
 function SCobranca(props) {
   const idRota = props.rota.id || '';
   const deAcordo = idRota.startsWith('novoacordo') || idRota.startsWith('AC-');
   const aba = deAcordo ? 'acordos' : ABAS_COBRANCA.some(([id]) => id === idRota) ? idRota : 'previa';
-  const Conteudo = { previa: CPrevia, emitidas: CEmitidas, acordos: CAcordos, regua: CRegua, taxas: CTaxas, parametros: CParametros }[aba];
+  const Conteudo = { previa: CPrevia, emitidas: CEmitidas, acordos: CAcordos, regua: CRegua, taxas: CTaxas, orcamento: COrcamento, parametros: CParametros }[aba];
   return html`<section>
     <h1>Cobrança</h1>
     <p class="faixa-asaas">Conta Asaas ativa · subconta do condomínio. O dinheiro cai direto na conta do condomínio; o CondoFácil só organiza emissão, baixa e relatórios.</p>
@@ -6324,12 +6518,12 @@ function TabelaSimulacao({ simulacao }) {
   </div>`;
 }
 
-function FormReajuste({ estado, executar, aoConcluir }) {
+function FormReajuste({ estado, executar, aoConcluir, inicial = {} }) {
   const fin = estado.financeiro;
   const base = versaoVigente(fin);
   const comFracao = liberado(estado.plano, 'fracaoIdeal');
   const comFundo = liberado(estado.plano, 'composicaoCompleta');
-  const [form, setForm] = useState({ vigencia: primeiraNaoEmitida(fin), modo: base.modo, forma: 'percentual', pct: '', A: '', cobertura: '', orcamento: '', fundoPct: String(base.fundoPct), aprovadoEm: '', publicar: true });
+  const [form, setForm] = useState({ vigencia: primeiraNaoEmitida(fin), modo: base.modo, forma: 'percentual', pct: '', A: '', cobertura: '', orcamento: '', fundoPct: String(base.fundoPct), aprovadoEm: '', publicar: true, ...inicial });
   const [erro, setErro] = useState(null);
   const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value });
   const dados = {
@@ -6499,6 +6693,173 @@ function MudancasTaxa({ estado, eu, hoje }) {
   return html`<div class="cartao mudancas-taxa">
     <strong>Mudanças na sua taxa</strong>
     <ul class="m-lista">${linhas.map((l) => html`<li key=${l.chave}><span class="sub">${l.titulo}</span><div>${l.texto}</div>${l.detalhe && html`<small class="sub">${l.detalhe}</small>`}</li>`)}</ul>
+  </div>`;
+}
+
+// ---- src/ui/orcamento.js ----
+
+// Aba Orçamento: previsão do ano por categoria, a taxa que fecha a conta e o documento levado à AGO.
+const REAJUSTE_PADRAO_ORCAMENTO = 8;
+
+function linhasParaForm(linhas) {
+  return linhas.map((l) => ({ categoria: l.categoria, nome: l.categoria ? '' : l.nome, texto: fmtReais(l.valor) }));
+}
+
+function formDaPrevisao(p) {
+  return { id: p.id, ano: p.ano, nome: p.nome, linhas: linhasParaForm(p.linhas), margem: String(p.margemPct).replace('.', ',') };
+}
+
+function lerPercentual(texto) {
+  const limpo = String(texto ?? '').trim().replace(',', '.');
+  return limpo === '' ? NaN : Number(limpo);
+}
+
+function valoresIniciaisReajuste(versao) {
+  if (versao.modo === 'fracao') return { modo: 'fracao', forma: 'valores', orcamento: fmtReais(versao.orcamento) };
+  return { modo: 'fixo', forma: 'valores', A: fmtReais(versao.ordinaria.A), cobertura: fmtReais(versao.ordinaria.cobertura) };
+}
+
+function ComparacaoPrevisoes({ fin }) {
+  const previsoes = fin.previsoes;
+  const [a, setA] = useState(previsoes[0] ? previsoes[0].id : '');
+  const [b, setB] = useState(previsoes[1] ? previsoes[1].id : '');
+  const pa = previsoes.find((p) => p.id === a);
+  const pb = previsoes.find((p) => p.id === b);
+  if (previsoes.length < 2) return html`<${Vazio} texto="Salve duas previsões para comparar." />`;
+  const c = pa && pb ? compararPrevisoes(fin, pa, pb) : null;
+  const opcoes = previsoes.map((p) => html`<option key=${p.id} value=${p.id}>${p.id} · ${p.nome}</option>`);
+  const linha = (rotulo, va, vb, forte) => html`<tr key=${rotulo}><td>${forte ? html`<strong>${rotulo}</strong>` : rotulo}</td><td>${fmtReais(va)}</td><td>${fmtReais(vb)}</td><td>${vb - va === 0 ? '—' : `${vb > va ? '+' : '−'}${fmtReais(Math.abs(vb - va))}`}</td></tr>`;
+  return html`<div class="pilha">
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Previsão A"><select id="comparar-a" value=${a} onChange=${(ev) => setA(ev.target.value)}>${opcoes}</select><//>
+      <${Campo} rotulo="Previsão B"><select id="comparar-b" value=${b} onChange=${(ev) => setB(ev.target.value)}>${opcoes}</select><//>
+    </div>
+    ${c && html`<div class="tabela-rolagem"><table class="tabela">
+      <thead><tr><th>Item (por ano)</th><th>${pa.id}</th><th>${pb.id}</th><th>B − A</th></tr></thead>
+      <tbody>
+        ${c.linhas.map((l) => linha(l.nome, l.a, l.b, false))}
+        ${linha('Despesa anual', c.total.a, c.total.b, true)}
+        ${linha('Ordinária necessária por mês', c.ordinaria.a, c.ordinaria.b, true)}
+        ${c.tipos.map((t) => linha(`${NOMES_TIPO_UNIDADE[t.tipo]} por mês (com fundo)`, t.a, t.b, true))}
+      </tbody>
+    </table></div>`}
+  </div>`;
+}
+
+function COrcamento({ estado, executar, agora }) {
+  const fin = estado.financeiro;
+  const hoje = isoDia(agora);
+  const anoBase = Number(fin.vigente.slice(0, 4)) + 1;
+  const novoForm = () => ({ id: null, ano: anoBase, nome: '', linhas: linhasParaForm(linhasDoOrcado(fin.orcamento, REAJUSTE_PADRAO_ORCAMENTO)), margem: String(margemAtual(estado, hoje)).replace('.', ',') });
+  const [form, setForm] = useState(novoForm);
+  const [pct, setPct] = useState(String(REAJUSTE_PADRAO_ORCAMENTO));
+  const [reajustando, setReajustando] = useState(false);
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  if (!liberado(estado.plano, 'simuladorTaxa')) return html`<${Bloqueado} estado=${estado} recurso="simuladorTaxa" titulo="Previsão orçamentária e simulador de taxa" />`;
+
+  const linhas = form.linhas.map((l) => ({ categoria: l.categoria, nome: l.categoria ? '' : l.nome, valor: lerPreco(l.texto) }));
+  const margemPct = lerPercentual(form.margem);
+  const previsao = { ano: Number(form.ano), linhas, margemPct };
+  const valida = linhas.every((l) => Number.isFinite(l.valor) && l.valor >= 0) && Number.isFinite(margemPct) && margemPct >= 0 && margemPct < 100;
+  const simulacao = valida ? simularPrevisao(fin, previsao) : null;
+  const resultado = valida ? resultadoComTaxaAtual(fin, previsao) : 0;
+  const salva = form.id && fin.previsoes.find((p) => p.id === form.id);
+
+  function mudarLinha(n, chave, valor) {
+    setForm({ ...form, linhas: form.linhas.map((l, i) => (i === n ? { ...l, [chave]: valor } : l)) });
+  }
+
+  function aplicarReajuste() {
+    const p = lerPercentual(pct);
+    if (!Number.isFinite(p)) { setErro('Informe o percentual de reajuste'); return; }
+    const porCategoria = Object.fromEntries(linhasDoOrcado(fin.orcamento, p).map((l) => [l.categoria, fmtReais(l.valor)]));
+    setForm({ ...form, linhas: form.linhas.map((l) => (l.categoria ? { ...l, texto: porCategoria[l.categoria] } : l)) });
+    setErro(null);
+  }
+
+  function salvar(comoNova) {
+    const r = executar((e) => salvarPrevisao(e, { id: comoNova ? null : form.id, ano: Number(form.ano), nome: form.nome, linhas, margemPct }, 'sindico', new Date()));
+    setErro(r.erro || null);
+    if (!r.erro) {
+      setForm({ ...form, id: r.id });
+      setMensagem(`Previsão ${r.id} salva.`);
+    }
+  }
+
+  function abrir(p) {
+    setForm(formDaPrevisao(p));
+    setReajustando(false);
+    setErro(null);
+    setMensagem(`Previsão ${p.id} aberta.`);
+  }
+
+  function rodar(acao, sucesso) {
+    const r = executar(acao);
+    setErro(r.erro || null);
+    setMensagem(r.erro ? null : sucesso(r));
+    return r;
+  }
+
+  return html`<div class="pilha">
+    <p class="sub">Monte a despesa do ano por categoria e veja a taxa que fecha a conta, já com a margem de inadimplência.</p>
+    <div class="cartao pilha formulario">
+      <strong>${salva ? `${salva.id} · ${salva.nome}` : 'Nova previsão'}</strong>
+      <div class="edicao-anuncio">
+        <${Campo} rotulo="Ano"><select id="orcamento-ano" value=${form.ano} onChange=${(ev) => setForm({ ...form, ano: Number(ev.target.value) })}>${[anoBase - 1, anoBase, anoBase + 1].map((a) => html`<option key=${a} value=${a}>${a}</option>`)}</select><//>
+        <${Campo} rotulo="Nome da previsão"><input id="orcamento-nome" value=${form.nome} onInput=${(ev) => setForm({ ...form, nome: ev.target.value })} placeholder="Ex.: Proposta do conselho" /><//>
+        <${Campo} rotulo="Percentual de reajuste (%)" dica="Aplicado sobre o orçado atual de cada categoria"><input id="orcamento-reajuste" inputmode="decimal" value=${pct} onInput=${(ev) => setPct(ev.target.value)} /><//>
+        <${Campo} rotulo="Margem de inadimplência (%)" dica="Começa com a inadimplência de hoje"><input id="orcamento-margem" inputmode="decimal" value=${form.margem} onInput=${(ev) => setForm({ ...form, margem: ev.target.value })} /><//>
+      </div>
+      <div class="acoes"><button type="button" class="btn secundario" data-acao="aplicar-reajuste" onClick=${aplicarReajuste}>Aplicar reajuste</button></div>
+      <div class="tabela-rolagem"><table class="tabela">
+        <thead><tr><th>Item</th><th>Orçado atual (12 meses)</th><th>Previsão (R$ por ano)</th><th></th></tr></thead>
+        <tbody>${form.linhas.map((l, n) => html`<tr key=${n}>
+          <td>${l.categoria ? nomeDaLinha(l) : html`<input aria-label="Nome da linha" value=${l.nome} onInput=${(ev) => mudarLinha(n, 'nome', ev.target.value)} placeholder="Ex.: Obra do telhado" />`}</td>
+          <td>${l.categoria ? fmtReais(fin.orcamento[l.categoria] * 12) : '—'}</td>
+          <td><input aria-label=${`Valor de ${l.categoria ? nomeDaLinha(l) : l.nome || 'linha livre'}`} inputmode="decimal" value=${l.texto} onInput=${(ev) => mudarLinha(n, 'texto', ev.target.value)} /></td>
+          <td>${!l.categoria && html`<button type="button" class="btn-link" onClick=${() => setForm({ ...form, linhas: form.linhas.filter((_, i) => i !== n) })}>Remover</button>`}</td>
+        </tr>`)}</tbody>
+      </table></div>
+      <div class="acoes"><button type="button" class="btn secundario" data-acao="adicionar-linha" onClick=${() => setForm({ ...form, linhas: [...form.linhas, { categoria: null, nome: '', texto: '' }] })}>Adicionar linha</button></div>
+      ${valida
+        ? html`<div class="cartao simulacao pilha">
+            <dl class="resumo">
+              <dt>Despesa anual</dt><dd>${fmtReais(despesaAnual(linhas))}</dd>
+              <dt>Despesa mensal</dt><dd>${fmtReais(Math.round(despesaAnual(linhas) / 12))}</dd>
+              <dt>Ordinária necessária</dt><dd>${fmtReais(ordinariaNecessaria(linhas, margemPct))} por mês, com ${String(margemPct).replace('.', ',')}% de margem</dd>
+            </dl>
+            <p class=${resultado >= 0 ? 'sucesso' : 'erro'}>Com a taxa atual, o ano fecha com ${resultado >= 0 ? 'sobra' : 'falta'} de ${fmtReais(Math.abs(resultado))}.</p>
+          </div>
+          <${TabelaSimulacao} simulacao=${simulacao} />`
+        : html`<small class="sub">Preencha valores e margem válidos para ver o cálculo.</small>`}
+      <${Erro} texto=${erro} />
+      <${Sucesso} texto=${mensagem} />
+      <div class="acoes">
+        <button type="button" class="btn primario" data-acao="salvar-previsao" onClick=${() => salvar(false)}>${salva ? 'Salvar alterações' : 'Salvar previsão'}</button>
+        ${salva && html`<button type="button" class="btn secundario" data-acao="salvar-como-nova" onClick=${() => salvar(true)}>Salvar como nova</button>`}
+        ${valida && html`<button type="button" class="btn secundario" data-acao="usar-no-reajuste" aria-expanded=${reajustando} onClick=${() => setReajustando(!reajustando)}>Usar no reajuste</button>`}
+        ${salva && html`<button type="button" class="btn secundario" data-acao="gerar-documento" onClick=${() => rodar((e) => gerarDocumentoPrevisao(e, salva.id, 'sindico', new Date()), (r) => `Documento publicado em Documentos › Previsão orçamentária (versão ${r.versao}).`)}>Gerar documento para a AGO</button>`}
+        <button type="button" class="btn-link" onClick=${() => { setForm(novoForm()); setReajustando(false); setMensagem(null); setErro(null); }}>Nova previsão</button>
+      </div>
+    </div>
+    ${reajustando && valida && html`<${FormReajuste} key=${JSON.stringify(candidataDaPrevisao(fin, previsao))} estado=${estado} executar=${executar} inicial=${valoresIniciaisReajuste(candidataDaPrevisao(fin, previsao))} aoConcluir=${(texto) => { setReajustando(false); setMensagem(`${texto} Confira em Taxa e reajustes.`); }} />`}
+    <h2>Previsões salvas</h2>
+    ${fin.previsoes.length
+      ? html`<ul class="m-lista">${fin.previsoes.map((p) => {
+          const s = simularPrevisao(fin, p);
+          return html`<li key=${p.id} class="cartao">
+            <div class="linha-entre"><strong>${p.id} · ${p.nome} · ${p.ano}</strong><small class="sub">atualizada em ${fmtDataCurta(isoDia(new Date(p.atualizadaEm)))}${p.documento ? ' · documento publicado' : ''}</small></div>
+            <span>${fmtReais(despesaAnual(p.linhas))} por ano · apto tipo A ${fmtReais(s.tipos[0].depois)} por mês · margem ${String(p.margemPct).replace('.', ',')}%</span>
+            <div class="acoes">
+              <button type="button" class="btn secundario" data-abrir-previsao=${p.id} onClick=${() => abrir(p)}>Abrir</button>
+              <button type="button" class="btn-link" onClick=${() => { rodar((e) => excluirPrevisao(e, p.id, 'sindico'), () => `Previsão ${p.id} excluída.`); if (form.id === p.id) setForm(novoForm()); }}>Excluir</button>
+            </div>
+          </li>`;
+        })}</ul>`
+      : html`<${Vazio} texto="Nenhuma previsão salva." />`}
+    <h2>Comparar</h2>
+    <${ComparacaoPrevisoes} key=${fin.previsoes.map((p) => p.id).join()} fin=${fin} />
   </div>`;
 }
 
@@ -9214,7 +9575,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

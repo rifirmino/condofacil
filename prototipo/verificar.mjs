@@ -74,6 +74,7 @@ const CHECAGENS = [
   ['#sindico.ocorrencias.PI-001', ['Processo PI-001', 'Art. 12', 'R$ 200,00', 'Simular fim do prazo', 'OC-0041']],
   ['#sindico.ocorrencias.OC-0041', ['Advertência ou multa', 'PI-001', 'Abrir processo']],
   ['#morador.ocorrencias', ['!PI-001', '!Notificações para o seu apartamento']],
+  ['#sindico.cobranca.orcamento', ['Ordinária necessária', 'PO-001', 'PO-002', 'Comparar', 'Obra do telhado', 'Com a taxa atual, o ano fecha com', 'Orçado atual (12 meses)']],
   ['#sindico.cobranca.taxas', ['Em vigor', 'Pintura da fachada', 'Frações ideais', 'Nova composição', 'Histórico', 'AGO de 28/03', 'Valor fixo por tipo']],
   ['#sindico.cobranca.parametros', ['Parâmetros de cobrança', '!Composição da taxa']],
   ['#morador.financeiro', ['Mudanças na sua taxa', 'Pintura da fachada: R$ 150,00 por mês']],

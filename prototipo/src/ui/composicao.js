@@ -46,7 +46,7 @@ function ResumoEmVigor({ estado }) {
   </dl>`;
 }
 
-function TabelaSimulacao({ simulacao }) {
+export function TabelaSimulacao({ simulacao }) {
   return html`<div class="cartao simulacao">
     <strong>Simulação</strong>
     <div class="tabela-rolagem"><table class="tabela">
@@ -61,12 +61,12 @@ function TabelaSimulacao({ simulacao }) {
   </div>`;
 }
 
-function FormReajuste({ estado, executar, aoConcluir }) {
+export function FormReajuste({ estado, executar, aoConcluir, inicial = {} }) {
   const fin = estado.financeiro;
   const base = versaoVigente(fin);
   const comFracao = liberado(estado.plano, 'fracaoIdeal');
   const comFundo = liberado(estado.plano, 'composicaoCompleta');
-  const [form, setForm] = useState({ vigencia: primeiraNaoEmitida(fin), modo: base.modo, forma: 'percentual', pct: '', A: '', cobertura: '', orcamento: '', fundoPct: String(base.fundoPct), aprovadoEm: '', publicar: true });
+  const [form, setForm] = useState({ vigencia: primeiraNaoEmitida(fin), modo: base.modo, forma: 'percentual', pct: '', A: '', cobertura: '', orcamento: '', fundoPct: String(base.fundoPct), aprovadoEm: '', publicar: true, ...inicial });
   const [erro, setErro] = useState(null);
   const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value });
   const dados = {

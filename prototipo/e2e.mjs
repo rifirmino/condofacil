@@ -564,6 +564,30 @@ const ROTEIROS = {
     await esperar(`!document.querySelector('[data-semana-turno]')`, 'a grade só de leitura na portaria');
   },
 
+  async orcamentoPrevisao() {
+    await irPara('#sindico.cobranca.orcamento');
+    await clicarSeletor('[data-abrir-previsao="PO-001"]');
+    await esperarTexto('Previsão PO-001 aberta');
+    await preencher('Percentual de reajuste (%)', '10');
+    await clicarSeletor('[data-acao="aplicar-reajuste"]');
+    await esperar(`[...document.querySelectorAll('input')].some((i) => i.value === 'R$ 125.400,00')`, 'o pessoal com 10%');
+    await preencher('Nome da previsão', 'Reajuste de 10%');
+    await clicarSeletor('[data-acao="salvar-como-nova"]');
+    await esperarTexto('Previsão PO-003 salva');
+    await preencher('Previsão B', 'PO-003');
+    await esperarTexto('B − A');
+    await clicarSeletor('[data-acao="gerar-documento"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('publicada para a AGO')`, 'o documento da AGO');
+    await irPara('#sindico.documentos');
+    await esperarTexto('Previsão orçamentária 2027 · Reajuste de 10%');
+    await irPara('#sindico.cobranca.orcamento');
+    await clicarSeletor('[data-acao="usar-no-reajuste"]');
+    await preencher('Aprovado em', 'AGO de 28/03/2027, item 2');
+    await clicarSeletor('[data-acao="confirmar-reajuste"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('responsáveis')`, 'o aviso do reajuste');
+    await esperarTexto('Confira em Taxa e reajustes');
+  },
+
   async taxaReajuste() {
     await clicar('Reiniciar demonstração');
     await irPara('#sindico.cobranca.taxas');
@@ -608,7 +632,7 @@ const ROTEIROS = {
   async larguraCelular() {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await pausa(300);
-    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas', '#sindico.escala.semana', '#sindico.ocorrencias.PI-001', '#sindico.ocorrencias.OC-0043']) {
+    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas', '#sindico.escala.semana', '#sindico.ocorrencias.PI-001', '#sindico.ocorrencias.OC-0043', '#sindico.cobranca.orcamento']) {
       await irPara(hash);
       const largura = await js('document.documentElement.scrollWidth');
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);
