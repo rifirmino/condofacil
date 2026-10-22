@@ -8,10 +8,12 @@ import { trocarMorador, alternarOfertas } from '../vendas/acoes.js';
 import { TelaVendas, CartaoAnuncio } from './vendas.js';
 import { MFinanceiro, CartaoCobrancaInicio } from './financeiro-morador.js';
 import { infracaoPorId } from '../infracoes/regras.js';
+import { resumosPublicados, resumoDoBalancete } from '../financeiro/balancete.js';
+import { fmtReais } from '../cobranca/regras.js';
 import { MBlocoInfracoes, MDetalheInfracao, CartaoInfracaoInicio } from './infracoes.js';
 import { areaPorId, statusDia, horariosDaArea, comunicadosDaUnidade, avisoCancelamento, encomendaParada, STATUS_ATIVOS } from '../regras.js';
 import { solicitarReserva, cancelarReserva, marcarLido, reagir, abrirOcorrencia, avaliarOcorrencia, euTambem } from '../acoes.js';
-import { isoDia, somarMes, diferencaDias, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
+import { isoDia, nomeMes, somarMes, diferencaDias, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
 import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, QrFalso, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
 const ABAS_MORADOR = [['inicio', 'Início', 'casa'], ['financeiro', 'Financeiro', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['vendas', 'Vendas', 'loja'], ['mais', 'Mais', 'menu']];
@@ -40,9 +42,9 @@ function tipoEtiquetaAviso(c) {
 
 export function TelaMorador(props) {
   const eu = props.estado.moradorAtual;
-  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro };
+  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao };
   const Conteudo = telas[props.rota.tela] || MInicio;
-  const aba = ['documentos', 'encomendas', 'preferencias', 'avisos'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
+  const aba = ['documentos', 'encomendas', 'preferencias', 'avisos', 'prestacao'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
   return html`<div class="celular">
     <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
     <div class="cel-pessoa" role="group" aria-label="Morador da demonstração">
@@ -377,11 +379,45 @@ function MDetalheOcorrencia({ estado, executar, oc, eu }) {
   </section>`;
 }
 
+// Resumo da prestação de contas para o morador: totais por categoria, sem unidades nem nomes de devedores.
+function MPrestacao({ estado, rota }) {
+  const publicados = resumosPublicados(estado);
+  const escolhido = rota.id ? publicados.find((p) => p.mes === rota.id) : null;
+  if (escolhido) {
+    const r = resumoDoBalancete(estado, escolhido.b);
+    return html`<section class="m-pagina">
+      <a class="voltar" href="#morador.prestacao">‹ Prestação de contas</a>
+      <h1 class="m-titulo">${nomeMes(escolhido.mes)}</h1>
+      <p class="m-sub">${escolhido.b.aprovadoPor ? `Aprovada pelo conselho fiscal em ${fmtDataCurta(isoDia(new Date(escolhido.b.aprovadoEm)))}` : 'Balancete fechado pelo síndico'}</p>
+      <dl class="resumo">
+        <dt>Saldo inicial</dt><dd>${fmtReais(r.saldoInicial)}</dd>
+        <dt>Receitas</dt><dd>${fmtReais(r.receitas)}</dd>
+        <dt>Despesas</dt><dd>${fmtReais(r.totalDespesas)}</dd>
+        <dt>Saldo final</dt><dd>${fmtReais(r.saldoFinal)}</dd>
+        <dt>Inadimplência</dt><dd>${String(r.inadimplenciaPct).replace('.', ',')}% das unidades</dd>
+      </dl>
+      <h2>Para onde foi o dinheiro</h2>
+      <ul class="itens-sacola">${r.despesas.map((d) => html`<li key=${d.nome}><span>${d.nome}</span><span>${fmtReais(d.valor)}</span></li>`)}</ul>
+      <small class="sub">Resumo publicado pelo síndico. O balancete completo, com notas, fica com o conselho fiscal.</small>
+    </section>`;
+  }
+  return html`<section class="m-pagina">
+    <h1 class="m-titulo">Prestação de contas</h1>
+    ${publicados.length
+      ? html`<ul class="m-lista">${publicados.map(({ mes, b }) => html`<li key=${mes}><a class="cartao link" href=${`#morador.prestacao.${mes}`}>
+          <strong>${nomeMes(mes)}</strong>
+          <span class="sub">Saldo final ${fmtMoeda(resumoDoBalancete(estado, b).saldoFinal / 100)}${b.aprovadoPor ? ' · aprovada pelo conselho' : ''}</span>
+        </a></li>`)}</ul>`
+      : html`<${Vazio} texto="Nenhuma prestação de contas publicada ainda." />`}
+  </section>`;
+}
+
 function MMais() {
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Mais</h1>
     <a class="cartao link com-icone" href="#morador.avisos"><${QuadroIcone} nome="megafone" /><span><strong>Avisos</strong><span class="sub">Comunicados do síndico e confirmação de leitura</span></span></a>
     <a class="cartao link com-icone" href="#morador.encomendas"><${QuadroIcone} nome="pacote" /><span><strong>Encomendas</strong><span class="sub">Na portaria e histórico de retiradas</span></span></a>
+    <a class="cartao link com-icone" href="#morador.prestacao"><${QuadroIcone} nome="grafico" /><span><strong>Prestação de contas</strong><span class="sub">Receitas, despesas e saldo de cada mês</span></span></a>
     <a class="cartao link com-icone" href="#morador.documentos"><${QuadroIcone} nome="documento" /><span><strong>Documentos</strong><span class="sub">Convenção, regimento, atas e laudos</span></span></a>
     <a class="cartao link com-icone" href="#morador.preferencias"><${QuadroIcone} nome="pessoa" /><span><strong>Minhas preferências</strong><span class="sub">Avisos de anúncios e situação de vendedor</span></span></a>
   </section>`;

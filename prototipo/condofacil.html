@@ -518,6 +518,13 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .legenda-turnos li { display: inline-flex; align-items: center; gap: 6px; }
 .legenda-turnos small { color: var(--suave); }
 
+/* Prestação de contas: lançamentos do balancete e comentários do conselho. */
+.lancamentos-balancete { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.lancamentos-balancete > li { padding: 8px 0; border-top: 1px solid var(--borda); display: flex; flex-direction: column; gap: 6px; }
+.lancamentos-balancete > li:first-child { border-top: 0; }
+.comentario-balancete { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; border-left: 3px solid var(--alerta); background: var(--alerta-bg); }
+.comentario-balancete input, .lancamentos-balancete .acoes input { min-width: 200px; }
+
 </style>
 <div id="app"></div>
 <script type="module">
@@ -1721,7 +1728,7 @@ function dadosIniciais(agora = new Date()) {
     { id: 'p704', nome: 'Vicente Moraes', unidade: '704', naoResidente: true, ...perfilVenda('704', em) },
   ];
 
-  return comInfracaoInicial(comEscalaInicial(comAcordoInicial({
+  return comPrestacaoInicial(comInfracaoInicial(comEscalaInicial(comAcordoInicial({
     versao: 10,
     geradoEm: hoje,
     proximoProtocolo: 44,
@@ -1806,7 +1813,7 @@ function dadosIniciais(agora = new Date()) {
     manutencao: manutencaoInicial(em),
     plano: 'intermediario',
     financeiro: financeiroInicial(hoje, em, pessoas, UNIDADES),
-  }), agora), agora);
+  }), agora), agora));
 }
 
 // ---- src/regras.js ----
@@ -2570,6 +2577,110 @@ function serieDaConta(conta) {
   return `${conta.fornecedor}|${conta.descricao}`;
 }
 
+// ---- src/financeiro/balancete.js ----
+
+// Balancete mensal: meses passados ficam guardados (e travam ao fechar); o mês corrente é calculado na hora.
+const NOMES_SITUACAO_BALANCETE = { aberto: 'Aberto', fechado: 'Fechado', aguardando: 'Aguardando conselho', correcao: 'Correção pedida', aprovado: 'Aprovado' };
+const SITUACOES_TRAVADAS = ['fechado', 'aprovado'];
+
+function totalReceitas(b) {
+  return b.receitas.reduce((s, r) => s + r.valor, 0);
+}
+
+function totalDespesas(b) {
+  return b.despesas.reduce((s, d) => s + d.itens.reduce((t, i) => t + i.valor, 0), 0);
+}
+
+function totalCategoria(d) {
+  return d.itens.reduce((s, i) => s + i.valor, 0);
+}
+
+function saldoFinal(b) {
+  return b.saldoInicial + totalReceitas(b) - totalDespesas(b);
+}
+
+function mesCorrente(hoje) {
+  return hoje.slice(0, 7);
+}
+
+function balanceteVivo(estado, hoje) {
+  const fin = estado.financeiro;
+  const mes = mesCorrente(hoje);
+  const anterior = fin.balancetes[somarMes(mes, -1)];
+  const noMes = (iso) => iso && mesDoInstante(iso) === mes;
+  const pagas = fin.cobrancas.filter((c) => c.status === 'paga' && noMes(c.pagaEm));
+  const acordos = pagas.filter((c) => c.acordo).reduce((s, c) => s + c.valorPago, 0);
+  const taxas = pagas.filter((c) => !c.acordo).reduce((s, c) => s + c.valorPago, 0);
+  const receitas = [{ nome: 'Taxas condominiais', valor: taxas }, ...(acordos ? [{ nome: 'Parcelas de acordos', valor: acordos }] : [])];
+  const despesas = Object.keys(CATEGORIAS_DESPESA).map((categoria) => {
+    const itens = [
+      ...fin.contas.filter((c) => c.categoria === categoria && c.situacao === 'paga' && noMes(c.pagaEm)).map((c) => ({ id: c.id, descricao: `${c.descricao} · ${c.fornecedor}`, valor: c.valor, nota: true })),
+      ...estado.manutencao.compras.filter((c) => c.categoria === categoria && c.status === 'recebida' && !c.viaCaixa && noMes(c.recebidaEm)).map((c) => ({ id: c.id, descricao: `Compra ${c.id}: ${c.item}`, valor: c.valorFinal, nota: !!c.nota })),
+      ...(categoria === 'manutencao' ? estado.manutencao.caixa.reposicoes.filter((r) => noMes(r.em)).map((r, n) => ({ id: `caixa-${n + 1}`, descricao: 'Reposição do caixa pequeno (cupons anexos)', valor: r.valor, nota: true })) : []),
+      ...fin.ajustesMes.filter((a) => a.categoria === categoria).map((a) => ({ id: a.id, descricao: `Ajuste referente a ${nomeMes(a.referente)}: ${a.descricao}`, valor: a.valor, nota: true })),
+    ];
+    const resto = fin.despesasMes[categoria] - itens.reduce((s, i) => s + i.valor, 0);
+    if (resto > 0) itens.push({ id: `outros-${categoria}`, descricao: 'Outros lançamentos do mês', valor: resto, nota: null });
+    return { categoria, itens };
+  });
+  const inad = indicadoresFinanceiros(estado, hoje).inadimplencia;
+  return {
+    situacao: 'aberto', parcial: true, saldoInicial: anterior ? saldoFinal(anterior) : fin.saldo - taxas - acordos + Object.values(fin.despesasMes).reduce((s, v) => s + v, 0),
+    receitas, despesas, inadimplencia: { unidades: inad.unidades, valor: inad.valor }, comentarios: [], correcao: null, fechadoEm: null, aprovadoEm: null, aprovadoPor: null, documento: null, resumo: null,
+  };
+}
+
+function balanceteDe(estado, mes, hoje) {
+  return mes === mesCorrente(hoje) ? balanceteVivo(estado, hoje) : estado.financeiro.balancetes[mes] || null;
+}
+
+function mesesDaPrestacao(estado, hoje) {
+  return [mesCorrente(hoje), ...Object.keys(estado.financeiro.balancetes).sort().reverse()];
+}
+
+function itemDoBalancete(b, itemId) {
+  for (const d of b.despesas) {
+    const item = d.itens.find((i) => i.id === itemId);
+    if (item) return { ...item, categoria: d.categoria };
+  }
+  return null;
+}
+
+function itensSemNota(b) {
+  return b.despesas.flatMap((d) => d.itens.filter((i) => i.nota === false));
+}
+
+function resumoDoBalancete(estado, b) {
+  const unidades = estado.condominio.unidades.length;
+  return {
+    saldoInicial: b.saldoInicial,
+    receitas: totalReceitas(b),
+    despesas: b.despesas.map((d) => ({ nome: CATEGORIAS_DESPESA[d.categoria], valor: totalCategoria(d) })),
+    totalDespesas: totalDespesas(b),
+    saldoFinal: saldoFinal(b),
+    inadimplenciaPct: Math.round((b.inadimplencia.unidades / unidades) * 1000) / 10,
+  };
+}
+
+function resumosPublicados(estado) {
+  return Object.entries(estado.financeiro.balancetes).filter(([, b]) => b.resumo).sort(([a], [b]) => b.localeCompare(a)).map(([mes, b]) => ({ mes, b }));
+}
+
+function alertasPrestacao(estado, hoje) {
+  const atual = mesCorrente(hoje);
+  return Object.entries(estado.financeiro.balancetes)
+    .filter(([mes, b]) => mes < atual && ['aberto', 'correcao'].includes(b.situacao))
+    .map(([mes, b]) => ({ chave: `balancete-${mes}`, href: `#sindico.financeiro.prestacao-${mes}`, texto: b.situacao === 'aberto' ? `Feche o balancete de ${nomeMes(mes)}` : `Balancete de ${nomeMes(mes)}: o conselho pediu correção` }));
+}
+
+function mesesParaOConselho(estado) {
+  return Object.entries(estado.financeiro.balancetes).filter(([, b]) => b.situacao === 'aguardando').map(([mes]) => mes);
+}
+
+function dataDoInstante(iso) {
+  return isoDia(new Date(iso));
+}
+
 // ---- src/financeiro/acoes.js ----
 
 // Ações do financeiro operacional: contas a pagar (Intermediário). Toda saída de caixa entra na auditoria.
@@ -2628,6 +2739,176 @@ function pagarConta(estado, id, perfil, agora) {
     seguinte: seguinte && seguinte.id,
     notificacao: { canal: 'Asaas · pagamento de contas', para: conta.fornecedor, texto: `Pagamento de ${fmtReais(conta.valor)} enviado em ${isoDia(agora).split('-').reverse().join('/')} · comprovante anexado${seguinte ? ` · próxima conta em ${seguinte.vencimento.split('-').reverse().join('/')}` : ''}` },
   };
+}
+
+// Prestação de contas: fechar o mês (Intermediário trava; Avançado manda ao conselho), análise do conselho, ajuste e resumo.
+const SO_CONSELHO = 'Somente o conselho fiscal pode fazer isso';
+
+function idNovoDocumento(estado) {
+  return `d${estado.documentos.reduce((m, d) => Math.max(m, Number(d.id.slice(1)) || 0), 0) + 1}`;
+}
+
+function comBalancete(estado, mes, mudanca) {
+  const fin = estado.financeiro;
+  return comFinanceiro(estado, { balancetes: { ...fin.balancetes, [mes]: { ...fin.balancetes[mes], ...mudanca } } });
+}
+
+function comDocumentoVersionado(estado, docId, dados, agora) {
+  const data = isoDia(agora);
+  const atual = docId && estado.documentos.find((d) => d.id === docId);
+  if (atual) return { estado: { ...estado, documentos: estado.documentos.map((d) => (d.id === docId ? { ...d, versoes: [...d.versoes, { versao: d.versoes.length + 1, data }] } : d)) }, id: docId };
+  const id = idNovoDocumento(estado);
+  return { estado: { ...estado, documentos: [...estado.documentos, { id, ...dados, versoes: [{ versao: 1, data }] }] }, id };
+}
+
+function guardaConselho(estado, perfil) {
+  if (perfil !== 'conselho') return SO_CONSELHO;
+  if (!liberado(estado.plano, 'aprovacaoConselho')) return 'Disponível no plano Avançado';
+  return null;
+}
+
+function balanceteGuardadoDe(estado, mes) {
+  return estado.financeiro.balancetes[mes] || null;
+}
+
+function fecharMes(estado, mes, perfil, agora) {
+  const falha = guardaFinanceiro(estado, perfil, 'prestacaoContas');
+  if (falha) return erroFinanceiro(estado, falha);
+  if (mes >= isoDia(agora).slice(0, 7)) return erroFinanceiro(estado, 'O mês ainda não terminou');
+  const b = balanceteGuardadoDe(estado, mes);
+  if (!b) return erroFinanceiro(estado, 'Balancete não encontrado');
+  if (b.situacao !== 'aberto') return erroFinanceiro(estado, 'Este mês já foi fechado');
+  const comConselho = liberado(estado.plano, 'aprovacaoConselho');
+  const doc = comDocumentoVersionado(estado, b.documento, { pasta: 'Balancetes', titulo: `Balancete de ${nomeMes(mes)}`, visibilidade: 'conselho' }, agora);
+  const novo = comBalancete(doc.estado, mes, { situacao: comConselho ? 'aguardando' : 'fechado', fechadoEm: agora.toISOString(), documento: doc.id });
+  return {
+    estado: comFinanceiro(novo, { auditoria: comAuditoria(novo, agora, 'Balancete fechado', `${nomeMes(mes)}${comConselho ? ' · enviado ao conselho fiscal' : ' · travado'}`) }),
+    notificacao: comConselho
+      ? { canal: 'App + e-mail', para: `${CONSELHEIRO.nome} (conselho fiscal)`, texto: `Balancete de ${nomeMes(mes)} pronto para análise` }
+      : { canal: 'Documentos', para: 'Conselho fiscal', texto: `Balancete de ${nomeMes(mes)} fechado e travado` },
+  };
+}
+
+function comentarLancamento(estado, mes, itemId, texto, perfil, agora) {
+  const falha = guardaConselho(estado, perfil);
+  if (falha) return erroFinanceiro(estado, falha);
+  const b = balanceteGuardadoDe(estado, mes);
+  if (!b || b.situacao !== 'aguardando') return erroFinanceiro(estado, 'Só balancetes aguardando o conselho recebem comentários');
+  if (!itemDoBalancete(b, itemId)) return erroFinanceiro(estado, 'Lançamento não encontrado');
+  const escrito = String(texto || '').trim();
+  if (!escrito) return erroFinanceiro(estado, 'Escreva o comentário');
+  const fin = estado.financeiro;
+  const comentario = { id: `CM-${fin.proximoComentario}`, item: itemId, texto: escrito, autor: CONSELHEIRO.nome, em: agora.toISOString(), resposta: null };
+  const novo = comBalancete(estado, mes, { comentarios: [...b.comentarios, comentario] });
+  return { estado: comFinanceiro(novo, { proximoComentario: fin.proximoComentario + 1 }), id: comentario.id };
+}
+
+function pedirCorrecao(estado, mes, motivo, perfil, agora) {
+  const falha = guardaConselho(estado, perfil);
+  if (falha) return erroFinanceiro(estado, falha);
+  const b = balanceteGuardadoDe(estado, mes);
+  if (!b || b.situacao !== 'aguardando') return erroFinanceiro(estado, 'Só balancetes aguardando o conselho');
+  const texto = String(motivo || '').trim();
+  if (!texto) return erroFinanceiro(estado, 'Informe o motivo');
+  return {
+    estado: comBalancete(estado, mes, { situacao: 'correcao', correcao: { motivo: texto, autor: CONSELHEIRO.nome, em: agora.toISOString() } }),
+    notificacao: { canal: 'App + e-mail', para: 'Síndico', texto: `Conselho pediu correção no balancete de ${nomeMes(mes)}: ${texto}` },
+  };
+}
+
+function aprovarMes(estado, mes, perfil, agora) {
+  const falha = guardaConselho(estado, perfil);
+  if (falha) return erroFinanceiro(estado, falha);
+  const b = balanceteGuardadoDe(estado, mes);
+  if (!b || b.situacao !== 'aguardando') return erroFinanceiro(estado, 'Só balancetes aguardando o conselho');
+  const novo = comBalancete(estado, mes, { situacao: 'aprovado', aprovadoEm: agora.toISOString(), aprovadoPor: CONSELHEIRO.nome });
+  return {
+    estado: comFinanceiro(novo, { auditoria: comAuditoria(novo, agora, 'Balancete aprovado', `${nomeMes(mes)} · ${CONSELHEIRO.nome} · mês travado`) }),
+    notificacao: { canal: 'App + e-mail', para: 'Síndico', texto: `Balancete de ${nomeMes(mes)} aprovado pelo conselho fiscal` },
+  };
+}
+
+function anexarNota(estado, mes, itemId, perfil) {
+  const falha = guardaFinanceiro(estado, perfil, 'prestacaoContas');
+  if (falha) return erroFinanceiro(estado, falha);
+  const b = balanceteGuardadoDe(estado, mes);
+  if (!b) return erroFinanceiro(estado, 'Balancete não encontrado');
+  if (SITUACOES_TRAVADAS.includes(b.situacao)) return erroFinanceiro(estado, 'Mês travado: registre um ajuste no mês corrente');
+  if (b.situacao === 'aguardando') return erroFinanceiro(estado, 'Aguarde a análise do conselho');
+  if (!itemDoBalancete(b, itemId)) return erroFinanceiro(estado, 'Lançamento não encontrado');
+  const despesas = b.despesas.map((d) => ({ ...d, itens: d.itens.map((i) => (i.id === itemId ? { ...i, nota: true, anexo: `nota-${itemId}.pdf` } : i)) }));
+  return { estado: comBalancete(estado, mes, { despesas }) };
+}
+
+function responderComentario(estado, mes, comentarioId, texto, perfil, agora) {
+  const falha = guardaFinanceiro(estado, perfil, 'prestacaoContas');
+  if (falha) return erroFinanceiro(estado, falha);
+  const b = balanceteGuardadoDe(estado, mes);
+  if (!b || !b.comentarios.some((c) => c.id === comentarioId)) return erroFinanceiro(estado, 'Comentário não encontrado');
+  const escrito = String(texto || '').trim();
+  if (!escrito) return erroFinanceiro(estado, 'Escreva a resposta');
+  return { estado: comBalancete(estado, mes, { comentarios: b.comentarios.map((c) => (c.id === comentarioId ? { ...c, resposta: { texto: escrito, em: agora.toISOString() } } : c)) }) };
+}
+
+function reenviarAoConselho(estado, mes, perfil, agora) {
+  const falha = guardaFinanceiro(estado, perfil, 'prestacaoContas');
+  if (falha) return erroFinanceiro(estado, falha);
+  const b = balanceteGuardadoDe(estado, mes);
+  if (!b || b.situacao !== 'correcao') return erroFinanceiro(estado, 'Só balancetes com correção pedida');
+  const doc = comDocumentoVersionado(estado, b.documento, {}, agora);
+  return {
+    estado: comBalancete(doc.estado, mes, { situacao: 'aguardando', correcao: { ...b.correcao, respondidaEm: agora.toISOString() } }),
+    notificacao: { canal: 'App + e-mail', para: `${CONSELHEIRO.nome} (conselho fiscal)`, texto: `Balancete de ${nomeMes(mes)} corrigido e reenviado` },
+  };
+}
+
+function registrarAjuste(estado, mesOrigem, { descricao, categoria, valor }, perfil, agora) {
+  const falha = guardaFinanceiro(estado, perfil, 'prestacaoContas');
+  if (falha) return erroFinanceiro(estado, falha);
+  const b = balanceteGuardadoDe(estado, mesOrigem);
+  if (!b || !SITUACOES_TRAVADAS.includes(b.situacao)) return erroFinanceiro(estado, 'Ajustes só valem para meses travados');
+  const texto = String(descricao || '').trim();
+  if (!texto) return erroFinanceiro(estado, 'Descreva o ajuste');
+  if (!CATEGORIAS_DESPESA[categoria]) return erroFinanceiro(estado, 'Escolha a categoria');
+  if (!(valor > 0)) return erroFinanceiro(estado, 'Informe o valor');
+  const fin = estado.financeiro;
+  const ajuste = { id: `AJ-${fin.ajustesMes.length + 1}`, referente: mesOrigem, descricao: texto, categoria, valor: Math.round(valor), em: agora.toISOString() };
+  return {
+    estado: comFinanceiro(estado, {
+      ajustesMes: [...fin.ajustesMes, ajuste],
+      despesasMes: { ...fin.despesasMes, [categoria]: fin.despesasMes[categoria] + ajuste.valor },
+      saldo: fin.saldo - ajuste.valor,
+      auditoria: comAuditoria(estado, agora, 'Ajuste de mês travado', `Referente a ${nomeMes(mesOrigem)} · ${texto} · ${fmtReais(ajuste.valor)}`),
+    }),
+    id: ajuste.id,
+  };
+}
+
+function publicarResumo(estado, mes, perfil, agora) {
+  const falha = guardaFinanceiro(estado, perfil, 'prestacaoContas');
+  if (falha) return erroFinanceiro(estado, falha);
+  const b = balanceteGuardadoDe(estado, mes);
+  if (!b) return erroFinanceiro(estado, 'Balancete não encontrado');
+  if (b.resumo) return erroFinanceiro(estado, 'O resumo já foi publicado');
+  const comConselho = liberado(estado.plano, 'aprovacaoConselho');
+  if (comConselho ? b.situacao !== 'aprovado' : !SITUACOES_TRAVADAS.includes(b.situacao)) return erroFinanceiro(estado, comConselho ? 'Aguarde a aprovação do conselho' : 'Feche o mês antes de publicar');
+  const doc = comDocumentoVersionado(estado, null, { pasta: 'Prestação de contas', titulo: `Prestação de contas de ${nomeMes(mes)} (resumo)`, visibilidade: 'todos' }, agora);
+  return {
+    estado: comBalancete(doc.estado, mes, { resumo: { publicadoEm: agora.toISOString(), documento: doc.id } }),
+    notificacao: { canal: 'App', para: 'Todos os moradores', texto: `Prestação de contas de ${nomeMes(mes)} publicada` },
+  };
+}
+
+// Semente: o balancete aprovado usa o documento d5 e já tem o resumo publicado.
+function comPrestacaoInicial(estado) {
+  const fin = estado.financeiro;
+  const [mes] = Object.entries(fin.balancetes).find(([, b]) => b.situacao === 'aprovado') || [];
+  if (!mes) return estado;
+  const b = fin.balancetes[mes];
+  const documentos = estado.documentos.map((d) => (d.id === 'd5' ? { ...d, titulo: `Balancete de ${nomeMes(mes)}`, versoes: [{ versao: 1, data: isoDia(new Date(b.fechadoEm)) }] } : d));
+  const id = idNovoDocumento(estado);
+  const comResumo = { ...estado, documentos: [...documentos, { id, pasta: 'Prestação de contas', titulo: `Prestação de contas de ${nomeMes(mes)} (resumo)`, versoes: [{ versao: 1, data: isoDia(new Date(b.resumo.publicadoEm)) }], visibilidade: 'todos' }] };
+  return comBalancete(comResumo, mes, { resumo: { ...b.resumo, documento: id } });
 }
 
 // ---- src/infracoes/regras.js ----
@@ -3985,10 +4266,10 @@ const CASOS_DADOS = [
     },
   },
   {
-    nome: 'dados: 5 comunicados, 7 ocorrências e 8 documentos',
+    nome: 'dados: 5 comunicados, 7 ocorrências e 9 documentos',
     rodar() {
       const e = dadosIniciais(AGORA_TESTE);
-      igual([e.comunicados.length, e.ocorrencias.length, e.documentos.length], [5, 7, 8]);
+      igual([e.comunicados.length, e.ocorrencias.length, e.documentos.length], [5, 7, 9]);
       igual(e.proximoProtocolo, 44);
     },
   },
@@ -5733,9 +6014,9 @@ const CASOS_ORCAMENTO = [
       igual(gerarDocumentoPrevisao(e, 'PO-009', 'sindico', AGORA_FASE2).erro, 'Salve a previsão antes de gerar o documento');
       const r = gerarDocumentoPrevisao(e, 'PO-001', 'sindico', AGORA_FASE2);
       const doc = r.estado.documentos.find((d) => d.id === r.id);
-      igual([r.id, doc.pasta, doc.titulo, doc.visibilidade, previsaoDe(r.estado, 'PO-001').documento], ['d9', 'Previsão orçamentária', 'Previsão orçamentária 2027 · Proposta do síndico', 'todos', 'd9']);
+      igual([r.id, doc.pasta, doc.titulo, doc.visibilidade, previsaoDe(r.estado, 'PO-001').documento], ['d10', 'Previsão orçamentária', 'Previsão orçamentária 2027 · Proposta do síndico', 'todos', 'd10']);
       const r2 = gerarDocumentoPrevisao(r.estado, 'PO-001', 'sindico', AGORA_FASE2);
-      igual([r2.versao, r2.estado.documentos.length, r2.estado.documentos.find((d) => d.id === 'd9').versoes.length], [2, e.documentos.length + 1, 2]);
+      igual([r2.versao, r2.estado.documentos.length, r2.estado.documentos.find((d) => d.id === 'd10').versoes.length], [2, e.documentos.length + 1, 2]);
     },
   },
 ];
@@ -5793,6 +6074,90 @@ const CASOS_FINANCEIRO = [
       igual([r.id, contaDe(r.estado, r.id).situacao, r.estado.financeiro.proximaConta], ['CT-012', 'aberta', 13]);
     },
   },
+  {
+    nome: 'prestação: saldos encadeados e mês corrente batendo com o saldo',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const fin = e.financeiro;
+      const ago = fin.balancetes['2026-08'];
+      const set = fin.balancetes['2026-09'];
+      igual([ago.situacao, set.situacao, mesesDaPrestacao(e, HOJE_FIN)], ['aprovado', 'aberto', ['2026-10', '2026-09', '2026-08']]);
+      igual(saldoFinal(ago), set.saldoInicial);
+      igual([totalReceitas(set), totalDespesas(set)], [2700000, 1790000]);
+      const vivo = balanceteVivo(e, HOJE_FIN);
+      igual([vivo.saldoInicial, saldoFinal(vivo), totalDespesas(vivo)], [saldoFinal(set), fin.saldo, 1810000]);
+      igual(vivo.despesas.flatMap((d) => d.itens).some((i) => i.id.startsWith('outros-')), false);
+      igual(itensSemNota(set).map((i) => i.descricao), ['Dedetização · Imunizadora Verde']);
+      igual(alertasPrestacao(e, HOJE_FIN).map((a) => a.texto), ['Feche o balancete de setembro de 2026']);
+      igual(resumosPublicados(e).map((r) => r.mes), ['2026-08']);
+      igual(e.documentos.find((d) => d.id === 'd5').titulo, 'Balancete de agosto de 2026');
+      const pago = pagarConta(e, 'CT-010', 'sindico', AGORA_FASE2).estado;
+      igual(saldoFinal(balanceteVivo(pago, HOJE_FIN)), pago.financeiro.saldo);
+    },
+  },
+  {
+    nome: 'prestação: fechar no Intermediário trava; mês corrente não fecha',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(fecharMes(e, '2026-10', 'sindico', AGORA_FASE2).erro, 'O mês ainda não terminou');
+      const r = fecharMes(e, '2026-09', 'sindico', AGORA_FASE2);
+      const b = r.estado.financeiro.balancetes['2026-09'];
+      const doc = r.estado.documentos.find((d) => d.id === b.documento);
+      igual([b.situacao, doc.titulo, doc.visibilidade, r.notificacao.texto], ['fechado', 'Balancete de setembro de 2026', 'conselho', 'Balancete de setembro de 2026 fechado e travado']);
+      igual(fecharMes(r.estado, '2026-09', 'sindico', AGORA_FASE2).erro, 'Este mês já foi fechado');
+      igual(anexarNota(r.estado, '2026-09', '2026-09-manutencao-dedetizacao', 'sindico').erro, 'Mês travado: registre um ajuste no mês corrente');
+      const pub = publicarResumo(r.estado, '2026-09', 'sindico', AGORA_FASE2);
+      igual([pub.estado.documentos.at(-1).visibilidade, publicarResumo(pub.estado, '2026-09', 'sindico', AGORA_FASE2).erro], ['todos', 'O resumo já foi publicado']);
+      igual(publicarResumo(e, '2026-09', 'sindico', AGORA_FASE2).erro, 'Feche o mês antes de publicar');
+    },
+  },
+  {
+    nome: 'prestação: ciclo do conselho no Avançado',
+    rodar() {
+      const e = trocarPlano(dadosIniciais(AGORA_FASE2), 'avancado').estado;
+      const f = fecharMes(e, '2026-09', 'sindico', AGORA_FASE2);
+      igual([f.estado.financeiro.balancetes['2026-09'].situacao, f.notificacao.para], ['aguardando', 'Gustavo Freitas (conselho fiscal)']);
+      const item = '2026-09-manutencao-dedetizacao';
+      igual(comentarLancamento(f.estado, '2026-09', item, 'x', 'sindico', AGORA_FASE2).erro, 'Somente o conselho fiscal pode fazer isso');
+      const c = comentarLancamento(f.estado, '2026-09', item, 'Falta a nota da dedetização', 'conselho', AGORA_FASE2);
+      igual(c.id, 'CM-1');
+      igual(pedirCorrecao(c.estado, '2026-09', ' ', 'conselho', AGORA_FASE2).erro, 'Informe o motivo');
+      const p = pedirCorrecao(c.estado, '2026-09', 'Anexar a nota da dedetização', 'conselho', AGORA_FASE2);
+      igual([p.estado.financeiro.balancetes['2026-09'].situacao, alertasPrestacao(p.estado, HOJE_FIN).map((a) => a.texto)], ['correcao', ['Balancete de setembro de 2026: o conselho pediu correção']]);
+      igual(publicarResumo(p.estado, '2026-09', 'sindico', AGORA_FASE2).erro, 'Aguarde a aprovação do conselho');
+      let s = anexarNota(p.estado, '2026-09', item, 'sindico').estado;
+      s = responderComentario(s, '2026-09', 'CM-1', 'Nota anexada', 'sindico', AGORA_FASE2).estado;
+      igual(itensSemNota(s.financeiro.balancetes['2026-09']).length, 0);
+      s = reenviarAoConselho(s, '2026-09', 'sindico', AGORA_FASE2).estado;
+      igual(s.financeiro.balancetes['2026-09'].situacao, 'aguardando');
+      igual(anexarNota(s, '2026-09', item, 'sindico').erro, 'Aguarde a análise do conselho');
+      const a = aprovarMes(s, '2026-09', 'conselho', AGORA_FASE2);
+      const b = a.estado.financeiro.balancetes['2026-09'];
+      igual([b.situacao, b.aprovadoPor, b.comentarios[0].resposta.texto], ['aprovado', 'Gustavo Freitas', 'Nota anexada']);
+      igual(a.estado.documentos.find((d) => d.id === b.documento).versoes.length, 2);
+      igual(publicarResumo(a.estado, '2026-09', 'sindico', AGORA_FASE2).erro, undefined);
+      igual(aprovarMes(trocarPlano(f.estado, 'intermediario').estado, '2026-09', 'conselho', AGORA_FASE2).erro, 'Disponível no plano Avançado');
+    },
+  },
+  {
+    nome: 'prestação: ajuste de mês travado entra no mês corrente',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(registrarAjuste(e, '2026-09', { descricao: 'x', categoria: 'administracao', valor: 100 }, 'sindico', AGORA_FASE2).erro, 'Ajustes só valem para meses travados');
+      const r = registrarAjuste(e, '2026-08', { descricao: 'Tarifa bancária não lançada', categoria: 'administracao', valor: 3500 }, 'sindico', AGORA_FASE2);
+      const vivo = balanceteVivo(r.estado, HOJE_FIN);
+      const adm = vivo.despesas.find((d) => d.categoria === 'administracao').itens.map((i) => i.descricao);
+      igual([r.id, adm.includes('Ajuste referente a agosto de 2026: Tarifa bancária não lançada'), saldoFinal(vivo), r.estado.financeiro.saldo], ['AJ-1', true, e.financeiro.saldo - 3500, e.financeiro.saldo - 3500]);
+    },
+  },
+  {
+    nome: 'prestação: resumo para moradores sem unidades',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const resumo = resumoDoBalancete(e, balanceteDe(e, '2026-08', HOJE_FIN));
+      igual([resumo.inadimplenciaPct, resumo.despesas.length, JSON.stringify(resumo).includes('unidade')], [9.4, 5, false]);
+    },
+  },
 ];
 
 // ---- src/armazenamento.js ----
@@ -5832,6 +6197,7 @@ const PERFIS = [
   { id: 'morador', nome: 'Morador', inicial: 'inicio' },
   { id: 'portaria', nome: 'Portaria', inicial: 'registrar' },
   { id: 'zelador', nome: 'Zelador', inicial: 'os' },
+  { id: 'conselho', nome: 'Conselho', inicial: 'prestacao' },
 ];
 
 // Rotas no formato #perfil.tela.id: o link compartilhado de um Artifact só repassa âncoras com letras, dígitos, ".", "_", "~" e "-".
@@ -7216,12 +7582,201 @@ function FAuditoria({ estado }) {
   </div>`;
 }
 
-function FPrestacao() {
-  return html`<${Vazio} texto="Em construção." />`;
+const ETQ_SITUACAO_BALANCETE = { aberto: 'info', fechado: 'neutro', aguardando: 'alerta', correcao: 'perigo', aprovado: 'ok' };
+
+function EtqBalancete({ b }) {
+  return html`<${Etiqueta} tipo=${ETQ_SITUACAO_BALANCETE[b.situacao]}>${NOMES_SITUACAO_BALANCETE[b.situacao]}${b.parcial ? ' · parcial' : ''}<//>`;
 }
+
+function ListaMesesPrestacao({ estado, hoje, base }) {
+  return html`<div class="tabela-rolagem"><table class="tabela">
+    <thead><tr><th>Mês</th><th>Situação</th><th>Saldo inicial</th><th>Receitas</th><th>Despesas</th><th>Saldo final</th></tr></thead>
+    <tbody>${mesesDaPrestacao(estado, hoje).map((mes) => {
+      const b = balanceteDe(estado, mes, hoje);
+      return html`<tr key=${mes}>
+        <td><a href=${`${base}${mes}`} data-mes=${mes}>${nomeMes(mes)}</a></td>
+        <td><${EtqBalancete} b=${b} /></td>
+        <td>${fmtReais(b.saldoInicial)}</td><td>${fmtReais(totalReceitas(b))}</td><td>${fmtReais(totalDespesas(b))}</td><td><strong>${fmtReais(saldoFinal(b))}</strong></td>
+      </tr>`;
+    })}</tbody>
+  </table></div>`;
+}
+
+function VisaoBalancete({ estado, mes, b, perfil, executar, aoResultado }) {
+  const [comentando, setComentando] = useState(null);
+  const [texto, setTexto] = useState('');
+  const [respostas, setRespostas] = useState({});
+  const comConselho = liberado(estado.plano, 'aprovacaoConselho');
+  const sindicoEdita = perfil === 'sindico' && ['aberto', 'correcao'].includes(b.situacao) && !b.parcial;
+  const conselhoAnalisa = perfil === 'conselho' && comConselho && b.situacao === 'aguardando';
+
+  function rodar(acao, sucesso) {
+    const r = executar(acao);
+    aoResultado(r.erro || null, r.erro ? null : sucesso);
+    return r;
+  }
+
+  const comentariosDe = (itemId) => b.comentarios.filter((c) => c.item === itemId);
+  return html`<div class="pilha">
+    <dl class="resumo">
+      <dt>Saldo inicial</dt><dd>${fmtReais(b.saldoInicial)}</dd>
+      <dt>Receitas</dt><dd>${fmtReais(totalReceitas(b))}</dd>
+      <dt>Despesas</dt><dd>${fmtReais(totalDespesas(b))}</dd>
+      <dt>Saldo final</dt><dd>${fmtReais(saldoFinal(b))}</dd>
+      <dt>Inadimplência</dt><dd>${b.inadimplencia.unidades} unidades · ${fmtReais(b.inadimplencia.valor)}</dd>
+      ${b.aprovadoPor && html`<dt>Aprovado</dt><dd>por ${b.aprovadoPor} em ${fmtDataCurta(isoDia(new Date(b.aprovadoEm)))}</dd>`}
+    </dl>
+    ${b.correcao && b.situacao === 'correcao' && html`<p class="erro">Correção pedida por ${b.correcao.autor}: ${b.correcao.motivo}</p>`}
+    <h2>Receitas</h2>
+    <ul class="itens-sacola">${b.receitas.map((r) => html`<li key=${r.nome}><span>${r.nome}</span><span>${fmtReais(r.valor)}</span></li>`)}</ul>
+    <h2>Despesas por categoria</h2>
+    ${b.despesas.map((d) => html`<div key=${d.categoria} class="cartao pilha">
+      <div class="linha-entre"><strong>${CATEGORIAS_DESPESA[d.categoria]}</strong><strong>${fmtReais(totalCategoria(d))}</strong></div>
+      <ul class="lancamentos-balancete">${d.itens.map((i) => html`<li key=${i.id}>
+        <div class="linha-entre">
+          <span>${i.descricao}</span>
+          <span class="acoes">
+            <span>${fmtReais(i.valor)}</span>
+            ${i.nota === true && html`<${Etiqueta} tipo="ok">📎 nota<//>`}
+            ${i.nota === false && html`<${Etiqueta} tipo="perigo">sem nota<//>`}
+            ${sindicoEdita && i.nota === false && html`<button type="button" class="btn secundario" data-anexar=${i.id} onClick=${() => rodar((e) => anexarNota(e, mes, i.id, 'sindico'), 'Nota anexada.')}>Anexar nota</button>`}
+            ${conselhoAnalisa && html`<button type="button" class="btn-link" data-comentar=${i.id} onClick=${() => { setComentando(comentando === i.id ? null : i.id); setTexto(''); }}>Comentar</button>`}
+          </span>
+        </div>
+        ${comentariosDe(i.id).map((c) => html`<div key=${c.id} class="comentario-balancete">
+          <small><strong>${c.autor}:</strong> ${c.texto}</small>
+          ${c.resposta && html`<small><strong>Síndico:</strong> ${c.resposta.texto}</small>`}
+          ${!c.resposta && perfil === 'sindico' && b.situacao === 'correcao' && html`<span class="acoes"><input aria-label="Resposta ao conselho" value=${respostas[c.id] || ''} onInput=${(ev) => setRespostas({ ...respostas, [c.id]: ev.target.value })} /><button type="button" class="btn secundario" onClick=${() => rodar((e) => responderComentario(e, mes, c.id, respostas[c.id], 'sindico', new Date()), 'Resposta enviada.')}>Responder</button></span>`}
+        </div>`)}
+        ${comentando === i.id && html`<span class="acoes"><input aria-label="Comentário do conselho" value=${texto} onInput=${(ev) => setTexto(ev.target.value)} placeholder="Ex.: falta a nota" /><button type="button" class="btn secundario" data-acao="enviar-comentario" onClick=${() => { const r = rodar((e) => comentarLancamento(e, mes, i.id, texto, 'conselho', new Date()), 'Comentário registrado.'); if (!r.erro) setComentando(null); }}>Enviar</button></span>`}
+      </li>`)}</ul>
+    </div>`)}
+  </div>`;
+}
+
+function FormAjuste({ executar, mes, aoResultado }) {
+  const [form, setForm] = useState({ descricao: '', categoria: 'administracao', valor: '' });
+  const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.value });
+  return html`<div class="cartao pilha">
+    <strong>Registrar ajuste no mês corrente</strong>
+    <small class="sub">O mês está travado. A correção entra como despesa do mês corrente, com referência a ${nomeMes(mes)}.</small>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Descrição do ajuste"><input id="ajuste-descricao" value=${form.descricao} onInput=${campo('descricao')} placeholder="Ex.: tarifa bancária não lançada" /><//>
+      <${Campo} rotulo="Categoria do ajuste"><select id="ajuste-categoria" value=${form.categoria} onChange=${campo('categoria')}>${Object.entries(CATEGORIAS_DESPESA).map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>
+      <${Campo} rotulo="Valor do ajuste (R$)"><input id="ajuste-valor" inputmode="decimal" value=${form.valor} onInput=${campo('valor')} /><//>
+    </div>
+    <button type="button" class="btn secundario" data-acao="registrar-ajuste" onClick=${() => { const r = executar((e) => registrarAjuste(e, mes, { ...form, valor: lerPreco(form.valor) }, 'sindico', new Date())); aoResultado(r.erro || null, r.erro ? null : `Ajuste ${r.id} lançado no mês corrente.`); }}>Registrar ajuste</button>
+  </div>`;
+}
+
+function FPrestacao({ estado, executar, agora, rota }) {
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  if (!liberado(estado.plano, 'prestacaoContas')) return html`<${Bloqueado} estado=${estado} recurso="prestacaoContas" titulo="Balancete mensal em PDF e resumo para os moradores" />`;
+  const hoje = isoDia(agora);
+  const mes = (rota.id || '').startsWith('prestacao-') ? rota.id.slice('prestacao-'.length) : null;
+  const b = mes ? balanceteDe(estado, mes, hoje) : null;
+  const aoResultado = (e, m) => { setErro(e); setMensagem(m); };
+  if (!b) {
+    return html`<div class="pilha">
+      <p class="sub">${liberado(estado.plano, 'aprovacaoConselho') ? 'Ao fechar, o mês vai para o conselho fiscal aprovar. Depois de aprovado, fica travado.' : 'Ao fechar, o mês fica travado. A aprovação digital do conselho é do plano Avançado.'}</p>
+      <${ListaMesesPrestacao} estado=${estado} hoje=${hoje} base="#sindico.financeiro.prestacao-" />
+    </div>`;
+  }
+  const comConselho = liberado(estado.plano, 'aprovacaoConselho');
+  const travado = SITUACOES_TRAVADAS.includes(b.situacao);
+  const podePublicar = !b.resumo && (comConselho ? b.situacao === 'aprovado' : travado);
+  const rodar = (acao, sucesso) => { const r = executar(acao); aoResultado(r.erro || null, r.erro ? null : sucesso); };
+  return html`<div class="pilha">
+    <a class="voltar" href="#sindico.financeiro.prestacao">‹ Prestação de contas</a>
+    <div class="linha-entre"><h2>Balancete de ${nomeMes(mes)}</h2><${EtqBalancete} b=${b} /></div>
+    ${b.parcial && html`<p class="sub">Mês em andamento: os números mudam a cada pagamento. O fechamento fica disponível depois que o mês terminar.</p>`}
+    <div class="acoes">
+      ${b.situacao === 'aberto' && !b.parcial && html`<button type="button" class="btn primario" data-acao="fechar-mes" onClick=${() => rodar((e) => fecharMes(e, mes, 'sindico', new Date()), comConselho ? 'Mês fechado e enviado ao conselho.' : 'Mês fechado e travado.')}>Fechar o mês</button>`}
+      ${b.situacao === 'correcao' && html`<button type="button" class="btn primario" data-acao="reenviar-conselho" onClick=${() => rodar((e) => reenviarAoConselho(e, mes, 'sindico', new Date()), 'Balancete reenviado ao conselho.')}>Reenviar ao conselho</button>`}
+      ${podePublicar && html`<button type="button" class="btn secundario" data-acao="publicar-resumo" onClick=${() => rodar((e) => publicarResumo(e, mes, 'sindico', new Date()), 'Resumo publicado para os moradores.')}>Publicar resumo para os moradores</button>`}
+      ${b.resumo && html`<${Etiqueta} tipo="ok">Resumo publicado<//>`}
+      ${b.situacao === 'aguardando' && html`<span class="sub">Aguardando a análise de ${CONSELHEIRO.nome}.</span>`}
+    </div>
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+    <${VisaoBalancete} key=${mes} estado=${estado} mes=${mes} b=${b} perfil="sindico" executar=${executar} aoResultado=${aoResultado} />
+    ${travado && html`<${FormAjuste} executar=${executar} mes=${mes} aoResultado=${aoResultado} />`}
+  </div>`;
+}
+
 
 function FFluxo() {
   return html`<${Vazio} texto="Em construção." />`;
+}
+
+// ---- src/ui/conselho.js ----
+
+// Perfil do conselho fiscal: analisa os balancetes, comenta lançamentos, pede correção ou aprova (Avançado).
+const MENU_CONSELHO = [['prestacao', 'Prestação de contas', 'grafico'], ['documentos', 'Documentos', 'documento']];
+
+function TelaConselho(props) {
+  const tela = MENU_CONSELHO.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'prestacao';
+  const Conteudo = { prestacao: CPrestacao, documentos: CDocumentos }[tela];
+  return html`<div class="painel">
+    <nav class="painel-menu" aria-label="Menu do conselho">
+      <p class="painel-usuario"><strong>${CONSELHEIRO.nome}</strong><small>${CONSELHEIRO.papel} · apto ${CONSELHEIRO.unidade}</small></p>
+      ${MENU_CONSELHO.map(([id, nome, icone]) => html`<a key=${id} href=${`#conselho.${id}`} class=${id === tela ? 'ativa' : ''} aria-current=${id === tela ? 'page' : undefined}><${Icone} nome=${icone} tamanho=${20} />${nome}</a>`)}
+    </nav>
+    <div class="painel-conteudo"><${Conteudo} ...${props} /></div>
+  </div>`;
+}
+
+function CPrestacao({ estado, executar, agora, rota }) {
+  const [motivo, setMotivo] = useState('');
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const hoje = isoDia(agora);
+  const comConselho = liberado(estado.plano, 'aprovacaoConselho');
+  const mes = rota.id || null;
+  const b = mes ? balanceteDe(estado, mes, hoje) : null;
+  const aoResultado = (e, m) => { setErro(e); setMensagem(m); };
+  const rodar = (acao, sucesso) => { const r = executar(acao); aoResultado(r.erro || null, r.erro ? null : sucesso); return r; };
+  if (!b) {
+    const pendentes = mesesParaOConselho(estado);
+    return html`<section class="pilha">
+      <h1>Prestação de contas</h1>
+      ${!comConselho && html`<${Bloqueado} estado=${estado} recurso="aprovacaoConselho" titulo="Aprovação digital do conselho fiscal, com comentários por lançamento" />`}
+      ${comConselho && (pendentes.length
+        ? html`<div class="alertas">${pendentes.map((m) => html`<p key=${m} class="alerta-doc faixa-alerta"><a href=${`#conselho.prestacao.${m}`}><strong>Balancete de ${nomeMes(m)}</strong> aguarda a sua análise</a></p>`)}</div>`
+        : html`<${Vazio} texto="Nenhum balancete aguardando a sua análise." />`)}
+      <${ListaMesesPrestacao} estado=${estado} hoje=${hoje} base="#conselho.prestacao." />
+    </section>`;
+  }
+  const analisa = comConselho && b.situacao === 'aguardando';
+  return html`<section class="pilha">
+    <a class="voltar" href="#conselho.prestacao">‹ Prestação de contas</a>
+    <div class="linha-entre"><h1>Balancete de ${nomeMes(mes)}</h1><${EtqBalancete} b=${b} /></div>
+    ${b.fechadoEm && html`<p class="sub">Fechado pelo síndico em ${fmtDataCurta(isoDia(new Date(b.fechadoEm)))}${b.correcao && b.correcao.respondidaEm ? ' · corrigido e reenviado' : ''}.</p>`}
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+    <${VisaoBalancete} key=${mes} estado=${estado} mes=${mes} b=${b} perfil="conselho" executar=${executar} aoResultado=${aoResultado} />
+    ${analisa && html`<div class="cartao pilha">
+      <strong>Parecer do conselho</strong>
+      <button type="button" class="btn primario" data-acao="aprovar-mes" onClick=${() => rodar((e) => aprovarMes(e, mes, 'conselho', new Date()), 'Balancete aprovado. O mês está travado.')}>Aprovar o balancete</button>
+      <${Campo} rotulo="Motivo da correção"><input id="correcao-motivo" value=${motivo} onInput=${(ev) => setMotivo(ev.target.value)} placeholder="Ex.: anexar a nota da dedetização" /><//>
+      <button type="button" class="btn secundario" data-acao="pedir-correcao" onClick=${() => rodar((e) => pedirCorrecao(e, mes, motivo, 'conselho', new Date()), 'Correção pedida ao síndico.')}>Pedir correção</button>
+    </div>`}
+  </section>`;
+}
+
+function CDocumentos({ estado }) {
+  const [aberto, setAberto] = useState(null);
+  const documento = estado.documentos.find((d) => d.id === aberto);
+  if (documento) return html`<section><${PrevDoc} documento=${documento} aoFechar=${() => setAberto(null)} /></section>`;
+  const docs = [...estado.documentos].sort((a, b) => a.pasta.localeCompare(b.pasta));
+  return html`<section class="pilha">
+    <h1>Documentos</h1>
+    <ul class="m-lista">${docs.map((d) => html`<li key=${d.id} class="cartao">
+      <div class="linha-entre"><button type="button" class="btn-link" onClick=${() => setAberto(d.id)}>${d.titulo}</button>${d.visibilidade === 'conselho' && html`<${Etiqueta}>Só conselho<//>`}</div>
+      <small class="sub">${d.pasta} · versão ${d.versoes.length} de ${fmtDataCurta(d.versoes.at(-1).data)}</small>
+    </li>`)}</ul>
+  </section>`;
 }
 
 // ---- src/ui/infracoes.js ----
@@ -8631,9 +9186,9 @@ function tipoEtiquetaAviso(c) {
 
 function TelaMorador(props) {
   const eu = props.estado.moradorAtual;
-  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro };
+  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao };
   const Conteudo = telas[props.rota.tela] || MInicio;
-  const aba = ['documentos', 'encomendas', 'preferencias', 'avisos'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
+  const aba = ['documentos', 'encomendas', 'preferencias', 'avisos', 'prestacao'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
   return html`<div class="celular">
     <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
     <div class="cel-pessoa" role="group" aria-label="Morador da demonstração">
@@ -8968,11 +9523,45 @@ function MDetalheOcorrencia({ estado, executar, oc, eu }) {
   </section>`;
 }
 
+// Resumo da prestação de contas para o morador: totais por categoria, sem unidades nem nomes de devedores.
+function MPrestacao({ estado, rota }) {
+  const publicados = resumosPublicados(estado);
+  const escolhido = rota.id ? publicados.find((p) => p.mes === rota.id) : null;
+  if (escolhido) {
+    const r = resumoDoBalancete(estado, escolhido.b);
+    return html`<section class="m-pagina">
+      <a class="voltar" href="#morador.prestacao">‹ Prestação de contas</a>
+      <h1 class="m-titulo">${nomeMes(escolhido.mes)}</h1>
+      <p class="m-sub">${escolhido.b.aprovadoPor ? `Aprovada pelo conselho fiscal em ${fmtDataCurta(isoDia(new Date(escolhido.b.aprovadoEm)))}` : 'Balancete fechado pelo síndico'}</p>
+      <dl class="resumo">
+        <dt>Saldo inicial</dt><dd>${fmtReais(r.saldoInicial)}</dd>
+        <dt>Receitas</dt><dd>${fmtReais(r.receitas)}</dd>
+        <dt>Despesas</dt><dd>${fmtReais(r.totalDespesas)}</dd>
+        <dt>Saldo final</dt><dd>${fmtReais(r.saldoFinal)}</dd>
+        <dt>Inadimplência</dt><dd>${String(r.inadimplenciaPct).replace('.', ',')}% das unidades</dd>
+      </dl>
+      <h2>Para onde foi o dinheiro</h2>
+      <ul class="itens-sacola">${r.despesas.map((d) => html`<li key=${d.nome}><span>${d.nome}</span><span>${fmtReais(d.valor)}</span></li>`)}</ul>
+      <small class="sub">Resumo publicado pelo síndico. O balancete completo, com notas, fica com o conselho fiscal.</small>
+    </section>`;
+  }
+  return html`<section class="m-pagina">
+    <h1 class="m-titulo">Prestação de contas</h1>
+    ${publicados.length
+      ? html`<ul class="m-lista">${publicados.map(({ mes, b }) => html`<li key=${mes}><a class="cartao link" href=${`#morador.prestacao.${mes}`}>
+          <strong>${nomeMes(mes)}</strong>
+          <span class="sub">Saldo final ${fmtMoeda(resumoDoBalancete(estado, b).saldoFinal / 100)}${b.aprovadoPor ? ' · aprovada pelo conselho' : ''}</span>
+        </a></li>`)}</ul>`
+      : html`<${Vazio} texto="Nenhuma prestação de contas publicada ainda." />`}
+  </section>`;
+}
+
 function MMais() {
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Mais</h1>
     <a class="cartao link com-icone" href="#morador.avisos"><${QuadroIcone} nome="megafone" /><span><strong>Avisos</strong><span class="sub">Comunicados do síndico e confirmação de leitura</span></span></a>
     <a class="cartao link com-icone" href="#morador.encomendas"><${QuadroIcone} nome="pacote" /><span><strong>Encomendas</strong><span class="sub">Na portaria e histórico de retiradas</span></span></a>
+    <a class="cartao link com-icone" href="#morador.prestacao"><${QuadroIcone} nome="grafico" /><span><strong>Prestação de contas</strong><span class="sub">Receitas, despesas e saldo de cada mês</span></span></a>
     <a class="cartao link com-icone" href="#morador.documentos"><${QuadroIcone} nome="documento" /><span><strong>Documentos</strong><span class="sub">Convenção, regimento, atas e laudos</span></span></a>
     <a class="cartao link com-icone" href="#morador.preferencias"><${QuadroIcone} nome="pessoa" /><span><strong>Minhas preferências</strong><span class="sub">Avisos de anúncios e situação de vendedor</span></span></a>
   </section>`;
@@ -9078,7 +9667,7 @@ function SInicio({ estado, agora }) {
   const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora));
   const alertas = alertasDocumentos(estado.documentos, isoDia(agora));
   const vendedoresPendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
-  const pendCobranca = [...pendenciasCobranca(estado, isoDia(agora)), ...(liberado(estado.plano, 'contasPagar') ? alertasContas(estado, isoDia(agora)) : [])];
+  const pendCobranca = [...pendenciasCobranca(estado, isoDia(agora)), ...(liberado(estado.plano, 'contasPagar') ? alertasContas(estado, isoDia(agora)) : []), ...(liberado(estado.plano, 'prestacaoContas') ? alertasPrestacao(estado, isoDia(agora)) : [])];
   const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
   const pendOperacao = [...(comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : []), ...(liberado(estado.plano, 'escala') ? alertasEscala(estado, agora) : []), ...(liberado(estado.plano, 'multasDefesa') ? alertasInfracoes(estado, isoDia(agora)) : [])];
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
@@ -9849,7 +10438,7 @@ function ZCaixa({ estado, executar }) {
 
 // ---- src/ui/app.js ----
 
-const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador };
+const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
 const ultimaRota = {};
 
 function estadoDeHoje() {

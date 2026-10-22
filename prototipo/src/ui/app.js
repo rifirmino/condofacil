@@ -25,8 +25,9 @@ import { TelaPortaria } from './portaria.js';
 import { TelaMorador } from './morador.js';
 import { TelaSindico } from './sindico.js';
 import { TelaZelador } from './zelador.js';
+import { TelaConselho } from './conselho.js';
 
-const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador };
+const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
 const ultimaRota = {};
 
 function estadoDeHoje() {

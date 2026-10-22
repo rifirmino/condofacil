@@ -18,6 +18,7 @@ import { infracaoPorId, alertasInfracoes } from '../infracoes/regras.js';
 import { CartaoProcessoOcorrencia, BlocoProcessos, SDetalheInfracao } from './infracoes.js';
 import { SFinanceiro } from './financeiro.js';
 import { alertasContas } from '../financeiro/contas.js';
+import { alertasPrestacao } from '../financeiro/balancete.js';
 import { isoDia, somarMes, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
 import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
@@ -63,7 +64,7 @@ function SInicio({ estado, agora }) {
   const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora));
   const alertas = alertasDocumentos(estado.documentos, isoDia(agora));
   const vendedoresPendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
-  const pendCobranca = [...pendenciasCobranca(estado, isoDia(agora)), ...(liberado(estado.plano, 'contasPagar') ? alertasContas(estado, isoDia(agora)) : [])];
+  const pendCobranca = [...pendenciasCobranca(estado, isoDia(agora)), ...(liberado(estado.plano, 'contasPagar') ? alertasContas(estado, isoDia(agora)) : []), ...(liberado(estado.plano, 'prestacaoContas') ? alertasPrestacao(estado, isoDia(agora)) : [])];
   const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
   const pendOperacao = [...(comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : []), ...(liberado(estado.plano, 'escala') ? alertasEscala(estado, agora) : []), ...(liberado(estado.plano, 'multasDefesa') ? alertasInfracoes(estado, isoDia(agora)) : [])];
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);

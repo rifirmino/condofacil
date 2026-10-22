@@ -512,3 +512,10 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .legenda-turnos { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 0; padding: 0; list-style: none; }
 .legenda-turnos li { display: inline-flex; align-items: center; gap: 6px; }
 .legenda-turnos small { color: var(--suave); }
+
+/* Prestação de contas: lançamentos do balancete e comentários do conselho. */
+.lancamentos-balancete { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.lancamentos-balancete > li { padding: 8px 0; border-top: 1px solid var(--borda); display: flex; flex-direction: column; gap: 6px; }
+.lancamentos-balancete > li:first-child { border-top: 0; }
+.comentario-balancete { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; border-left: 3px solid var(--alerta); background: var(--alerta-bg); }
+.comentario-balancete input, .lancamentos-balancete .acoes input { min-width: 200px; }

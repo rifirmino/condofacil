@@ -7,6 +7,7 @@ export const PERFIS = [
   { id: 'morador', nome: 'Morador', inicial: 'inicio' },
   { id: 'portaria', nome: 'Portaria', inicial: 'registrar' },
   { id: 'zelador', nome: 'Zelador', inicial: 'os' },
+  { id: 'conselho', nome: 'Conselho', inicial: 'prestacao' },
 ];
 
 // Rotas no formato #perfil.tela.id: o link compartilhado de um Artifact só repassa âncoras com letras, dígitos, ".", "_", "~" e "-".
