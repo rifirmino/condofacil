@@ -44,7 +44,7 @@ const CHECAGENS = [
   ['#morador.financeiro', ['Responsável financeiro: Ana Souza', 'Histórico', 'Ver recibo', 'Declaração de quitação']],
   ['#morador.mais', ['Avisos']],
   ['#sindico.cobranca', ['Conta Asaas ativa', 'Prévia e emissão', 'Sem responsável financeiro: não será emitida', 'R$ 865,00', 'R$ 1.228,00', 'R$ 1.015,00', 'Emitir 31 cobranças']],
-  ['#sindico.cobranca.emitidas', ['Competência', 'Vencida', 'Auditoria']],
+  ['#sindico.cobranca.emitidas', ['Competência', 'Vencida', 'Financeiro › Auditoria']],
   ['#sindico.cobranca.regua', ['30 dias após', 'Disponível no Avançado', 'Executar a régua de hoje']],
   ['#sindico.cobranca.parametros', ['Multa por atraso (%)', 'Taxa e reajustes']],
   ['#sindico.inicio', ['Saldo em caixa', 'R$ 48.350', 'Arrecadado em', '91%', '4 de 32', 'Despesas do mês', 'Despesa superou a receita só em julho', 'Para onde foi o dinheiro', 'Devedores', 'Helena Prado', 'Emitir cobranças de', 'Operação', 'Reservas pendentes']],

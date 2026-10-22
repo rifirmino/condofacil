@@ -301,10 +301,7 @@ function CEmitidas({ estado, executar, agora }) {
       </tr>`)}</tbody>
     </table></div>
     ${!lista.length && html`<${Vazio} texto="Nenhuma cobrança neste filtro." />`}
-    <h2>Auditoria</h2>
-    ${fin.auditoria.length
-      ? html`<ul class="auditoria">${[...fin.auditoria].reverse().map((a, n) => html`<li key=${n}><span class="lt-quando">${fmtDataHora(a.em)}</span> <strong>${a.acao}</strong> · ${a.detalhe} · ${a.quem}</li>`)}</ul>`
-      : html`<${Vazio} texto="Nenhuma ação registrada nesta demonstração." />`}
+    <small class="sub">Baixas, cancelamentos e demais ações ficam em <a href="#sindico.financeiro.auditoria">Financeiro › Auditoria</a>.</small>
   </div>`;
 }
 

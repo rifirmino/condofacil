@@ -31,7 +31,7 @@ export const CASOS_NOTIFICACOES = [
         ['OC-0037', 'eletrica', 'alta'], ['OC-0038', 'elogio', 'baixa'], ['OC-0039', 'vazamento', 'urgente'], ['OC-0040', 'elevador', 'alta'],
         ['OC-0041', 'barulho', 'normal'], ['OC-0042', 'vaga', 'normal'], ['OC-0043', 'obra', 'normal'],
       ]);
-      igual([e.proximoProtocolo, e.versao], [44, 9]);
+      igual([e.proximoProtocolo, e.versao], [44, 10]);
     },
   },
   {

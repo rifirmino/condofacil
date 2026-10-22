@@ -635,6 +635,10 @@ const RECURSOS_PLANO = {
   escala: 'intermediario',
   multasDefesa: 'intermediario',
   simuladorTaxa: 'intermediario',
+  contasPagar: 'intermediario',
+  prestacaoContas: 'intermediario',
+  aprovacaoConselho: 'avancado',
+  fluxoCaixa: 'avancado',
   checkin: 'avancado',
   relatorioHoras: 'avancado',
 };
@@ -652,6 +656,96 @@ function planoMinimo(recurso) {
 function mensalidade(planoId, unidades) {
   const plano = PLANOS.find((p) => p.id === planoId);
   return Math.round(PRECO_BASE.porUnidade * unidades * plano.multiplicador);
+}
+
+// ---- src/financeiro/dados.js ----
+
+// Dados iniciais do financeiro operacional: contas a pagar do mês e balancetes dos dois meses anteriores.
+const CONSELHEIRO = { nome: 'Gustavo Freitas', unidade: '501', papel: 'Conselheiro fiscal' };
+const ITENS_CATEGORIA = {
+  pessoal: [['Folha de pagamento (zelador e porteiros CLT)', 0.735], ['Encargos (INSS e FGTS)', 1]],
+  concessionarias: [['Energia elétrica · área comum', 0.54], ['Água e esgoto', 1]],
+  manutencao: [['Manutenção dos elevadores · Elevadores Atlas', 0.63], ['Jardinagem · Verde Vida', 1]],
+  administracao: [['Administradora e contabilidade · Lar Gestão', 1]],
+  seguro: [['Seguro predial · Seguradora Horizonte', 1]],
+};
+const RECEITAS_PADRAO = { receitas: 2700000, despesas: 1790000 };
+const SALAO_MES = 30000;
+const DEDETIZACAO = 45000;
+
+function contasIniciais(hoje, em) {
+  const dia = Number(hoje.slice(8, 10));
+  const noMes = (k) => Math.min(k, dia - 1);
+  const paga = (id, fornecedor, categoria, descricao, valor, dias) => ({ id, fornecedor, categoria, descricao, valor, vencimento: somarDias(hoje, -noMes(dias)), recorrente: true, situacao: 'paga', pagaEm: em(-noMes(dias), 10), comprovante: `comprovante-${id}.pdf`, boleto: `boleto-${id}.pdf` });
+  const aberta = (id, fornecedor, categoria, descricao, valor, dias, recorrente) => ({ id, fornecedor, categoria, descricao, valor, vencimento: somarDias(hoje, dias), recorrente, situacao: 'aberta', pagaEm: null, comprovante: null, boleto: `boleto-${id}.pdf` });
+  return [
+    paga('CT-001', 'Folha de pagamento', 'pessoal', 'Salários do zelador e dos porteiros CLT', 720000, 15),
+    paga('CT-002', 'Encargos trabalhistas', 'pessoal', 'INSS e FGTS do mês', 260000, 13),
+    paga('CT-003', 'Distribuidora de energia', 'concessionarias', 'Energia elétrica · área comum', 210000, 12),
+    paga('CT-004', 'Companhia de saneamento', 'concessionarias', 'Água e esgoto', 180000, 11),
+    paga('CT-005', 'Elevadores Atlas', 'manutencao', 'Manutenção mensal dos elevadores', 145000, 10),
+    paga('CT-006', 'Verde Vida Jardinagem', 'manutencao', 'Jardinagem mensal', 70500, 9),
+    paga('CT-007', 'Lar Gestão', 'administracao', 'Administradora e contabilidade', 120000, 8),
+    paga('CT-008', 'Seguradora Horizonte', 'seguro', 'Seguro predial (parcela)', 90000, 7),
+    aberta('CT-009', 'Vigilância Prisma', 'pessoal', 'Portaria terceirizada (Edson e Rita)', 380000, 2, true),
+    aberta('CT-010', 'Distribuidora de gás', 'concessionarias', 'Gás da área gourmet', 18000, 0, true),
+    aberta('CT-011', 'Imunizadora Verde', 'manutencao', 'Dedetização trimestral', DEDETIZACAO, -1, false),
+  ];
+}
+
+function despesasDoMes(total, orcamento, id, comDedetizacao) {
+  const categorias = Object.keys(ITENS_CATEGORIA);
+  const soma = categorias.reduce((s, c) => s + orcamento[c], 0);
+  let restante = total;
+  return categorias.map((categoria, i) => {
+    const doCategoria = i === categorias.length - 1 ? restante : Math.round((total * orcamento[categoria]) / soma);
+    restante -= doCategoria;
+    const extra = comDedetizacao && categoria === 'manutencao' ? DEDETIZACAO : 0;
+    const base = doCategoria - extra;
+    let usado = 0;
+    const itens = ITENS_CATEGORIA[categoria].map(([descricao, parte], n, lista) => {
+      const valor = n === lista.length - 1 ? base - usado : Math.round(base * parte);
+      usado += valor;
+      return { id: `${id}-${categoria}-${n + 1}`, descricao, valor, nota: true };
+    });
+    if (extra) itens.push({ id: `${id}-manutencao-dedetizacao`, descricao: 'Dedetização · Imunizadora Verde', valor: extra, nota: false });
+    return { categoria, itens };
+  });
+}
+
+function balanceteGuardado(mes, situacao, valores, saldoInicial, orcamento, comDedetizacao, extras) {
+  return {
+    situacao, saldoInicial,
+    receitas: [{ nome: 'Taxas condominiais', valor: valores.receitas - SALAO_MES }, { nome: 'Reservas do salão de festas', valor: SALAO_MES }],
+    despesas: despesasDoMes(valores.despesas, orcamento, mes, comDedetizacao),
+    inadimplencia: { unidades: 3, valor: 259500 },
+    comentarios: [], correcao: null, fechadoEm: null, aprovadoEm: null, aprovadoPor: null, documento: null, resumo: null,
+    ...extras,
+  };
+}
+
+// Encadeia os saldos de trás para a frente: o mês anterior termina onde o mês corrente começou.
+function balancetesIniciais(hoje, em, { historico, saldo, orcamento, receitasDoMes, despesasDoMesAtual }) {
+  const mes = hoje.slice(0, 7);
+  const anterior = somarMes(mes, -1);
+  const retrasado = somarMes(mes, -2);
+  const valoresDe = (m) => historico.find((h) => h.mes === m) || RECEITAS_PADRAO;
+  const finalAnterior = saldo - receitasDoMes + despesasDoMesAtual;
+  const vAnt = valoresDe(anterior);
+  const inicialAnterior = finalAnterior - vAnt.receitas + vAnt.despesas;
+  const vRet = valoresDe(retrasado);
+  const inicialRetrasado = inicialAnterior - vRet.receitas + vRet.despesas;
+  const fechamento = em(-Math.max(1, Number(hoje.slice(8, 10)) - 3), 18);
+  return {
+    [retrasado]: balanceteGuardado(retrasado, 'aprovado', vRet, inicialRetrasado, orcamento, false, {
+      fechadoEm: em(-35, 18), aprovadoEm: em(-30, 20), aprovadoPor: 'Gustavo Freitas', documento: 'd5', resumo: { publicadoEm: em(-29, 9), documento: null },
+    }),
+    [anterior]: balanceteGuardado(anterior, 'aberto', vAnt, inicialAnterior, orcamento, true, { preparadoEm: fechamento }),
+  };
+}
+
+function mesDoInstante(iso) {
+  return isoDia(new Date(iso)).slice(0, 7);
 }
 
 // ---- src/cobranca/dados.js ----
@@ -794,6 +888,10 @@ function financeiroInicial(hoje, em, pessoas, unidades) {
   // Débitos de junho e julho da 304, substituídos pelo acordo AC-001 (ver comAcordoInicial).
   cobrancas.push(novaCobranca('304', somarMes(vigente, -4), mesmoDiaDoMes(vencimentoVigente, -4), 'aberta'));
   cobrancas.push(novaCobranca('304', somarMes(vigente, -3), mesmoDiaDoMes(vencimentoVigente, -3), 'aberta'));
+  const historico = HISTORICO_RECEITAS.map((receitas, i) => ({ mes: somarMes(vigente, i - 11), receitas, despesas: HISTORICO_DESPESAS[i] }));
+  const despesasMes = { pessoal: 980000, concessionarias: 390000, manutencao: 230000, administracao: 120000, seguro: 90000 };
+  const saldo = 4835000;
+  const receitasDoMes = cobrancas.filter((c) => c.status === 'paga' && mesDoInstante(c.pagaEm) === hoje.slice(0, 7)).reduce((s, c) => s + c.valorPago, 0);
   const orcamento = { pessoal: 950000, concessionarias: 420000, manutencao: 200000, administracao: 120000, seguro: 100000 };
   const anoPrevisao = Number(vigente.slice(0, 4)) + 1;
   const linhas8 = linhasDoOrcado(orcamento, 8);
@@ -815,12 +913,17 @@ function financeiroInicial(hoje, em, pessoas, unidades) {
     emitidas: [vigente],
     cobrancas,
     acordos: [],
-    historico: HISTORICO_RECEITAS.map((receitas, i) => ({ mes: somarMes(vigente, i - 11), receitas, despesas: HISTORICO_DESPESAS[i] })),
-    despesasMes: { pessoal: 980000, concessionarias: 390000, manutencao: 230000, administracao: 120000, seguro: 90000 },
+    historico,
+    despesasMes,
     orcamento,
     previsoes,
     proximaPrevisao: 3,
-    saldo: 4835000,
+    saldo,
+    contas: contasIniciais(hoje, em),
+    proximaConta: 12,
+    balancetes: balancetesIniciais(hoje, em, { historico, saldo, orcamento, receitasDoMes, despesasDoMesAtual: Object.values(despesasMes).reduce((s, v) => s + v, 0) }),
+    ajustesMes: [],
+    proximoComentario: 1,
     auditoria: [],
   };
 }
@@ -1619,7 +1722,7 @@ function dadosIniciais(agora = new Date()) {
   ];
 
   return comInfracaoInicial(comEscalaInicial(comAcordoInicial({
-    versao: 9,
+    versao: 10,
     geradoEm: hoje,
     proximoProtocolo: 44,
     infracoes: [],
@@ -2425,6 +2528,106 @@ function gerarDocumentoPrevisao(estado, id, perfil, agora) {
   const documento = { id: docId, pasta: 'Previsão orçamentária', titulo, versoes: [{ versao: 1, data }], visibilidade: 'todos' };
   const novo = comFinanceiro({ ...estado, documentos: [...estado.documentos, documento] }, { previsoes: estado.financeiro.previsoes.map((p) => (p.id === id ? { ...p, documento: docId } : p)) });
   return { estado: novo, id: docId, versao: 1, notificacao: { canal: 'Documentos', para: 'Todos os moradores', texto: `${titulo} publicada para a AGO` } };
+}
+
+// ---- src/financeiro/contas.js ----
+
+// Contas a pagar: situação no dia, filtros da lista e alertas do síndico.
+const NOMES_SITUACAO_CONTA = { paga: 'Paga', vencida: 'Vencida', hoje: 'Vence hoje', aberta: 'A pagar' };
+const FILTROS_CONTAS = [['proximas', 'Próximos 30 dias'], ['vencidas', 'Vencidas'], ['pagas', 'Pagas no mês'], ['todas', 'Todas']];
+
+function situacaoConta(conta, hoje) {
+  if (conta.situacao === 'paga') return 'paga';
+  if (conta.vencimento < hoje) return 'vencida';
+  if (conta.vencimento === hoje) return 'hoje';
+  return 'aberta';
+}
+
+function contasFiltradas(estado, filtro, hoje) {
+  const contas = estado.financeiro.contas;
+  const limite = somarDias(hoje, 30);
+  const lista = {
+    proximas: contas.filter((c) => c.situacao === 'aberta' && c.vencimento <= limite),
+    vencidas: contas.filter((c) => situacaoConta(c, hoje) === 'vencida'),
+    pagas: contas.filter((c) => c.situacao === 'paga' && mesDoInstante(c.pagaEm) === hoje.slice(0, 7)),
+    todas: contas,
+  }[filtro] || contas;
+  return [...lista].sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+}
+
+function totalAPagar(estado, hoje) {
+  return contasFiltradas(estado, 'proximas', hoje).reduce((s, c) => s + c.valor, 0);
+}
+
+function alertasContas(estado, hoje) {
+  return estado.financeiro.contas
+    .filter((c) => ['vencida', 'hoje'].includes(situacaoConta(c, hoje)))
+    .sort((a, b) => a.vencimento.localeCompare(b.vencimento))
+    .map((c) => ({ chave: `conta-${c.id}`, href: '#sindico.financeiro.contas', texto: `${situacaoConta(c, hoje) === 'vencida' ? 'Conta vencida' : 'Vence hoje'}: ${c.descricao} (${fmtReais(c.valor)})` }));
+}
+
+function serieDaConta(conta) {
+  return `${conta.fornecedor}|${conta.descricao}`;
+}
+
+// ---- src/financeiro/acoes.js ----
+
+// Ações do financeiro operacional: contas a pagar (Intermediário). Toda saída de caixa entra na auditoria.
+function erroFinanceiro(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function guardaFinanceiro(estado, perfil, recurso) {
+  if (!podeOperar(perfil)) return SO_SINDICO;
+  if (!liberado(estado.plano, recurso)) return `Disponível no plano ${recurso === 'aprovacaoConselho' || recurso === 'fluxoCaixa' ? 'Avançado' : 'Intermediário'}`;
+  return null;
+}
+
+function idConta(n) {
+  return `CT-${String(n).padStart(3, '0')}`;
+}
+
+function novaConta(estado, dados, perfil) {
+  const falha = guardaFinanceiro(estado, perfil, 'contasPagar');
+  if (falha) return erroFinanceiro(estado, falha);
+  const fornecedor = String(dados.fornecedor || '').trim();
+  if (!fornecedor) return erroFinanceiro(estado, 'Informe o fornecedor');
+  if (!CATEGORIAS_DESPESA[dados.categoria]) return erroFinanceiro(estado, 'Escolha a categoria');
+  if (!(dados.valor > 0)) return erroFinanceiro(estado, 'Informe o valor');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dados.vencimento || ''))) return erroFinanceiro(estado, 'Informe o vencimento');
+  const fin = estado.financeiro;
+  const id = idConta(fin.proximaConta);
+  const conta = { id, fornecedor, categoria: dados.categoria, descricao: String(dados.descricao || '').trim() || fornecedor, valor: Math.round(dados.valor), vencimento: dados.vencimento, recorrente: !!dados.recorrente, situacao: 'aberta', pagaEm: null, comprovante: null, boleto: `boleto-${id}.pdf` };
+  return { estado: comFinanceiro(estado, { contas: [...fin.contas, conta], proximaConta: fin.proximaConta + 1 }), id };
+}
+
+function pagarConta(estado, id, perfil, agora) {
+  const falha = guardaFinanceiro(estado, perfil, 'contasPagar');
+  if (falha) return erroFinanceiro(estado, falha);
+  const fin = estado.financeiro;
+  const conta = fin.contas.find((c) => c.id === id);
+  if (!conta) return erroFinanceiro(estado, 'Conta não encontrada');
+  if (conta.situacao === 'paga') return erroFinanceiro(estado, 'Esta conta já foi paga');
+  const paga = { ...conta, situacao: 'paga', pagaEm: agora.toISOString(), comprovante: `comprovante-${id}.pdf` };
+  let contas = fin.contas.map((c) => (c.id === id ? paga : c));
+  let proximaConta = fin.proximaConta;
+  let seguinte = null;
+  if (conta.recorrente) {
+    seguinte = { ...conta, id: idConta(proximaConta), vencimento: mesmoDiaDoMes(conta.vencimento, 1), situacao: 'aberta', pagaEm: null, comprovante: null, boleto: `boleto-${idConta(proximaConta)}.pdf` };
+    contas = [...contas, seguinte];
+    proximaConta += 1;
+  }
+  const novo = comFinanceiro(estado, {
+    contas, proximaConta,
+    despesasMes: { ...fin.despesasMes, [conta.categoria]: fin.despesasMes[conta.categoria] + conta.valor },
+    saldo: fin.saldo - conta.valor,
+    auditoria: comAuditoria(estado, agora, 'Conta paga', `${id} · ${conta.descricao} · ${fmtReais(conta.valor)} · ${CATEGORIAS_DESPESA[conta.categoria]}`),
+  });
+  return {
+    estado: novo,
+    seguinte: seguinte && seguinte.id,
+    notificacao: { canal: 'Asaas · pagamento de contas', para: conta.fornecedor, texto: `Pagamento de ${fmtReais(conta.valor)} enviado em ${isoDia(agora).split('-').reverse().join('/')} · comprovante anexado${seguinte ? ` · próxima conta em ${seguinte.vencimento.split('-').reverse().join('/')}` : ''}` },
+  };
 }
 
 // ---- src/infracoes/regras.js ----
@@ -3759,7 +3962,7 @@ const CASOS_DADOS = [
       const e = dadosIniciais(AGORA_TESTE);
       igual(new Set(e.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, 20);
       igual(e.pessoas.filter((p) => p.naoResidente).map((p) => [p.unidade, p.nome, p.recebeOfertas, p.vendedor]), [['704', 'Vicente Moraes', false, 'nao']]);
-      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [9, 'Ana Souza']);
+      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [10, 'Ana Souza']);
     },
   },
   {
@@ -4900,7 +5103,7 @@ const CASOS_NOTIFICACOES = [
         ['OC-0037', 'eletrica', 'alta'], ['OC-0038', 'elogio', 'baixa'], ['OC-0039', 'vazamento', 'urgente'], ['OC-0040', 'elevador', 'alta'],
         ['OC-0041', 'barulho', 'normal'], ['OC-0042', 'vaga', 'normal'], ['OC-0043', 'obra', 'normal'],
       ]);
-      igual([e.proximoProtocolo, e.versao], [44, 9]);
+      igual([e.proximoProtocolo, e.versao], [44, 10]);
     },
   },
   {
@@ -5185,7 +5388,7 @@ const CASOS_ESCALA = [
     rodar() {
       const e = dadosIniciais(AGORA_FASE2);
       const m = e.escala.meses['2026-10'];
-      igual([m.situacao, e.versao, e.escala.meses['2026-11']], ['publicada', 9, undefined]);
+      igual([m.situacao, e.versao, e.escala.meses['2026-11']], ['publicada', 10, undefined]);
       const at = m.turnos.find((x) => x.id === 'T-2026-10-20-guarita-07');
       igual([at.porteiro, at.motivoDescoberto, at.porteiroOriginal, at.anexo], [null, 'atestado', 'claudia', 'atestado-claudia.pdf']);
       igual(e.escala.trocas.map((x) => [x.id, x.turno, x.de, x.para, x.situacao]), [['TR-001', 'T-2026-10-22-portaria-07', 'marcos', 'paulo', 'aceita']]);
@@ -5537,6 +5740,61 @@ const CASOS_ORCAMENTO = [
   },
 ];
 
+// ---- src/casos/financeiro.js ----
+
+const HOJE_FIN = '2026-10-19';
+
+function contaDe(estado, id) {
+  return estado.financeiro.contas.find((c) => c.id === id);
+}
+
+const CASOS_FINANCEIRO = [
+  {
+    nome: 'financeiro: semente de contas bate com as despesas do mês',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const fin = e.financeiro;
+      const pagas = fin.contas.filter((c) => c.situacao === 'paga');
+      const porCategoria = {};
+      for (const c of pagas) porCategoria[c.categoria] = (porCategoria[c.categoria] || 0) + c.valor;
+      porCategoria.manutencao += 14500;
+      igual(porCategoria, fin.despesasMes);
+      igual(['CT-009', 'CT-010', 'CT-011'].map((id) => situacaoConta(contaDe(e, id), HOJE_FIN)), ['aberta', 'hoje', 'vencida']);
+      igual(alertasContas(e, HOJE_FIN).map((a) => a.texto), ['Conta vencida: Dedetização trimestral (R$ 450,00)', 'Vence hoje: Gás da área gourmet (R$ 180,00)']);
+      igual([contasFiltradas(e, 'vencidas', HOJE_FIN).length, contasFiltradas(e, 'pagas', HOJE_FIN).length, totalAPagar(e, HOJE_FIN)], [1, 8, 443000]);
+    },
+  },
+  {
+    nome: 'financeiro: pagar conta lança despesa, baixa saldo e gera a recorrente',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const r = pagarConta(e, 'CT-010', 'sindico', AGORA_FASE2);
+      const fin = r.estado.financeiro;
+      igual([contaDe(r.estado, 'CT-010').situacao, fin.despesasMes.concessionarias, fin.saldo], ['paga', 408000, e.financeiro.saldo - 18000]);
+      igual([r.seguinte, contaDe(r.estado, 'CT-012').vencimento, contaDe(r.estado, 'CT-012').situacao], ['CT-012', '2026-11-19', 'aberta']);
+      igual(fin.auditoria.at(-1).acao, 'Conta paga');
+      igual(pagarConta(r.estado, 'CT-010', 'sindico', AGORA_FASE2).erro, 'Esta conta já foi paga');
+      const d = pagarConta(e, 'CT-011', 'sindico', AGORA_FASE2);
+      igual([d.seguinte, d.estado.financeiro.contas.length], [null, e.financeiro.contas.length]);
+      igual(pagarConta(e, 'CT-010', 'zelador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      igual(pagarConta(trocarPlano(e, 'basico').estado, 'CT-010', 'sindico', AGORA_FASE2).erro, 'Disponível no plano Intermediário');
+    },
+  },
+  {
+    nome: 'financeiro: nova conta valida os campos',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const dados = { fornecedor: 'Pinturas Sol', categoria: 'manutencao', descricao: 'Pintura do hall', valor: 250000, vencimento: '2026-11-05', recorrente: false };
+      igual(novaConta(e, { ...dados, fornecedor: ' ' }, 'sindico').erro, 'Informe o fornecedor');
+      igual(novaConta(e, { ...dados, categoria: 'x' }, 'sindico').erro, 'Escolha a categoria');
+      igual(novaConta(e, { ...dados, valor: 0 }, 'sindico').erro, 'Informe o valor');
+      igual(novaConta(e, { ...dados, vencimento: '' }, 'sindico').erro, 'Informe o vencimento');
+      const r = novaConta(e, dados, 'sindico');
+      igual([r.id, contaDe(r.estado, r.id).situacao, r.estado.financeiro.proximaConta], ['CT-012', 'aberta', 13]);
+    },
+  },
+];
+
 // ---- src/armazenamento.js ----
 const CHAVE_ESTADO = 'condofacil-demo-v1';
 
@@ -5545,7 +5803,7 @@ function carregarEstado() {
     const texto = localStorage.getItem(CHAVE_ESTADO);
     if (!texto) return null;
     const estado = JSON.parse(texto);
-    return estado && estado.versao === 9 ? estado : null;
+    return estado && estado.versao === 10 ? estado : null;
   } catch {
     return null;
   }
@@ -6395,10 +6653,7 @@ function CEmitidas({ estado, executar, agora }) {
       </tr>`)}</tbody>
     </table></div>
     ${!lista.length && html`<${Vazio} texto="Nenhuma cobrança neste filtro." />`}
-    <h2>Auditoria</h2>
-    ${fin.auditoria.length
-      ? html`<ul class="auditoria">${[...fin.auditoria].reverse().map((a, n) => html`<li key=${n}><span class="lt-quando">${fmtDataHora(a.em)}</span> <strong>${a.acao}</strong> · ${a.detalhe} · ${a.quem}</li>`)}</ul>`
-      : html`<${Vazio} texto="Nenhuma ação registrada nesta demonstração." />`}
+    <small class="sub">Baixas, cancelamentos e demais ações ficam em <a href="#sindico.financeiro.auditoria">Financeiro › Auditoria</a>.</small>
   </div>`;
 }
 
@@ -6861,6 +7116,112 @@ function COrcamento({ estado, executar, agora }) {
     <h2>Comparar</h2>
     <${ComparacaoPrevisoes} key=${fin.previsoes.map((p) => p.id).join()} fin=${fin} />
   </div>`;
+}
+
+// ---- src/ui/financeiro.js ----
+
+// Menu Financeiro do síndico: contas a pagar, prestação de contas, fluxo de caixa e auditoria.
+const ABAS_FINANCEIRO = [['contas', 'Contas a pagar'], ['prestacao', 'Prestação de contas'], ['fluxo', 'Fluxo de caixa'], ['auditoria', 'Auditoria']];
+const ETQ_SITUACAO_CONTA = { paga: 'ok', vencida: 'perigo', hoje: 'alerta', aberta: 'info' };
+
+function SFinanceiro(props) {
+  const idRota = props.rota.id || '';
+  const aba = idRota.startsWith('prestacao') ? 'prestacao' : ABAS_FINANCEIRO.some(([id]) => id === idRota) ? idRota : 'contas';
+  const Conteudo = { contas: FContas, prestacao: FPrestacao, fluxo: FFluxo, auditoria: FAuditoria }[aba];
+  return html`<section>
+    <h1>Financeiro</h1>
+    <nav class="chips" aria-label="Financeiro">${ABAS_FINANCEIRO.map(([id, nome]) => html`<a key=${id} class="chip" href=${`#sindico.financeiro.${id}`} aria-current=${aba === id ? 'page' : undefined}>${nome}</a>`)}</nav>
+    <${Conteudo} ...${props} />
+  </section>`;
+}
+
+function FormConta({ executar, hoje, aoConcluir }) {
+  const [form, setForm] = useState({ fornecedor: '', categoria: 'manutencao', descricao: '', valor: '', vencimento: hoje, recorrente: false });
+  const [erro, setErro] = useState(null);
+  const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value });
+
+  function salvar() {
+    const r = executar((e) => novaConta(e, { ...form, valor: lerPreco(form.valor) }, 'sindico'));
+    setErro(r.erro || null);
+    if (!r.erro) aoConcluir(`Conta ${r.id} cadastrada.`);
+  }
+
+  return html`<div class="cartao pilha formulario">
+    <strong>Nova conta</strong>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Fornecedor"><input id="conta-fornecedor" value=${form.fornecedor} onInput=${campo('fornecedor')} placeholder="Ex.: Pinturas Sol" /><//>
+      <${Campo} rotulo="Categoria"><select id="conta-categoria" value=${form.categoria} onChange=${campo('categoria')}>${Object.entries(CATEGORIAS_DESPESA).map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>
+      <${Campo} rotulo="Descrição"><input id="conta-descricao" value=${form.descricao} onInput=${campo('descricao')} placeholder="Ex.: Pintura do hall" /><//>
+      <${Campo} rotulo="Valor (R$)"><input id="conta-valor" inputmode="decimal" value=${form.valor} onInput=${campo('valor')} placeholder="Ex.: 2.500,00" /><//>
+      <${Campo} rotulo="Vencimento"><input id="conta-vencimento" type="date" value=${form.vencimento} onInput=${campo('vencimento')} /><//>
+    </div>
+    <label class="check"><input id="conta-recorrente" type="checkbox" checked=${form.recorrente} onChange=${campo('recorrente')} /><span>Repete todo mês</span></label>
+    <${Erro} texto=${erro} />
+    <button type="button" class="btn primario" data-acao="salvar-conta" onClick=${salvar}>Cadastrar conta</button>
+  </div>`;
+}
+
+function FContas({ estado, executar, agora }) {
+  const [filtro, setFiltro] = useState('proximas');
+  const [nova, setNova] = useState(false);
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  if (!liberado(estado.plano, 'contasPagar')) return html`<${Bloqueado} estado=${estado} recurso="contasPagar" titulo="Contas a pagar com vencimento, boleto e pagamento pelo Asaas" />`;
+  const hoje = isoDia(agora);
+  const lista = contasFiltradas(estado, filtro, hoje);
+
+  function pagar(id) {
+    const r = executar((e) => pagarConta(e, id, 'sindico', new Date()));
+    setErro(r.erro || null);
+    setMensagem(r.erro ? null : `Conta ${id} paga.${r.seguinte ? ` A do próximo mês (${r.seguinte}) já foi criada.` : ''}`);
+  }
+
+  return html`<div class="pilha">
+    <div class="linha-entre">
+      <p class="sub">${fmtReais(totalAPagar(estado, hoje))} a pagar nos próximos 30 dias · saldo ${fmtReais(estado.financeiro.saldo)}</p>
+      <button type="button" class="btn primario" aria-expanded=${nova} onClick=${() => { setNova(!nova); setMensagem(null); }}>Nova conta</button>
+    </div>
+    ${nova && html`<${FormConta} executar=${executar} hoje=${hoje} aoConcluir=${(t) => { setNova(false); setMensagem(t); }} />`}
+    <${Campo} rotulo="Mostrar"><select id="contas-filtro" value=${filtro} onChange=${(ev) => setFiltro(ev.target.value)}>${FILTROS_CONTAS.map(([id, nome]) => html`<option key=${id} value=${id}>${nome}</option>`)}</select><//>
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+    ${lista.length
+      ? html`<div class="tabela-rolagem"><table class="tabela">
+          <thead><tr><th>Vencimento</th><th>Fornecedor</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Situação</th><th>Ação</th></tr></thead>
+          <tbody>${lista.map((c) => {
+            const s = situacaoConta(c, hoje);
+            return html`<tr key=${c.id}>
+              <td>${fmtDataCurta(c.vencimento)}</td>
+              <td>${c.fornecedor}</td>
+              <td>${c.descricao}${c.recorrente ? html` <${Etiqueta}>mensal<//>` : ''}<br /><small class="sub">${c.id} · ${c.boleto}</small></td>
+              <td>${CATEGORIAS_DESPESA[c.categoria]}</td>
+              <td>${fmtReais(c.valor)}</td>
+              <td><${Etiqueta} tipo=${ETQ_SITUACAO_CONTA[s]}>${NOMES_SITUACAO_CONTA[s]}<//>${c.pagaEm ? html`<br /><small class="sub">em ${fmtDataCurta(isoDia(new Date(c.pagaEm)))}</small>` : ''}</td>
+              <td>${c.situacao === 'aberta' ? html`<button type="button" class="btn secundario" data-pagar=${c.id} onClick=${() => pagar(c.id)}>Pagar</button>` : html`<small class="sub">${c.comprovante}</small>`}</td>
+            </tr>`;
+          })}</tbody>
+        </table></div>`
+      : html`<${Vazio} texto="Nenhuma conta neste filtro." />`}
+    <small class="sub">O pagamento sai pela conta Asaas do condomínio, entra na despesa da categoria e na auditoria. Conta paga não se edita.</small>
+  </div>`;
+}
+
+function FAuditoria({ estado }) {
+  const fin = estado.financeiro;
+  return html`<div class="pilha">
+    <p class="sub">Toda ação financeira do síndico fica registrada aqui e não pode ser apagada.</p>
+    ${fin.auditoria.length
+      ? html`<ul class="auditoria">${[...fin.auditoria].reverse().map((a, n) => html`<li key=${n}><span class="lt-quando">${fmtDataHora(a.em)}</span> <strong>${a.acao}</strong> · ${a.detalhe} · ${a.quem}</li>`)}</ul>`
+      : html`<${Vazio} texto="Nenhuma ação registrada nesta demonstração." />`}
+  </div>`;
+}
+
+function FPrestacao() {
+  return html`<${Vazio} texto="Em construção." />`;
+}
+
+function FFluxo() {
+  return html`<${Vazio} texto="Em construção." />`;
 }
 
 // ---- src/ui/infracoes.js ----
@@ -8675,7 +9036,7 @@ function MPreferencias({ estado, executar, eu }) {
 
 // ---- src/ui/sindico.js ----
 
-const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
+const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['financeiro', 'Financeiro', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
 const EM_BREVE = [['Estoque, checklist e rondas', 'Avançado']];
 const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
 const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
@@ -8700,7 +9061,7 @@ function tipoEtiquetaComunicado(c) {
 
 function TelaSindico(props) {
   const tela = MENU_SINDICO.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'inicio';
-  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, manutencao: SManutencao, escala: SEscala }[tela];
+  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, financeiro: SFinanceiro, manutencao: SManutencao, escala: SEscala }[tela];
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
       <p class="painel-usuario"><strong>Roberto Lima</strong><small>Síndico · apto 801</small></p>
@@ -8717,7 +9078,7 @@ function SInicio({ estado, agora }) {
   const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora));
   const alertas = alertasDocumentos(estado.documentos, isoDia(agora));
   const vendedoresPendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
-  const pendCobranca = pendenciasCobranca(estado, isoDia(agora));
+  const pendCobranca = [...pendenciasCobranca(estado, isoDia(agora)), ...(liberado(estado.plano, 'contasPagar') ? alertasContas(estado, isoDia(agora)) : [])];
   const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
   const pendOperacao = [...(comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : []), ...(liberado(estado.plano, 'escala') ? alertasEscala(estado, agora) : []), ...(liberado(estado.plano, 'multasDefesa') ? alertasInfracoes(estado, isoDia(agora)) : [])];
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
@@ -9575,7 +9936,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

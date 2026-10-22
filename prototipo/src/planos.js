@@ -26,6 +26,10 @@ const RECURSOS_PLANO = {
   escala: 'intermediario',
   multasDefesa: 'intermediario',
   simuladorTaxa: 'intermediario',
+  contasPagar: 'intermediario',
+  prestacaoContas: 'intermediario',
+  aprovacaoConselho: 'avancado',
+  fluxoCaixa: 'avancado',
   checkin: 'avancado',
   relatorioHoras: 'avancado',
 };

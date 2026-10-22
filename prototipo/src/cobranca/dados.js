@@ -1,5 +1,6 @@
 // Constantes e dados iniciais da cobrança (fase 2). Tudo relativo a "hoje": a competência vigente venceu há 9 dias.
 import { somarDias, somarMes } from '../datas.js';
+import { contasIniciais, balancetesIniciais, mesDoInstante } from '../financeiro/dados.js';
 
 export const ETAPAS_REGUA = [
   { id: 'antes5', dias: -5, nome: '5 dias antes', acao: 'Lembrete com link e Pix', canais: ['App', 'WhatsApp'] },
@@ -138,6 +139,10 @@ export function financeiroInicial(hoje, em, pessoas, unidades) {
   // Débitos de junho e julho da 304, substituídos pelo acordo AC-001 (ver comAcordoInicial).
   cobrancas.push(novaCobranca('304', somarMes(vigente, -4), mesmoDiaDoMes(vencimentoVigente, -4), 'aberta'));
   cobrancas.push(novaCobranca('304', somarMes(vigente, -3), mesmoDiaDoMes(vencimentoVigente, -3), 'aberta'));
+  const historico = HISTORICO_RECEITAS.map((receitas, i) => ({ mes: somarMes(vigente, i - 11), receitas, despesas: HISTORICO_DESPESAS[i] }));
+  const despesasMes = { pessoal: 980000, concessionarias: 390000, manutencao: 230000, administracao: 120000, seguro: 90000 };
+  const saldo = 4835000;
+  const receitasDoMes = cobrancas.filter((c) => c.status === 'paga' && mesDoInstante(c.pagaEm) === hoje.slice(0, 7)).reduce((s, c) => s + c.valorPago, 0);
   const orcamento = { pessoal: 950000, concessionarias: 420000, manutencao: 200000, administracao: 120000, seguro: 100000 };
   const anoPrevisao = Number(vigente.slice(0, 4)) + 1;
   const linhas8 = linhasDoOrcado(orcamento, 8);
@@ -159,12 +164,17 @@ export function financeiroInicial(hoje, em, pessoas, unidades) {
     emitidas: [vigente],
     cobrancas,
     acordos: [],
-    historico: HISTORICO_RECEITAS.map((receitas, i) => ({ mes: somarMes(vigente, i - 11), receitas, despesas: HISTORICO_DESPESAS[i] })),
-    despesasMes: { pessoal: 980000, concessionarias: 390000, manutencao: 230000, administracao: 120000, seguro: 90000 },
+    historico,
+    despesasMes,
     orcamento,
     previsoes,
     proximaPrevisao: 3,
-    saldo: 4835000,
+    saldo,
+    contas: contasIniciais(hoje, em),
+    proximaConta: 12,
+    balancetes: balancetesIniciais(hoje, em, { historico, saldo, orcamento, receitasDoMes, despesasDoMesAtual: Object.values(despesasMes).reduce((s, v) => s + v, 0) }),
+    ajustesMes: [],
+    proximoComentario: 1,
     auditoria: [],
   };
 }

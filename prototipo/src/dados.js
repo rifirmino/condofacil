@@ -87,7 +87,7 @@ export function dadosIniciais(agora = new Date()) {
   ];
 
   return comInfracaoInicial(comEscalaInicial(comAcordoInicial({
-    versao: 9,
+    versao: 10,
     geradoEm: hoje,
     proximoProtocolo: 44,
     infracoes: [],
