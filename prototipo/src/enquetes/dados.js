@@ -6,24 +6,24 @@ const VOTOS_FACHADA = [['101', 'c1'], ['102', 'c2'], ['104', 'c1'], ['201', 'c1'
 
 export const DOC_RESULTADO_FACHADA = 'd9';
 
-function votosDe(lista, em, dias) {
-  return Object.fromEntries(lista.map(([unidade, opcao, comentario], n) => [unidade, { opcoes: [opcao], comentario: comentario || '', autor: `Apto ${unidade}`, em: em(-(dias - (n % dias)), 10 + (n % 10)) }]));
+function votosDe(lista, em, dias, nomes) {
+  return Object.fromEntries(lista.map(([unidade, opcao, comentario], n) => [unidade, { opcoes: [opcao], comentario: comentario || '', autor: nomes[unidade] || `Apto ${unidade}`, em: em(-(dias - (n % dias)), 10 + (n % 10)) }]));
 }
 
-export function enquetesIniciais(hoje, em) {
+export function enquetesIniciais(hoje, em, nomes = {}) {
   const base = { contexto: '', anexo: null, comentarios: false, publico: { tipo: 'todos' }, secreto: true, parcialVisivel: false, peso: 'unidade', quorumPct: null, lembretesAuto: true, lembretes: [], prorrogada: false, encerradaEm: null, resultado: null, maxEscolhas: 1, tipo: 'unica' };
   return [
     {
       ...base, id: 'EN-001', pergunta: 'Qual horário a academia deve abrir aos domingos?', contexto: 'Hoje a academia abre às 6h todos os dias. Alguns moradores pediram para abrir mais tarde aos domingos por causa do barulho.',
       opcoes: [{ id: 'o1', texto: 'Às 6h, como hoje' }, { id: 'o2', texto: 'Às 7h' }, { id: 'o3', texto: 'Às 8h' }],
       comentarios: true, criadaEm: em(-4, 18), abertaEm: em(-3, 9), encerraEm: momento(somarDias(hoje, 4), 23, 59).toISOString(), situacao: 'aberta',
-      votos: votosDe(VOTOS_ACADEMIA, em, 3),
+      votos: votosDe(VOTOS_ACADEMIA, em, 3, nomes),
     },
     {
       ...base, id: 'EN-002', pergunta: 'Qual cor para a pintura da fachada?', contexto: 'A pintura foi aprovada na AGE. Faltava escolher a cor entre as três propostas da construtora.',
       opcoes: [{ id: 'c1', texto: 'Cinza claro' }, { id: 'c2', texto: 'Areia' }, { id: 'c3', texto: 'Terracota' }],
       peso: 'fracao', quorumPct: 50, criadaEm: em(-21, 18), abertaEm: em(-20, 9), encerraEm: momento(somarDias(hoje, -6), 23, 59).toISOString(), situacao: 'encerrada', encerradaEm: momento(somarDias(hoje, -6), 23, 59).toISOString(),
-      votos: Object.fromEntries(VOTOS_FACHADA.map(([unidade, opcao], n) => [unidade, { opcoes: [opcao], comentario: '', autor: `Apto ${unidade}`, em: em(-(20 - (n % 14)), 10) }])),
+      votos: Object.fromEntries(VOTOS_FACHADA.map(([unidade, opcao], n) => [unidade, { opcoes: [opcao], comentario: '', autor: nomes[unidade] || `Apto ${unidade}`, em: em(-(20 - (n % 14)), 10) }])),
       lembretes: [{ em: em(-9, 9), unidades: 14, automatico: true }, { em: em(-6, 9), unidades: 10, automatico: true }],
       resultado: { publicadoEm: em(-5, 10), comunicado: null, documento: DOC_RESULTADO_FACHADA },
     },

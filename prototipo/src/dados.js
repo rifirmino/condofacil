@@ -93,7 +93,7 @@ export function dadosIniciais(agora = new Date()) {
     geradoEm: hoje,
     proximoProtocolo: 44,
     infracoes: [],
-    enquetes: enquetesIniciais(hoje, em),
+    enquetes: enquetesIniciais(hoje, em, Object.fromEntries(pessoas.map((p) => [p.unidade, p.nome]))),
     proximaEnquete: 4,
     proximaInfracao: 1,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },

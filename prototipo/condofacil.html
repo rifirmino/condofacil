@@ -539,6 +539,27 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .dica-fluxo { position: absolute; top: 8px; display: flex; flex-direction: column; gap: 2px; max-width: 280px; padding: 8px 10px; background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); box-shadow: 0 4px 14px rgba(0, 0, 0, .12); pointer-events: none; font-size: 12px; color: var(--texto); }
 .dica-fluxo strong { color: var(--titulo); font-variant-numeric: tabular-nums; }
 
+/* Enquetes: formulário com prévia ao lado, barras por opção e unidades faltantes. */
+.grade-enquete { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .grade-enquete { grid-template-columns: 1fr; } }
+.previa-enquete { position: sticky; top: 12px; }
+.opcao-enquete { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.opcao-enquete input { flex: 1; min-width: 0; }
+.barras-enquete { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.barras-enquete li { display: flex; flex-direction: column; gap: 4px; }
+.barra-enquete { display: block; height: 10px; border-radius: 4px; background: var(--sup-2); overflow: hidden; }
+.barra-enquete span { display: block; height: 100%; border-radius: 4px; background: var(--serie-receita); }
+.faltantes-enquete { display: flex; flex-wrap: wrap; gap: 6px; }
+.grafico-evolucao svg { display: block; width: 100%; height: auto; }
+.grafico-evolucao .grade { stroke: var(--borda); }
+.grafico-evolucao .eixo { fill: var(--suave); font-size: 11px; }
+.grafico-evolucao .reserva { stroke: var(--suave); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.grafico-evolucao .rotulo-reserva, .grafico-evolucao .rotulo-minimo { fill: var(--texto); font-size: 11.5px; font-weight: 600; }
+.grafico-evolucao .linha-saldo { fill: none; stroke: var(--serie-receita); stroke-width: 2; stroke-linejoin: round; }
+.grafico-evolucao .ponto-foco { fill: var(--serie-receita); stroke: var(--sup); stroke-width: 2; }
+.campo-curto { width: 72px; }
+.enquete-inicio { border-left: 4px solid var(--serie-receita); }
+
 </style>
 <div id="app"></div>
 <script type="module">
@@ -639,6 +660,9 @@ const PRECO_BASE = { faixa: '31 a 70 unidades', implantacao: 39900, porUnidade: 
 
 const RECURSOS_PLANO = {
   cobranca: 'basico',
+  enquetes: 'basico',
+  enqueteCompleta: 'intermediario',
+  enquetePeso: 'avancado',
   composicaoCompleta: 'intermediario',
   fracaoIdeal: 'intermediario',
   taxaExtra: 'intermediario',
@@ -1660,6 +1684,43 @@ function perfilVenda(unidade, em) {
   };
 }
 
+// ---- src/enquetes/dados.js ----
+
+// Enquetes iniciais: uma aberta (a Ana ainda não votou), uma encerrada com peso e quórum e um rascunho.
+const VOTOS_ACADEMIA = [['101', 'o2'], ['103', 'o1'], ['104', 'o2', 'Domingo cedo é quando consigo treinar'], ['201', 'o2'], ['202', 'o3'], ['204', 'o1'], ['301', 'o2'], ['303', 'o3', 'Às 6h o barulho incomoda quem mora em cima'], ['401', 'o2'], ['403', 'o1'], ['501', 'o2'], ['601', 'o1'], ['603', 'o3'], ['702', 'o2']];
+const VOTOS_FACHADA = [['101', 'c1'], ['102', 'c2'], ['104', 'c1'], ['201', 'c1'], ['203', 'c3'], ['204', 'c2'], ['301', 'c1'], ['302', 'c2'], ['303', 'c1'], ['401', 'c2'], ['402', 'c1'], ['404', 'c3'], ['501', 'c1'], ['502', 'c2'], ['504', 'c1'], ['601', 'c2'], ['603', 'c1'], ['702', 'c1'], ['703', 'c3'], ['801', 'c1'], ['802', 'c2'], ['804', 'c1']];
+
+const DOC_RESULTADO_FACHADA = 'd9';
+
+function votosDe(lista, em, dias, nomes) {
+  return Object.fromEntries(lista.map(([unidade, opcao, comentario], n) => [unidade, { opcoes: [opcao], comentario: comentario || '', autor: nomes[unidade] || `Apto ${unidade}`, em: em(-(dias - (n % dias)), 10 + (n % 10)) }]));
+}
+
+function enquetesIniciais(hoje, em, nomes = {}) {
+  const base = { contexto: '', anexo: null, comentarios: false, publico: { tipo: 'todos' }, secreto: true, parcialVisivel: false, peso: 'unidade', quorumPct: null, lembretesAuto: true, lembretes: [], prorrogada: false, encerradaEm: null, resultado: null, maxEscolhas: 1, tipo: 'unica' };
+  return [
+    {
+      ...base, id: 'EN-001', pergunta: 'Qual horário a academia deve abrir aos domingos?', contexto: 'Hoje a academia abre às 6h todos os dias. Alguns moradores pediram para abrir mais tarde aos domingos por causa do barulho.',
+      opcoes: [{ id: 'o1', texto: 'Às 6h, como hoje' }, { id: 'o2', texto: 'Às 7h' }, { id: 'o3', texto: 'Às 8h' }],
+      comentarios: true, criadaEm: em(-4, 18), abertaEm: em(-3, 9), encerraEm: momento(somarDias(hoje, 4), 23, 59).toISOString(), situacao: 'aberta',
+      votos: votosDe(VOTOS_ACADEMIA, em, 3, nomes),
+    },
+    {
+      ...base, id: 'EN-002', pergunta: 'Qual cor para a pintura da fachada?', contexto: 'A pintura foi aprovada na AGE. Faltava escolher a cor entre as três propostas da construtora.',
+      opcoes: [{ id: 'c1', texto: 'Cinza claro' }, { id: 'c2', texto: 'Areia' }, { id: 'c3', texto: 'Terracota' }],
+      peso: 'fracao', quorumPct: 50, criadaEm: em(-21, 18), abertaEm: em(-20, 9), encerraEm: momento(somarDias(hoje, -6), 23, 59).toISOString(), situacao: 'encerrada', encerradaEm: momento(somarDias(hoje, -6), 23, 59).toISOString(),
+      votos: Object.fromEntries(VOTOS_FACHADA.map(([unidade, opcao], n) => [unidade, { opcoes: [opcao], comentario: '', autor: nomes[unidade] || `Apto ${unidade}`, em: em(-(20 - (n % 14)), 10) }])),
+      lembretes: [{ em: em(-9, 9), unidades: 14, automatico: true }, { em: em(-6, 9), unidades: 10, automatico: true }],
+      resultado: { publicadoEm: em(-5, 10), comunicado: null, documento: DOC_RESULTADO_FACHADA },
+    },
+    {
+      ...base, id: 'EN-003', pergunta: 'Instalar bicicletário na garagem?', contexto: 'Orçamento de R$ 4.800,00 para 12 vagas no subsolo.',
+      opcoes: [{ id: 'b1', texto: 'Sim' }, { id: 'b2', texto: 'Não' }],
+      criadaEm: em(-1, 20), abertaEm: null, encerraEm: momento(somarDias(hoje, 10), 23, 59).toISOString(), situacao: 'rascunho', votos: {},
+    },
+  ];
+}
+
 // ---- src/dados.js ----
 
 const UNIDADES = Array.from({ length: 32 }, (_, i) => `${Math.floor(i / 4) + 1}0${(i % 4) + 1}`);
@@ -1743,10 +1804,12 @@ function dadosIniciais(agora = new Date()) {
   ];
 
   return comPrestacaoInicial(comInfracaoInicial(comEscalaInicial(comAcordoInicial({
-    versao: 10,
+    versao: 11,
     geradoEm: hoje,
     proximoProtocolo: 44,
     infracoes: [],
+    enquetes: enquetesIniciais(hoje, em, Object.fromEntries(pessoas.map((p) => [p.unidade, p.nome]))),
+    proximaEnquete: 4,
     proximaInfracao: 1,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
     pessoas,
@@ -1811,6 +1874,7 @@ function dadosIniciais(agora = new Date()) {
       { id: 'd6', pasta: 'AVCB', titulo: 'AVCB (auto de vistoria do Corpo de Bombeiros)', versoes: [{ versao: 1, data: '2021-11-02' }], vencimento: d(25), visibilidade: 'todos' },
       { id: 'd7', pasta: 'Apólice de seguro', titulo: 'Apólice do seguro predial', versoes: [{ versao: 1, data: '2025-12-05' }], vencimento: d(58), visibilidade: 'todos' },
       { id: 'd8', pasta: 'Laudos', titulo: 'Certificado de limpeza da caixa d’água', versoes: [{ versao: 1, data: '2026-04-05' }], vencimento: d(-3), visibilidade: 'todos' },
+      { id: DOC_RESULTADO_FACHADA, pasta: 'Enquetes', titulo: 'Resultado da enquete: Qual cor para a pintura da fachada?', versoes: [{ versao: 1, data: d(-5) }], visibilidade: 'todos' },
     ],
     encomendas: [
       { id: 'e1', unidade: UNIDADE_ANA, transportadora: 'Mercado Livre', codigo: '481203', chegadaEm: em(-1, 15), status: 'aguardando', foto: true, retiradaPor: null, retiradaEm: null, lembretes: 0, registradaPor: 'Seu José' },
@@ -2324,6 +2388,256 @@ function arquivarComJustificativa(estado, id, motivo, perfil, agora) {
   if (!texto) return erroNotif(estado, 'Informe o motivo do arquivamento');
   if (!estado.ocorrencias.some((o) => o.id === id)) return erroNotif(estado, 'Ocorrência não encontrada');
   return { estado: comEntrada(estado, id, { arquivada: true, motivoArquivamento: texto }, { em: agora.toISOString(), status: null, texto: `Arquivada: ${texto}`, autor: 'Síndico' }) };
+}
+
+// ---- src/enquetes/regras.js ----
+
+// Enquetes: situação no instante, público, apuração (simples ou por fração ideal), quórum, evolução e lembretes.
+const NOMES_SITUACAO_ENQUETE = { rascunho: 'Rascunho', aberta: 'Aberta', encerrada: 'Encerrada' };
+
+function enquetePorId(estado, id) {
+  return estado.enquetes.find((e) => e.id === id) || null;
+}
+
+function situacaoEnquete(e, agora) {
+  return e.situacao === 'aberta' && new Date(e.encerraEm) <= agora ? 'encerrada' : e.situacao;
+}
+
+function diasRestantes(e, agora) {
+  return Math.max(0, diferencaDias(isoDia(new Date(e.encerraEm)), isoDia(agora)));
+}
+
+function textoDiasRestantes(e, agora) {
+  const n = diasRestantes(e, agora);
+  if (n === 0) return 'termina hoje';
+  return n === 1 ? 'falta 1 dia' : `faltam ${n} dias`;
+}
+
+function unidadesDoPublico(estado, e) {
+  return destinatarios(estado, e.publico);
+}
+
+function faltantes(estado, e) {
+  const comApp = new Set(estado.pessoas.map((p) => p.unidade));
+  return unidadesDoPublico(estado, e).filter((u) => !e.votos[u]).map((unidade) => ({ unidade, semApp: !comApp.has(unidade) }));
+}
+
+function apuracao(estado, e) {
+  const publico = unidadesDoPublico(estado, e);
+  const votantes = publico.filter((u) => e.votos[u]);
+  const fracao = (u) => estado.financeiro.unidades[u].fracao;
+  const pesoTotal = votantes.reduce((s, u) => s + fracao(u), 0);
+  const opcoes = e.opcoes.map((o) => {
+    const quem = votantes.filter((u) => e.votos[u].opcoes.includes(o.id));
+    const peso = quem.reduce((s, u) => s + fracao(u), 0);
+    return { id: o.id, texto: o.texto, votos: quem.length, pct: votantes.length ? (quem.length / votantes.length) * 100 : 0, pesoPct: pesoTotal ? (peso / pesoTotal) * 100 : 0 };
+  });
+  const participacaoPct = publico.length ? (votantes.length / publico.length) * 100 : 0;
+  const quorumAtingido = !e.quorumPct || participacaoPct >= e.quorumPct;
+  const medida = (o) => (e.peso === 'fracao' ? Math.round(o.pesoPct * 1000) : o.votos);
+  const maior = Math.max(...opcoes.map(medida));
+  const vencedoras = votantes.length ? opcoes.filter((o) => medida(o) === maior) : [];
+  return { opcoes, participantes: votantes.length, total: publico.length, participacaoPct, quorumAtingido, semQuorum: !quorumAtingido, vencedoras };
+}
+
+function textoResultado(estado, e) {
+  const a = apuracao(estado, e);
+  if (!a.participantes) return 'Ninguém votou';
+  if (a.semQuorum) return `Sem quórum: ${Math.round(a.participacaoPct)}% de participação, mínimo de ${e.quorumPct}%`;
+  if (a.vencedoras.length > 1) return `Empate entre ${a.vencedoras.map((o) => o.texto).join(' e ')}`;
+  const v = a.vencedoras[0];
+  return `Vencedora: ${v.texto} (${Math.round(e.peso === 'fracao' ? v.pesoPct : v.pct)}%${e.peso === 'fracao' ? ' por fração ideal' : ''})`;
+}
+
+function evolucao(e, agora) {
+  if (!e.abertaEm) return [];
+  const inicio = isoDia(new Date(e.abertaEm));
+  const fim = isoDia(situacaoEnquete(e, agora) === 'encerrada' ? new Date(e.encerradaEm || e.encerraEm) : agora);
+  const dias = [];
+  for (let d = inicio; d <= fim; d = somarDias(d, 1)) dias.push(d);
+  const datas = Object.values(e.votos).map((v) => isoDia(new Date(v.em)));
+  return dias.map((dia) => ({ dia, total: datas.filter((d) => d <= dia).length }));
+}
+
+function marcosLembrete(e) {
+  const ultimo = isoDia(new Date(e.encerraEm));
+  return [somarDias(ultimo, -3), ultimo].map((d) => momento(d, 9).toISOString());
+}
+
+function proximoLembreteAuto(e, agora) {
+  if (!e.lembretesAuto || situacaoEnquete(e, agora) !== 'aberta') return null;
+  const enviados = e.lembretes.filter((l) => l.automatico).length;
+  return marcosLembrete(e).slice(enviados).find((m) => new Date(m) >= new Date(e.abertaEm)) || null;
+}
+
+function enquetesPendentes(estado, unidade, agora) {
+  return estado.enquetes.filter((e) => situacaoEnquete(e, agora) === 'aberta' && !e.votos[unidade] && unidadesDoPublico(estado, e).includes(unidade));
+}
+
+function enquetesDaUnidade(estado, unidade, agora) {
+  const visiveis = estado.enquetes.filter((e) => e.situacao !== 'rascunho' && unidadesDoPublico(estado, e).includes(unidade));
+  return {
+    pendentes: visiveis.filter((e) => situacaoEnquete(e, agora) === 'aberta' && !e.votos[unidade]),
+    respondidas: visiveis.filter((e) => situacaoEnquete(e, agora) === 'aberta' && e.votos[unidade]),
+    encerradas: visiveis.filter((e) => situacaoEnquete(e, agora) === 'encerrada'),
+  };
+}
+
+function alertasEnquetes(estado, agora) {
+  const alertas = [];
+  for (const e of estado.enquetes) {
+    const s = situacaoEnquete(e, agora);
+    if (s === 'aberta' && diasRestantes(e, agora) <= 1) {
+      const n = faltantes(estado, e).length;
+      if (n) alertas.push({ chave: `enquete-${e.id}`, href: `#sindico.enquetes.${e.id}`, texto: `Enquete "${e.pergunta}": ${textoDiasRestantes(e, agora) === 'termina hoje' ? 'termina hoje' : 'termina amanhã'}, ${n} unidades sem resposta` });
+    }
+    if (s === 'encerrada' && !e.resultado && liberado(estado.plano, 'enqueteCompleta')) alertas.push({ chave: `enquete-res-${e.id}`, href: `#sindico.enquetes.${e.id}`, texto: `Enquete encerrada: publique o resultado de "${e.pergunta}"` });
+  }
+  return alertas;
+}
+
+// ---- src/enquetes/acoes.js ----
+
+// Ações das enquetes: o síndico cria, publica, lembra, encerra, prorroga e publica o resultado; o morador vota.
+const SO_SINDICO_ENQUETE = 'Somente o síndico pode fazer isso';
+const CANAIS_ENQUETE = 'App + e-mail + WhatsApp';
+
+function erroEnquete(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function comEnquete(estado, id, mudanca) {
+  return { ...estado, enquetes: trocarItem(estado.enquetes, id, mudanca) };
+}
+
+// O que o plano não libera volta ao padrão do Básico: escolha única, sem comentário, voto secreto, sem peso nem quórum.
+function noPlano(estado, dados) {
+  const completa = liberado(estado.plano, 'enqueteCompleta');
+  const peso = liberado(estado.plano, 'enquetePeso');
+  return {
+    tipo: completa && dados.tipo === 'multipla' ? 'multipla' : 'unica',
+    maxEscolhas: completa && dados.tipo === 'multipla' ? Math.max(2, Math.min(Number(dados.maxEscolhas) || 2, dados.opcoes.length)) : 1,
+    comentarios: completa && !!dados.comentarios,
+    secreto: completa ? dados.secreto !== false : true,
+    parcialVisivel: completa && !!dados.parcialVisivel,
+    lembretesAuto: completa && dados.lembretesAuto !== false,
+    peso: peso && dados.peso === 'fracao' ? 'fracao' : 'unidade',
+    quorumPct: peso && Number(dados.quorumPct) > 0 ? Math.min(100, Math.round(Number(dados.quorumPct))) : null,
+  };
+}
+
+function salvarEnquete(estado, dados, perfil, agora) {
+  if (perfil !== 'sindico') return erroEnquete(estado, SO_SINDICO_ENQUETE);
+  if (!liberado(estado.plano, 'enquetes')) return erroEnquete(estado, 'Disponível no plano Básico');
+  const pergunta = String(dados.pergunta || '').trim();
+  if (!pergunta) return erroEnquete(estado, 'Escreva a pergunta');
+  const textos = (dados.opcoes || []).map((o) => String(o || '').trim()).filter(Boolean);
+  if (textos.length < 2) return erroEnquete(estado, 'Informe pelo menos 2 opções');
+  if (textos.length > 8) return erroEnquete(estado, 'No máximo 8 opções');
+  if (new Set(textos.map((t) => t.toLowerCase())).size !== textos.length) return erroEnquete(estado, 'Opções repetidas');
+  const dias = Number(dados.dias);
+  if (!Number.isInteger(dias) || dias < 1 || dias > 60) return erroEnquete(estado, 'Escolha uma data limite de 1 a 60 dias');
+  const publico = dados.publico || { tipo: 'todos' };
+  if (!destinatariosValidos(estado, publico)) return erroEnquete(estado, 'Escolha o público');
+  const existente = dados.id && enquetePorId(estado, dados.id);
+  if (existente && existente.situacao !== 'rascunho') return erroEnquete(estado, 'Só rascunhos podem ser editados');
+  const id = existente ? existente.id : `EN-${String(estado.proximaEnquete).padStart(3, '0')}`;
+  const enquete = {
+    id, pergunta, contexto: String(dados.contexto || '').trim(), anexo: dados.anexo || null,
+    opcoes: textos.map((texto, n) => ({ id: `${id}-o${n + 1}`, texto })),
+    publico, criadaEm: existente ? existente.criadaEm : agora.toISOString(), abertaEm: null,
+    encerraEm: momento(somarDias(isoDia(agora), dias), 23, 59).toISOString(), dias, situacao: 'rascunho', encerradaEm: null,
+    lembretes: [], prorrogada: false, votos: {}, resultado: null,
+    ...noPlano(estado, { ...dados, opcoes: textos }),
+  };
+  if (existente) return { estado: comEnquete(estado, id, enquete), id };
+  return { estado: { ...estado, enquetes: [...estado.enquetes, enquete], proximaEnquete: estado.proximaEnquete + 1 }, id };
+}
+
+function destinatariosValidos(estado, publico) {
+  if (publico.tipo === 'unidades') return (publico.valor || []).some((u) => estado.condominio.unidades.includes(u));
+  return ['todos', 'andar'].includes(publico.tipo);
+}
+
+function publicarEnquete(estado, id, perfil, agora) {
+  if (perfil !== 'sindico') return erroEnquete(estado, SO_SINDICO_ENQUETE);
+  const e = enquetePorId(estado, id);
+  if (!e || e.situacao !== 'rascunho') return erroEnquete(estado, 'Só rascunhos podem ser publicados');
+  const encerraEm = e.dias ? momento(somarDias(isoDia(agora), e.dias), 23, 59).toISOString() : e.encerraEm;
+  if (new Date(encerraEm) <= agora) return erroEnquete(estado, 'Escolha uma data limite de 1 a 60 dias');
+  const n = unidadesDoPublico(estado, e).length;
+  return {
+    estado: comEnquete(estado, id, { situacao: 'aberta', abertaEm: agora.toISOString(), encerraEm }),
+    notificacao: { canal: CANAIS_ENQUETE, para: `${n} unidades`, texto: `Nova enquete: ${e.pergunta} · responda até ${fmtDataCurta(isoDia(new Date(encerraEm)))}` },
+  };
+}
+
+function votar(estado, id, { unidade, autor, opcoes, comentario }, agora) {
+  const e = enquetePorId(estado, id);
+  if (!e || e.situacao === 'rascunho') return erroEnquete(estado, 'Enquete não encontrada');
+  if (situacaoEnquete(e, agora) !== 'aberta') return erroEnquete(estado, 'A enquete está encerrada');
+  if (!unidadesDoPublico(estado, e).includes(unidade)) return erroEnquete(estado, 'Sua unidade não faz parte do público desta enquete');
+  const escolhidas = [...new Set(opcoes || [])].filter((o) => e.opcoes.some((x) => x.id === o));
+  if (!escolhidas.length) return erroEnquete(estado, 'Escolha uma opção');
+  if (escolhidas.length > e.maxEscolhas) return erroEnquete(estado, e.maxEscolhas === 1 ? 'Escolha só uma opção' : `Escolha até ${e.maxEscolhas} opções`);
+  const trocou = !!e.votos[unidade];
+  const voto = { opcoes: escolhidas, comentario: e.comentarios ? String(comentario || '').trim() : '', autor, em: agora.toISOString() };
+  return { estado: comEnquete(estado, id, { votos: { ...e.votos, [unidade]: voto } }), trocou };
+}
+
+function enviarLembrete(estado, id, perfil, agora, automatico = false) {
+  if (perfil !== 'sindico') return erroEnquete(estado, SO_SINDICO_ENQUETE);
+  const e = enquetePorId(estado, id);
+  if (!e || situacaoEnquete(e, agora) !== 'aberta') return erroEnquete(estado, 'Só enquetes abertas recebem lembrete');
+  if (automatico && !liberado(estado.plano, 'enqueteCompleta')) return erroEnquete(estado, 'Disponível no plano Intermediário');
+  const lista = faltantes(estado, e);
+  if (!lista.length) return erroEnquete(estado, 'Todas as unidades já responderam');
+  const prazo = textoDiasRestantes(e, agora);
+  const texto = `${prazo === 'termina hoje' ? 'Hoje é o último dia' : `${prazo[0].toUpperCase()}${prazo.slice(1)}`} para a enquete "${e.pergunta}". Sua unidade ainda não votou`;
+  return {
+    estado: comEnquete(estado, id, { lembretes: [...e.lembretes, { em: agora.toISOString(), unidades: lista.length, automatico }] }),
+    notificacao: { canal: CANAIS_ENQUETE, para: `${lista.length} unidades`, texto },
+  };
+}
+
+function encerrarEnquete(estado, id, perfil, agora) {
+  if (perfil !== 'sindico') return erroEnquete(estado, SO_SINDICO_ENQUETE);
+  const e = enquetePorId(estado, id);
+  if (!e || situacaoEnquete(e, agora) !== 'aberta') return erroEnquete(estado, 'Só enquetes abertas podem ser encerradas');
+  const fim = agora.toISOString();
+  const novo = comEnquete(estado, id, { situacao: 'encerrada', encerradaEm: fim, encerraEm: fim });
+  return { estado: novo, notificacao: { canal: 'App', para: 'Síndico', texto: `Enquete encerrada · ${textoResultado(novo, enquetePorId(novo, id))}` } };
+}
+
+function prorrogarEnquete(estado, id, dias, perfil, agora) {
+  if (perfil !== 'sindico') return erroEnquete(estado, SO_SINDICO_ENQUETE);
+  const e = enquetePorId(estado, id);
+  if (!e || situacaoEnquete(e, agora) !== 'aberta') return erroEnquete(estado, 'Só enquetes abertas podem ser prorrogadas');
+  if (e.prorrogada) return erroEnquete(estado, 'Só é possível prorrogar uma vez');
+  const n = Number(dias);
+  if (!Number.isInteger(n) || n < 1 || n > 30) return erroEnquete(estado, 'Prorrogue de 1 a 30 dias');
+  const encerraEm = momento(somarDias(isoDia(new Date(e.encerraEm)), n), 23, 59).toISOString();
+  return {
+    estado: comEnquete(estado, id, { encerraEm, prorrogada: true }),
+    notificacao: { canal: CANAIS_ENQUETE, para: `${unidadesDoPublico(estado, e).length} unidades`, texto: `Enquete "${e.pergunta}" prorrogada até ${fmtDataCurta(isoDia(new Date(encerraEm)))}` },
+  };
+}
+
+function publicarResultado(estado, id, perfil, agora) {
+  if (perfil !== 'sindico') return erroEnquete(estado, SO_SINDICO_ENQUETE);
+  if (!liberado(estado.plano, 'enqueteCompleta')) return erroEnquete(estado, 'Disponível no plano Intermediário');
+  const e = enquetePorId(estado, id);
+  if (!e || situacaoEnquete(e, agora) !== 'encerrada') return erroEnquete(estado, 'Encerre a enquete antes de publicar');
+  if (e.resultado) return erroEnquete(estado, 'O resultado já foi publicado');
+  const a = apuracao(estado, e);
+  const linhas = a.opcoes.map((o) => `${o.texto}: ${Math.round(e.peso === 'fracao' ? o.pesoPct : o.pct)}%`).join('\n');
+  const texto = `${textoResultado(estado, e)}.\n\n${linhas}\n\nParticipação: ${a.participantes} de ${a.total} unidades (${Math.round(a.participacaoPct)}%).${e.peso === 'fracao' ? ' Votos ponderados pela fração ideal.' : ''}`;
+  const pub = publicarComunicado(estado, { tipo: 'geral', titulo: `Resultado da enquete: ${e.pergunta}`, texto, publico: e.publico, canais: ['push', 'email'] }, agora);
+  if (pub.erro) return erroEnquete(estado, pub.erro);
+  const docId = `d${pub.estado.documentos.reduce((m, d) => Math.max(m, Number(d.id.slice(1)) || 0), 0) + 1}`;
+  const documento = { id: docId, pasta: 'Enquetes', titulo: `Resultado da enquete: ${e.pergunta}`, versoes: [{ versao: 1, data: isoDia(agora) }], visibilidade: 'todos' };
+  const novo = comEnquete({ ...pub.estado, documentos: [...pub.estado.documentos, documento] }, id, { resultado: { publicadoEm: agora.toISOString(), comunicado: pub.id, documento: docId } });
+  return { estado: novo, notificacao: { canal: pub.notificacao.canal, para: pub.notificacao.para, texto: `Resultado publicado: ${textoResultado(estado, e)}` } };
 }
 
 // ---- src/cobranca/acoes-composicao.js ----
@@ -4330,7 +4644,7 @@ const CASOS_DADOS = [
       const e = dadosIniciais(AGORA_TESTE);
       igual(new Set(e.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, 20);
       igual(e.pessoas.filter((p) => p.naoResidente).map((p) => [p.unidade, p.nome, p.recebeOfertas, p.vendedor]), [['704', 'Vicente Moraes', false, 'nao']]);
-      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [10, 'Ana Souza']);
+      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [11, 'Ana Souza']);
     },
   },
   {
@@ -4353,10 +4667,10 @@ const CASOS_DADOS = [
     },
   },
   {
-    nome: 'dados: 5 comunicados, 7 ocorrências e 9 documentos',
+    nome: 'dados: 5 comunicados, 7 ocorrências e 10 documentos',
     rodar() {
       const e = dadosIniciais(AGORA_TESTE);
-      igual([e.comunicados.length, e.ocorrencias.length, e.documentos.length], [5, 7, 9]);
+      igual([e.comunicados.length, e.ocorrencias.length, e.documentos.length], [5, 7, 10]);
       igual(e.proximoProtocolo, 44);
     },
   },
@@ -5471,7 +5785,7 @@ const CASOS_NOTIFICACOES = [
         ['OC-0037', 'eletrica', 'alta'], ['OC-0038', 'elogio', 'baixa'], ['OC-0039', 'vazamento', 'urgente'], ['OC-0040', 'elevador', 'alta'],
         ['OC-0041', 'barulho', 'normal'], ['OC-0042', 'vaga', 'normal'], ['OC-0043', 'obra', 'normal'],
       ]);
-      igual([e.proximoProtocolo, e.versao], [44, 10]);
+      igual([e.proximoProtocolo, e.versao], [44, 11]);
     },
   },
   {
@@ -5756,7 +6070,7 @@ const CASOS_ESCALA = [
     rodar() {
       const e = dadosIniciais(AGORA_FASE2);
       const m = e.escala.meses['2026-10'];
-      igual([m.situacao, e.versao, e.escala.meses['2026-11']], ['publicada', 10, undefined]);
+      igual([m.situacao, e.versao, e.escala.meses['2026-11']], ['publicada', 11, undefined]);
       const at = m.turnos.find((x) => x.id === 'T-2026-10-20-guarita-07');
       igual([at.porteiro, at.motivoDescoberto, at.porteiroOriginal, at.anexo], [null, 'atestado', 'claudia', 'atestado-claudia.pdf']);
       igual(e.escala.trocas.map((x) => [x.id, x.turno, x.de, x.para, x.situacao]), [['TR-001', 'T-2026-10-22-portaria-07', 'marcos', 'paulo', 'aceita']]);
@@ -6101,9 +6415,9 @@ const CASOS_ORCAMENTO = [
       igual(gerarDocumentoPrevisao(e, 'PO-009', 'sindico', AGORA_FASE2).erro, 'Salve a previsão antes de gerar o documento');
       const r = gerarDocumentoPrevisao(e, 'PO-001', 'sindico', AGORA_FASE2);
       const doc = r.estado.documentos.find((d) => d.id === r.id);
-      igual([r.id, doc.pasta, doc.titulo, doc.visibilidade, previsaoDe(r.estado, 'PO-001').documento], ['d10', 'Previsão orçamentária', 'Previsão orçamentária 2027 · Proposta do síndico', 'todos', 'd10']);
+      igual([r.id, doc.pasta, doc.titulo, doc.visibilidade, previsaoDe(r.estado, 'PO-001').documento], ['d11', 'Previsão orçamentária', 'Previsão orçamentária 2027 · Proposta do síndico', 'todos', 'd11']);
       const r2 = gerarDocumentoPrevisao(r.estado, 'PO-001', 'sindico', AGORA_FASE2);
-      igual([r2.versao, r2.estado.documentos.length, r2.estado.documentos.find((d) => d.id === 'd10').versoes.length], [2, e.documentos.length + 1, 2]);
+      igual([r2.versao, r2.estado.documentos.length, r2.estado.documentos.find((d) => d.id === 'd11').versoes.length], [2, e.documentos.length + 1, 2]);
     },
   },
 ];
@@ -6267,6 +6581,116 @@ const CASOS_FINANCEIRO = [
   },
 ];
 
+// ---- src/casos/enquetes.js ----
+
+const NOVA = { pergunta: 'Quais melhorias no salão de festas?', opcoes: ['Ar-condicionado', 'Som ambiente', 'Novas cadeiras'], dias: 7, publico: { tipo: 'todos' }, tipo: 'multipla', maxEscolhas: 2, comentarios: true, secreto: false };
+const DEPOIS = new Date(2026, 9, 24, 9, 0);
+
+function votoAna(estado, id, opcoes, extra = {}) {
+  return votar(estado, id, { unidade: '302', autor: 'Ana Souza', opcoes, ...extra }, AGORA_FASE2);
+}
+
+const CASOS_ENQUETES = [
+  {
+    nome: 'enquetes: semente com aberta, encerrada e rascunho',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const en1 = enquetePorId(e, 'EN-001');
+      igual(e.enquetes.map((x) => situacaoEnquete(x, AGORA_FASE2)), ['aberta', 'encerrada', 'rascunho']);
+      igual([diasRestantes(en1, AGORA_FASE2), faltantes(e, en1).length, faltantes(e, en1).some((f) => f.unidade === '302')], [4, 18, true]);
+      const a1 = apuracao(e, en1);
+      igual([a1.participantes, a1.opcoes.map((o) => o.votos), textoResultado(e, en1)], [14, [4, 7, 3], 'Vencedora: Às 7h (50%)']);
+      igual(textoResultado(e, enquetePorId(e, 'EN-002')), 'Vencedora: Cinza claro (55% por fração ideal)');
+      igual(apuracao(e, enquetePorId(e, 'EN-002')).quorumAtingido, true);
+      igual([enquetesPendentes(e, '302', AGORA_FASE2).map((x) => x.id), enquetesPendentes(e, '104', AGORA_FASE2).length], [['EN-001'], 0]);
+      igual(enquetesDaUnidade(e, '302', AGORA_FASE2).encerradas.map((x) => x.id), ['EN-002']);
+      const ev = evolucao(en1, AGORA_FASE2);
+      igual([ev[0].dia, ev.at(-1).dia, ev.at(-1).total], ['2026-10-16', '2026-10-19', 14]);
+      igual(proximoLembreteAuto(en1, AGORA_FASE2), new Date(2026, 9, 20, 9, 0).toISOString());
+      igual(alertasEnquetes(e, AGORA_FASE2), []);
+      igual(alertasEnquetes(e, new Date(2026, 9, 22, 10, 0)).map((a) => a.texto), ['Enquete "Qual horário a academia deve abrir aos domingos?": termina amanhã, 18 unidades sem resposta']);
+    },
+  },
+  {
+    nome: 'enquetes: criar, validar e publicar',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(salvarEnquete(e, { ...NOVA, pergunta: ' ' }, 'sindico', AGORA_FASE2).erro, 'Escreva a pergunta');
+      igual(salvarEnquete(e, { ...NOVA, opcoes: ['Sim'] }, 'sindico', AGORA_FASE2).erro, 'Informe pelo menos 2 opções');
+      igual(salvarEnquete(e, { ...NOVA, opcoes: ['Sim', 'sim'] }, 'sindico', AGORA_FASE2).erro, 'Opções repetidas');
+      igual(salvarEnquete(e, { ...NOVA, dias: 61 }, 'sindico', AGORA_FASE2).erro, 'Escolha uma data limite de 1 a 60 dias');
+      igual(salvarEnquete(e, NOVA, 'morador', AGORA_FASE2).erro, 'Somente o síndico pode fazer isso');
+      const r = salvarEnquete(e, NOVA, 'sindico', AGORA_FASE2);
+      const en = enquetePorId(r.estado, r.id);
+      igual([r.id, en.situacao, en.tipo, en.maxEscolhas, en.secreto, en.peso], ['EN-004', 'rascunho', 'multipla', 2, false, 'unidade']);
+      const basico = enquetePorId(salvarEnquete(trocarPlano(e, 'basico').estado, NOVA, 'sindico', AGORA_FASE2).estado, 'EN-004');
+      igual([basico.tipo, basico.comentarios, basico.secreto, basico.lembretesAuto], ['unica', false, true, false]);
+      const p = publicarEnquete(r.estado, r.id, 'sindico', AGORA_FASE2);
+      igual([enquetePorId(p.estado, r.id).situacao, p.notificacao.para, p.notificacao.texto], ['aberta', '32 unidades', 'Nova enquete: Quais melhorias no salão de festas? · responda até 26/10/2026']);
+      igual(publicarEnquete(p.estado, r.id, 'sindico', AGORA_FASE2).erro, 'Só rascunhos podem ser publicados');
+      const andar = publicarEnquete(salvarEnquete(e, { ...NOVA, publico: { tipo: 'andar', valor: '3' } }, 'sindico', AGORA_FASE2).estado, 'EN-004', 'sindico', AGORA_FASE2);
+      igual(andar.notificacao.para, '4 unidades');
+    },
+  },
+  {
+    nome: 'enquetes: voto por unidade, troca, limite e prazo',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(votoAna(e, 'EN-001', []).erro, 'Escolha uma opção');
+      igual(votoAna(e, 'EN-001', ['o1', 'o2']).erro, 'Escolha só uma opção');
+      const v = votoAna(e, 'EN-001', ['o3'], { comentario: 'Mais tarde é melhor' });
+      igual([enquetesPendentes(v.estado, '302', AGORA_FASE2).length, apuracao(v.estado, enquetePorId(v.estado, 'EN-001')).participantes, v.trocou], [0, 15, false]);
+      const t = votoAna(v.estado, 'EN-001', ['o2']);
+      igual([t.trocou, enquetePorId(t.estado, 'EN-001').votos['302'].opcoes, apuracao(t.estado, enquetePorId(t.estado, 'EN-001')).participantes], [true, ['o2'], 15]);
+      igual(votar(e, 'EN-001', { unidade: '302', autor: 'Ana', opcoes: ['o1'] }, new Date(2026, 9, 24, 1, 0)).erro, 'A enquete está encerrada');
+      igual(votoAna(e, 'EN-003', ['b1']).erro, 'Enquete não encontrada');
+      const andar = publicarEnquete(salvarEnquete(e, { ...NOVA, publico: { tipo: 'andar', valor: '1' } }, 'sindico', AGORA_FASE2).estado, 'EN-004', 'sindico', AGORA_FASE2).estado;
+      igual(votoAna(andar, 'EN-004', ['EN-004-o1']).erro, 'Sua unidade não faz parte do público desta enquete');
+      const multi = publicarEnquete(salvarEnquete(e, NOVA, 'sindico', AGORA_FASE2).estado, 'EN-004', 'sindico', AGORA_FASE2).estado;
+      igual(votoAna(multi, 'EN-004', ['EN-004-o1', 'EN-004-o2', 'EN-004-o3']).erro, 'Escolha até 2 opções');
+      igual(enquetePorId(votoAna(multi, 'EN-004', ['EN-004-o1', 'EN-004-o3'], { comentario: 'Urgente o ar' }).estado, 'EN-004').votos['302'].comentario, 'Urgente o ar');
+    },
+  },
+  {
+    nome: 'enquetes: lembrete, prorrogação, encerramento e resultado',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const l = enviarLembrete(e, 'EN-001', 'sindico', AGORA_FASE2);
+      igual([l.notificacao.para, l.notificacao.texto], ['18 unidades', 'Faltam 4 dias para a enquete "Qual horário a academia deve abrir aos domingos?". Sua unidade ainda não votou']);
+      igual(enviarLembrete(e, 'EN-001', 'sindico', new Date(2026, 9, 23, 9, 0)).notificacao.texto.startsWith('Hoje é o último dia'), true);
+      igual(enviarLembrete(trocarPlano(e, 'basico').estado, 'EN-001', 'sindico', AGORA_FASE2, true).erro, 'Disponível no plano Intermediário');
+      const auto = enviarLembrete(e, 'EN-001', 'sindico', AGORA_FASE2, true).estado;
+      igual(proximoLembreteAuto(enquetePorId(auto, 'EN-001'), AGORA_FASE2), new Date(2026, 9, 23, 9, 0).toISOString());
+      const p = prorrogarEnquete(e, 'EN-001', 3, 'sindico', AGORA_FASE2);
+      igual([diasRestantes(enquetePorId(p.estado, 'EN-001'), AGORA_FASE2), prorrogarEnquete(p.estado, 'EN-001', 2, 'sindico', AGORA_FASE2).erro], [7, 'Só é possível prorrogar uma vez']);
+      igual(situacaoEnquete(enquetePorId(e, 'EN-001'), DEPOIS), 'encerrada');
+      igual(alertasEnquetes(e, DEPOIS).map((a) => a.texto), ['Enquete encerrada: publique o resultado de "Qual horário a academia deve abrir aos domingos?"']);
+      igual(publicarResultado(e, 'EN-001', 'sindico', AGORA_FASE2).erro, 'Encerre a enquete antes de publicar');
+      const fim = encerrarEnquete(e, 'EN-001', 'sindico', AGORA_FASE2);
+      igual([situacaoEnquete(enquetePorId(fim.estado, 'EN-001'), AGORA_FASE2), fim.notificacao.texto], ['encerrada', 'Enquete encerrada · Vencedora: Às 7h (50%)']);
+      igual(votoAna(fim.estado, 'EN-001', ['o1']).erro, 'A enquete está encerrada');
+      const res = publicarResultado(fim.estado, 'EN-001', 'sindico', AGORA_FASE2);
+      const com = res.estado.comunicados.at(-1);
+      const doc = res.estado.documentos.at(-1);
+      igual([com.titulo, doc.pasta, doc.visibilidade, com.texto.includes('302') || com.texto.includes('Apto')], ['Resultado da enquete: Qual horário a academia deve abrir aos domingos?', 'Enquetes', 'todos', false]);
+      igual(publicarResultado(res.estado, 'EN-001', 'sindico', AGORA_FASE2).erro, 'O resultado já foi publicado');
+      igual(publicarResultado(trocarPlano(fim.estado, 'basico').estado, 'EN-001', 'sindico', AGORA_FASE2).erro, 'Disponível no plano Intermediário');
+    },
+  },
+  {
+    nome: 'enquetes: empate e sem quórum',
+    rodar() {
+      const e = trocarPlano(dadosIniciais(AGORA_FASE2), 'avancado').estado;
+      let s = publicarEnquete(salvarEnquete(e, { ...NOVA, tipo: 'unica', opcoes: ['Sim', 'Não'], quorumPct: 50 }, 'sindico', AGORA_FASE2).estado, 'EN-004', 'sindico', AGORA_FASE2).estado;
+      s = votar(s, 'EN-004', { unidade: '101', autor: 'Carla', opcoes: ['EN-004-o1'] }, AGORA_FASE2).estado;
+      s = votar(s, 'EN-004', { unidade: '102', autor: 'Paulo', opcoes: ['EN-004-o2'] }, AGORA_FASE2).estado;
+      const en = enquetePorId(s, 'EN-004');
+      igual([apuracao(s, en).vencedoras.length, textoResultado(s, en)], [2, 'Sem quórum: 6% de participação, mínimo de 50%']);
+      igual(textoResultado(s, { ...en, quorumPct: null }), 'Empate entre Sim e Não');
+    },
+  },
+];
+
 // ---- src/armazenamento.js ----
 const CHAVE_ESTADO = 'condofacil-demo-v1';
 
@@ -6275,7 +6699,7 @@ function carregarEstado() {
     const texto = localStorage.getItem(CHAVE_ESTADO);
     if (!texto) return null;
     const estado = JSON.parse(texto);
-    return estado && estado.versao === 10 ? estado : null;
+    return estado && estado.versao === 11 ? estado : null;
   } catch {
     return null;
   }
@@ -6373,6 +6797,7 @@ const ICONES = {
   etiqueta: 'M3 12V4h8l10 10-8 8zM7.5 7.5h.01',
   pessoa: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
   ferramenta: 'M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.6 2.6-2.4-.6-.6-2.4z',
+  enquete: 'M4 5h16v14H4zM8 9h1M11 9h5M8 13h1M11 13h5M8 17h1M11 17h3',
   cifrao: 'M12 3v18M17 7H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H6',
 };
 
@@ -7969,6 +8394,311 @@ function CDocumentos({ estado }) {
   </section>`;
 }
 
+// ---- src/ui/enquetes.js ----
+
+// Enquetes do síndico: lista, formulário com prévia e painel de acompanhamento.
+const ETQ_SITUACAO_ENQUETE = { rascunho: 'neutro', aberta: 'info', encerrada: 'ok' };
+
+function pctTexto(v) {
+  return `${Math.round(v)}%`;
+}
+
+function EtqEnquete({ e, agora }) {
+  const s = situacaoEnquete(e, agora);
+  return html`<${Etiqueta} tipo=${ETQ_SITUACAO_ENQUETE[s]}>${NOMES_SITUACAO_ENQUETE[s]}<//>`;
+}
+
+function BarrasOpcoes({ estado, e }) {
+  const a = apuracao(estado, e);
+  const ponderado = e.peso === 'fracao';
+  const ordem = [...a.opcoes].sort((x, y) => (ponderado ? y.pesoPct - x.pesoPct : y.votos - x.votos));
+  return html`<ul class="barras-enquete">${ordem.map((o) => html`<li key=${o.id}>
+    <div class="linha-entre"><span>${o.texto}</span><strong>${ponderado ? pctTexto(o.pesoPct) : pctTexto(o.pct)}</strong></div>
+    <span class="barra-enquete"><span style=${`width:${Math.max(1, ponderado ? o.pesoPct : o.pct)}%`}></span></span>
+    <small class="sub">${o.votos} ${o.votos === 1 ? 'voto' : 'votos'}${ponderado ? ` · ${pctTexto(o.pct)} das unidades` : ''}</small>
+  </li>`)}</ul>`;
+}
+
+function SEnquetes(props) {
+  const { estado, rota, agora } = props;
+  if (rota.id === 'nova') return html`<${FormEnquete} ...${props} />`;
+  const e = rota.id ? enquetePorId(estado, rota.id) : null;
+  if (e && e.situacao === 'rascunho') return html`<${FormEnquete} key=${e.id} ...${props} rascunho=${e} />`;
+  if (e) return html`<${PainelEnquete} key=${e.id} ...${props} e=${e} />`;
+  const ordem = { aberta: 0, rascunho: 1, encerrada: 2 };
+  const lista = [...estado.enquetes].sort((a, b) => ordem[situacaoEnquete(a, agora)] - ordem[situacaoEnquete(b, agora)] || (b.abertaEm || b.criadaEm).localeCompare(a.abertaEm || a.criadaEm));
+  return html`<section class="pilha">
+    <div class="linha-entre"><h1>Enquetes</h1><a class="btn primario" href="#sindico.enquetes.nova">Nova enquete</a></div>
+    <p class="sub">Decisões simples sem assembleia: o morador responde pelo app e você acompanha a participação.</p>
+    ${lista.length
+      ? html`<div class="tabela-rolagem"><table class="tabela">
+          <thead><tr><th>Pergunta</th><th>Situação</th><th>Participação</th><th>Prazo</th></tr></thead>
+          <tbody>${lista.map((x) => {
+            const s = situacaoEnquete(x, agora);
+            const a = apuracao(estado, x);
+            return html`<tr key=${x.id} class="clicavel" onClick=${() => ir('sindico', 'enquetes', x.id)}>
+              <td><a href=${`#sindico.enquetes.${x.id}`}>${x.pergunta}</a><br /><small class="sub">${x.id}</small></td>
+              <td><${EtqEnquete} e=${x} agora=${agora} /></td>
+              <td>${s === 'rascunho' ? '—' : `${a.participantes} de ${a.total} (${pctTexto(a.participacaoPct)})`}</td>
+              <td>${s === 'aberta' ? textoDiasRestantes(x, agora) : s === 'encerrada' ? textoResultado(estado, x) : 'Não publicada'}</td>
+            </tr>`;
+          })}</tbody>
+        </table></div>`
+      : html`<${Vazio} texto="Nenhuma enquete ainda." />`}
+  </section>`;
+}
+
+function FormEnquete({ estado, executar, agora, rascunho }) {
+  const completa = liberado(estado.plano, 'enqueteCompleta');
+  const comPeso = liberado(estado.plano, 'enquetePeso');
+  const inicial = rascunho
+    ? { pergunta: rascunho.pergunta, contexto: rascunho.contexto, opcoes: rascunho.opcoes.map((o) => o.texto), dias: String(rascunho.dias || 7), publicoTipo: rascunho.publico.tipo, andar: rascunho.publico.tipo === 'andar' ? rascunho.publico.valor : '1', unidades: rascunho.publico.tipo === 'unidades' ? rascunho.publico.valor.join(', ') : '', tipo: rascunho.tipo, maxEscolhas: String(rascunho.maxEscolhas), comentarios: rascunho.comentarios, secreto: rascunho.secreto, parcialVisivel: rascunho.parcialVisivel, lembretesAuto: rascunho.lembretesAuto, peso: rascunho.peso, quorumPct: rascunho.quorumPct ? String(rascunho.quorumPct) : '' }
+    : { pergunta: '', contexto: '', opcoes: ['', ''], dias: '7', publicoTipo: 'todos', andar: '1', unidades: '', tipo: 'unica', maxEscolhas: '2', comentarios: false, secreto: true, parcialVisivel: false, lembretesAuto: true, peso: 'unidade', quorumPct: '' };
+  const [form, setForm] = useState(inicial);
+  const [erro, setErro] = useState(null);
+  const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value });
+  const mudarOpcao = (n, valor) => setForm({ ...form, opcoes: form.opcoes.map((o, i) => (i === n ? valor : o)) });
+  const mover = (n, passo) => {
+    const lista = [...form.opcoes];
+    [lista[n], lista[n + passo]] = [lista[n + passo], lista[n]];
+    setForm({ ...form, opcoes: lista });
+  };
+  const publico = form.publicoTipo === 'andar' ? { tipo: 'andar', valor: form.andar } : form.publicoTipo === 'unidades' ? { tipo: 'unidades', valor: form.unidades.split(/[\s,;]+/).filter(Boolean) } : { tipo: 'todos' };
+  const dados = { id: rascunho ? rascunho.id : null, pergunta: form.pergunta, contexto: form.contexto, opcoes: form.opcoes, dias: Number(form.dias), publico, tipo: form.tipo, maxEscolhas: Number(form.maxEscolhas), comentarios: form.comentarios, secreto: form.secreto, parcialVisivel: form.parcialVisivel, lembretesAuto: form.lembretesAuto, peso: form.peso, quorumPct: form.quorumPct };
+  const dataLimite = Number(form.dias) >= 1 ? fmtDataCurta(somarDias(isoDia(agora), Number(form.dias))) : '—';
+  const preenchidas = form.opcoes.filter((o) => o.trim());
+
+  function salvar(publicar) {
+    const r = executar((e) => {
+      const s = salvarEnquete(e, dados, 'sindico', new Date());
+      return s.erro || !publicar ? s : { ...publicarEnquete(s.estado, s.id, 'sindico', new Date()), id: s.id };
+    });
+    setErro(r.erro || null);
+    if (!r.erro) ir('sindico', 'enquetes', publicar ? r.id : '');
+  }
+
+  return html`<section class="pilha">
+    <a class="voltar" href="#sindico.enquetes">‹ Enquetes</a>
+    <h1>${rascunho ? `Rascunho ${rascunho.id}` : 'Nova enquete'}</h1>
+    <div class="grade-enquete">
+      <div class="pilha formulario">
+        <${Campo} rotulo="Pergunta"><input id="enquete-pergunta" value=${form.pergunta} onInput=${campo('pergunta')} placeholder="Ex.: Qual horário a academia deve abrir aos domingos?" /><//>
+        <${Campo} rotulo="Contexto" dica="Opcional. Explique o motivo da enquete."><textarea id="enquete-contexto" rows="2" value=${form.contexto} onInput=${campo('contexto')}></textarea><//>
+        <fieldset><legend>Respostas</legend>
+          ${form.opcoes.map((o, n) => html`<div key=${n} class="opcao-enquete">
+            <input aria-label=${`Opção ${n + 1}`} value=${o} onInput=${(ev) => mudarOpcao(n, ev.target.value)} placeholder=${`Opção ${n + 1}`} />
+            <button type="button" class="btn-link" aria-label="Subir" disabled=${n === 0} onClick=${() => mover(n, -1)}>↑</button>
+            <button type="button" class="btn-link" aria-label="Descer" disabled=${n === form.opcoes.length - 1} onClick=${() => mover(n, 1)}>↓</button>
+            ${form.opcoes.length > 2 && html`<button type="button" class="btn-link" onClick=${() => setForm({ ...form, opcoes: form.opcoes.filter((_, i) => i !== n) })}>Remover</button>`}
+          </div>`)}
+          ${form.opcoes.length < 8 && html`<button type="button" class="btn secundario" data-acao="adicionar-opcao" onClick=${() => setForm({ ...form, opcoes: [...form.opcoes, ''] })}>Adicionar opção</button>`}
+        </fieldset>
+        <div class="edicao-anuncio">
+          <${Campo} rotulo="Prazo (dias)" dica=${`Encerra em ${dataLimite}, às 23h59`}><input id="enquete-dias" type="number" min="1" max="60" value=${form.dias} onInput=${campo('dias')} /><//>
+          <${Campo} rotulo="Público"><select id="enquete-publico" value=${form.publicoTipo} onChange=${campo('publicoTipo')}><option value="todos">Todos os moradores</option><option value="andar">Um andar</option><option value="unidades">Unidades escolhidas</option></select><//>
+          ${form.publicoTipo === 'andar' && html`<${Campo} rotulo="Andar"><select id="enquete-andar" value=${form.andar} onChange=${campo('andar')}>${['1', '2', '3', '4', '5', '6', '7', '8'].map((a) => html`<option key=${a} value=${a}>${a}º andar</option>`)}</select><//>`}
+          ${form.publicoTipo === 'unidades' && html`<${Campo} rotulo="Unidades" dica="Separe por vírgula"><input id="enquete-unidades" value=${form.unidades} onInput=${campo('unidades')} placeholder="Ex.: 301, 302" /><//>`}
+        </div>
+        ${completa
+          ? html`<div class="edicao-anuncio">
+              <${Campo} rotulo="Tipo de resposta"><select id="enquete-tipo" value=${form.tipo} onChange=${campo('tipo')}><option value="unica">Escolha única</option><option value="multipla">Múltipla escolha</option></select><//>
+              ${form.tipo === 'multipla' && html`<${Campo} rotulo="Até quantas opções"><input id="enquete-max" type="number" min="2" max=${Math.max(2, preenchidas.length)} value=${form.maxEscolhas} onInput=${campo('maxEscolhas')} /><//>`}
+            </div>
+            <label class="check"><input id="enquete-comentarios" type="checkbox" checked=${form.comentarios} onChange=${campo('comentarios')} /><span>Permitir comentário junto com o voto</span></label>
+            <label class="check"><input id="enquete-secreto" type="checkbox" checked=${form.secreto} onChange=${campo('secreto')} /><span>Voto secreto (você vê só os totais e quem já respondeu)</span></label>
+            <label class="check"><input id="enquete-parcial" type="checkbox" checked=${form.parcialVisivel} onChange=${campo('parcialVisivel')} /><span>Mostrar a parcial aos moradores durante a votação</span></label>
+            <label class="check"><input id="enquete-lembretes" type="checkbox" checked=${form.lembretesAuto} onChange=${campo('lembretesAuto')} /><span>Lembretes automáticos 3 dias antes e no último dia</span></label>`
+          : html`<${Bloqueado} estado=${estado} recurso="enqueteCompleta" titulo="Múltipla escolha, comentário, voto aberto, lembretes automáticos e resultado publicado" />`}
+        ${comPeso
+          ? html`<div class="edicao-anuncio">
+              <${Campo} rotulo="Peso do voto"><select id="enquete-peso" value=${form.peso} onChange=${campo('peso')}><option value="unidade">1 voto por unidade</option><option value="fracao">Peso por fração ideal</option></select><//>
+              <${Campo} rotulo="Quórum mínimo (%)" dica="Opcional. Abaixo dele, o resultado sai como Sem quórum."><input id="enquete-quorum" inputmode="numeric" value=${form.quorumPct} onInput=${campo('quorumPct')} placeholder="Ex.: 50" /><//>
+            </div>`
+          : html`<${Bloqueado} estado=${estado} recurso="enquetePeso" titulo="Peso por fração ideal e quórum mínimo" />`}
+        <${Erro} texto=${erro} />
+        <div class="acoes">
+          <button type="button" class="btn primario" data-acao="publicar-enquete" onClick=${() => salvar(true)}>Publicar enquete</button>
+          <button type="button" class="btn secundario" data-acao="salvar-rascunho" onClick=${() => salvar(false)}>Salvar rascunho</button>
+        </div>
+      </div>
+      <aside class="cartao pilha previa-enquete" aria-label="Prévia para o morador">
+        <small class="sub">Prévia: como o morador vê</small>
+        <strong>${form.pergunta || 'Sua pergunta aparece aqui'}</strong>
+        ${form.contexto && html`<span class="sub">${form.contexto}</span>`}
+        ${(preenchidas.length ? preenchidas : ['Opção 1', 'Opção 2']).map((o, n) => html`<label key=${n} class="check"><input type=${completa && form.tipo === 'multipla' ? 'checkbox' : 'radio'} disabled /><span>${o}</span></label>`)}
+        ${completa && form.tipo === 'multipla' && html`<small class="sub">Escolha até ${form.maxEscolhas} opções</small>`}
+        <small class="sub">Responda até ${dataLimite}, 23h59${completa && !form.secreto ? ' · voto aberto ao síndico' : ' · voto secreto'}</small>
+      </aside>
+    </div>
+  </section>`;
+}
+
+// Uma série (respostas acumuladas): título com a conclusão, quórum tracejado, rótulo no último ponto e tabela equivalente.
+function GraficoEvolucao({ estado, e, agora }) {
+  const pontos = evolucao(e, agora);
+  const total = unidadesDoPublico(estado, e).length;
+  if (pontos.length < 1) return null;
+  const L = 900;
+  const A = 200;
+  const m = { esq: 36, dir: 16, topo: 12, base: 24 };
+  const x = (i) => m.esq + (pontos.length === 1 ? 0 : (i / (pontos.length - 1)) * (L - m.esq - m.dir));
+  const y = (v) => m.topo + (1 - v / total) * (A - m.topo - m.base);
+  const quorum = e.quorumPct ? Math.ceil((e.quorumPct / 100) * total) : null;
+  const ultimo = pontos.at(-1);
+  return html`<div class="grafico-evolucao">
+    <svg viewBox=${`0 0 ${L} ${A}`} role="img" aria-label=${`Respostas acumuladas: ${ultimo.total} de ${total}`}>
+      ${[0, 0.5, 1].map((f) => html`<g key=${f}><line class="grade" x1=${m.esq} x2=${L - m.dir} y1=${y(total * f)} y2=${y(total * f)} /><text class="eixo" x=${m.esq - 6} y=${y(total * f) + 4} text-anchor="end">${Math.round(total * f)}</text></g>`)}
+      ${quorum && html`<g><line class="reserva" x1=${m.esq} x2=${L - m.dir} y1=${y(quorum)} y2=${y(quorum)} /><text class="rotulo-reserva" x=${m.esq + 4} y=${y(quorum) - 5}>Quórum ${quorum} unidades</text></g>`}
+      <path class="linha-saldo" d=${pontos.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.total).toFixed(1)}`).join(' ')} />
+      ${pontos.map((p, i) => html`<circle key=${p.dia} class="ponto-foco" cx=${x(i)} cy=${y(p.total)} r="4"><title>${fmtDataCurta(p.dia)}: ${p.total} respostas</title></circle>`)}
+      <text class="rotulo-minimo" x=${x(pontos.length - 1)} y=${y(ultimo.total) - 10} text-anchor="end">${ultimo.total} respostas</text>
+      ${[pontos[0], ultimo].filter((p, i, l) => l.indexOf(p) === i).map((p) => html`<text key=${`x-${p.dia}`} class="eixo" x=${x(pontos.indexOf(p))} y=${A - 6} text-anchor=${p === pontos[0] ? 'start' : 'end'}>${fmtDataCurta(p.dia).slice(0, 5)}</text>`)}
+    </svg>
+    <table class="so-leitor"><caption>Respostas acumuladas por dia</caption><tbody>${pontos.map((p) => html`<tr key=${p.dia}><td>${fmtDataCurta(p.dia)}</td><td>${p.total}</td></tr>`)}</tbody></table>
+  </div>`;
+}
+
+function PainelEnquete({ estado, executar, agora, e }) {
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const [confirmando, setConfirmando] = useState(false);
+  const [dias, setDias] = useState('3');
+  const completa = liberado(estado.plano, 'enqueteCompleta');
+  const s = situacaoEnquete(e, agora);
+  const a = apuracao(estado, e);
+  const lista = faltantes(estado, e);
+  const proximo = proximoLembreteAuto(e, agora);
+  const comentarios = Object.entries(e.votos).filter(([, v]) => v.comentario);
+  const rodar = (acao, sucesso) => { const r = executar(acao); setErro(r.erro || null); setMensagem(r.erro ? null : sucesso); return r; };
+  const nomeOpcao = (id) => (e.opcoes.find((o) => o.id === id) || { texto: id }).texto;
+  return html`<section class="pilha">
+    <a class="voltar" href="#sindico.enquetes">‹ Enquetes</a>
+    <div class="linha-entre"><h1>${e.pergunta}</h1><${EtqEnquete} e=${e} agora=${agora} /></div>
+    <p class="sub">${e.id} · ${e.tipo === 'multipla' ? `múltipla escolha (até ${e.maxEscolhas})` : 'escolha única'} · ${e.secreto ? 'voto secreto' : 'voto aberto'}${e.peso === 'fracao' ? ' · peso por fração ideal' : ''}${e.quorumPct ? ` · quórum de ${e.quorumPct}%` : ''}</p>
+    ${e.contexto && html`<p class="texto-longo">${e.contexto}</p>`}
+    <div class="indicadores">
+      <div class="indicador ind-info"><span class="ind-rotulo">Participação</span><strong>${a.participantes} de ${a.total}</strong><small>${pctTexto(a.participacaoPct)} das unidades</small></div>
+      <div class=${`indicador ${s === 'aberta' && textoDiasRestantes(e, agora) === 'termina hoje' ? 'ind-alerta' : 'ind-info'}`}><span class="ind-rotulo">Prazo</span><strong>${s === 'aberta' ? textoDiasRestantes(e, agora) : 'encerrada'}</strong><small>${fmtDataHora(e.encerraEm)}${e.prorrogada ? ' · prorrogada' : ''}</small></div>
+      ${e.quorumPct && html`<div class=${`indicador ${a.quorumAtingido ? 'ind-ok' : 'ind-alerta'}`}><span class="ind-rotulo">Quórum de ${e.quorumPct}%</span><strong>${a.quorumAtingido ? 'Atingido' : `Faltam ${Math.ceil((e.quorumPct / 100) * a.total) - a.participantes}`}</strong><small>${a.quorumAtingido ? 'O resultado vale' : 'unidades para valer'}</small></div>`}
+    </div>
+    <div class="barra" role="progressbar" aria-label="Participação" aria-valuenow=${Math.round(a.participacaoPct)} aria-valuemin="0" aria-valuemax="100"><span style=${`width:${a.participacaoPct}%`}></span></div>
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${mensagem} />
+    ${s === 'aberta' && html`<div class="cartao pilha">
+      <strong>Lembretes</strong>
+      <div class="acoes">
+        <button type="button" class="btn primario" data-acao="enviar-lembrete" onClick=${() => rodar((x) => enviarLembrete(x, e.id, 'sindico', new Date()), `Lembrete enviado a ${lista.length} unidades.`)}>Enviar lembrete agora</button>
+        ${completa && proximo && html`<button type="button" class="btn secundario" data-acao="lembrete-automatico" onClick=${() => rodar((x) => enviarLembrete(x, e.id, 'sindico', new Date(), true), 'Lembrete automático enviado.')}>Simular lembrete automático</button>`}
+      </div>
+      <small class="sub">${completa ? (proximo ? `Próximo lembrete automático em ${fmtDataHora(proximo)}` : e.lembretesAuto ? 'Lembretes automáticos já enviados' : 'Lembretes automáticos desligados') : 'Lembretes automáticos: plano Intermediário'}</small>
+      ${e.lembretes.length > 0 && html`<ul class="auditoria">${e.lembretes.map((l, n) => html`<li key=${n}><span class="lt-quando">${fmtDataHora(l.em)}</span> ${l.automatico ? 'Automático' : 'Manual'} · ${l.unidades} unidades</li>`)}</ul>`}
+    </div>`}
+    <h2>Evolução das respostas</h2>
+    <${GraficoEvolucao} estado=${estado} e=${e} agora=${agora} />
+    <h2>${s === 'encerrada' ? `Resultado · ${textoResultado(estado, e)}` : 'Votos por opção'}</h2>
+    <${BarrasOpcoes} estado=${estado} e=${e} />
+    ${!e.secreto && Object.keys(e.votos).length > 0 && html`<details class="composicao"><summary>Voto de cada unidade (voto aberto)</summary>
+      <div class="tabela-rolagem"><table class="tabela"><thead><tr><th>Unidade</th><th>Resposta</th><th>Quando</th></tr></thead>
+        <tbody>${Object.entries(e.votos).sort(([x], [y]) => x.localeCompare(y)).map(([u, v]) => html`<tr key=${u}><td>${u}</td><td>${v.opcoes.map(nomeOpcao).join(', ')}</td><td>${fmtDataHora(v.em)}</td></tr>`)}</tbody></table></div>
+    </details>`}
+    ${comentarios.length > 0 && html`<h2>Comentários</h2><ul class="m-lista">${comentarios.map(([u, v]) => html`<li key=${u} class="cartao"><span>${v.comentario}</span><small class="sub">${e.secreto ? 'Comentário anônimo' : `Apto ${u}`}</small></li>`)}</ul>`}
+    ${s === 'aberta' && html`<h2>Quem ainda não respondeu (${lista.length})</h2>
+      <div class="faltantes-enquete">${lista.map((f) => html`<span key=${f.unidade} class="etq-turno t-folga">${f.unidade}${f.semApp ? ' · sem app' : ''}</span>`)}</div>
+      <small class="sub">Unidades sem app recebem o lembrete por e-mail e WhatsApp.</small>`}
+    <div class="acoes">
+      ${s === 'aberta' && !e.prorrogada && html`<span class="acoes"><input aria-label="Dias de prorrogação" type="number" min="1" max="30" value=${dias} onInput=${(ev) => setDias(ev.target.value)} class="campo-curto" /><button type="button" class="btn secundario" data-acao="prorrogar" onClick=${() => rodar((x) => prorrogarEnquete(x, e.id, Number(dias), 'sindico', new Date()), 'Prazo prorrogado. Os moradores foram avisados.')}>Prorrogar</button></span>`}
+      ${s === 'aberta' && (confirmando
+        ? html`<button type="button" class="btn primario" data-acao="confirmar-encerrar" onClick=${() => { setConfirmando(false); rodar((x) => encerrarEnquete(x, e.id, 'sindico', new Date()), 'Enquete encerrada.'); }}>Confirmar encerramento</button><button type="button" class="btn-link" onClick=${() => setConfirmando(false)}>Voltar</button>`
+        : html`<button type="button" class="btn secundario" data-acao="encerrar-enquete" onClick=${() => setConfirmando(true)}>Encerrar agora</button>`)}
+      ${s === 'encerrada' && !e.resultado && (completa
+        ? html`<button type="button" class="btn primario" data-acao="publicar-resultado" onClick=${() => rodar((x) => publicarResultado(x, e.id, 'sindico', new Date()), 'Resultado publicado no mural e em Documentos › Enquetes.')}>Publicar resultado</button>`
+        : html`<${Bloqueado} estado=${estado} recurso="enqueteCompleta" titulo="Publicar o resultado no mural e em Documentos" />`)}
+      ${e.resultado && html`<${Etiqueta} tipo="ok">Resultado publicado em ${fmtDataCurta(isoDia(new Date(e.resultado.publicadoEm)))}<//>`}
+    </div>
+  </section>`;
+}
+
+// ---- src/ui/enquetes-morador.js ----
+
+// Enquetes do morador: cartão no Início (some depois do voto), lista em Mais e a tela de voto.
+function CartaoEnqueteInicio({ estado, eu, agora }) {
+  const pendentes = enquetesPendentes(estado, eu, agora);
+  return pendentes.map((e) => html`<a key=${e.id} class="cartao link enquete-inicio" href=${`#morador.enquetes.${e.id}`}>
+    <span class="sub">Enquete · ${textoDiasRestantes(e, agora)}</span>
+    <strong>${e.pergunta}</strong>
+    <span class="btn primario">Responder</span>
+  </a>`);
+}
+
+function TelaVoto({ estado, executar, agora, e, eu }) {
+  const voto = e.votos[eu];
+  const [escolhidas, setEscolhidas] = useState(voto ? voto.opcoes : []);
+  const [comentario, setComentario] = useState(voto ? voto.comentario : '');
+  const [trocando, setTrocando] = useState(false);
+  const [erro, setErro] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const s = situacaoEnquete(e, agora);
+  const pessoa = pessoaDaUnidade(estado, eu);
+  const nome = pessoa ? pessoa.nome : `Apto ${eu}`;
+  const multipla = e.tipo === 'multipla';
+  const mostraResultado = s === 'encerrada' || (voto && e.parcialVisivel);
+  const votando = s === 'aberta' && (!voto || trocando);
+
+  function alternar(id) {
+    if (!multipla) setEscolhidas([id]);
+    else setEscolhidas(escolhidas.includes(id) ? escolhidas.filter((x) => x !== id) : [...escolhidas, id]);
+  }
+
+  function enviar() {
+    const r = executar((x) => votar(x, e.id, { unidade: eu, autor: nome, opcoes: escolhidas, comentario }, new Date()));
+    setErro(r.erro || null);
+    if (!r.erro) {
+      setTrocando(false);
+      setMensagem(r.trocou ? 'Voto alterado.' : 'Seu voto foi registrado.');
+    }
+  }
+
+  return html`<section class="m-pagina">
+    <a class="voltar" href="#morador.enquetes">‹ Enquetes</a>
+    <div class="etq-linha"><${EtqEnquete} e=${e} agora=${agora} /><span class="sub">${s === 'aberta' ? `Responda até ${fmtDataCurta(isoDia(new Date(e.encerraEm)))} · ${textoDiasRestantes(e, agora)}` : `Encerrada em ${fmtDataCurta(isoDia(new Date(e.encerradaEm || e.encerraEm)))}`}</span></div>
+    <h1 class="m-titulo">${e.pergunta}</h1>
+    ${e.contexto && html`<p class="m-texto">${e.contexto}</p>`}
+    <${Sucesso} texto=${mensagem} />
+    ${voto && !trocando && html`<div class="cartao">
+      <strong>${voto.autor === nome ? 'Seu voto' : `Sua unidade já votou (${voto.autor})`}</strong>
+      <span>${voto.opcoes.map((id) => e.opcoes.find((o) => o.id === id).texto).join(', ')}</span>
+      ${voto.comentario && html`<small class="sub">“${voto.comentario}”</small>`}
+      ${s === 'aberta' && html`<button type="button" class="btn-link" data-acao="trocar-voto" onClick=${() => setTrocando(true)}>Trocar o voto</button>`}
+    </div>`}
+    ${votando && html`<div class="pilha">
+      <fieldset><legend>${multipla ? `Escolha até ${e.maxEscolhas} opções` : 'Escolha uma opção'}</legend>
+        ${e.opcoes.map((o) => html`<label key=${o.id} class="check"><input type=${multipla ? 'checkbox' : 'radio'} name="voto-enquete" data-opcao=${o.id} checked=${escolhidas.includes(o.id)} onChange=${() => alternar(o.id)} /><span>${o.texto}</span></label>`)}
+      </fieldset>
+      ${e.comentarios && html`<${Campo} rotulo="Comentário (opcional)"><textarea id="enquete-comentario" rows="2" value=${comentario} onInput=${(ev) => setComentario(ev.target.value)}></textarea><//>`}
+      <small class="sub">${e.secreto ? 'Voto secreto: o síndico vê só os totais.' : 'Voto aberto: o síndico vê o voto de cada unidade.'} Um voto por unidade${e.peso === 'fracao' ? ', com peso pela fração ideal' : ''}.</small>
+      <${Erro} texto=${erro} />
+      <button type="button" class="btn primario bloco" data-acao="enviar-voto" onClick=${enviar}>${voto ? 'Salvar novo voto' : 'Enviar voto'}</button>
+    </div>`}
+    ${mostraResultado && html`<h2>${s === 'encerrada' ? textoResultado(estado, e) : 'Parcial'}</h2><${BarrasOpcoes} estado=${estado} e=${e} />`}
+    ${voto && !mostraResultado && s === 'aberta' && html`<p class="m-sub">O resultado aparece aqui quando a enquete encerrar.</p>`}
+  </section>`;
+}
+
+function MEnquetes({ estado, executar, agora, eu, rota }) {
+  const e = rota.id ? enquetePorId(estado, rota.id) : null;
+  if (e && e.situacao !== 'rascunho' && unidadesDoPublico(estado, e).includes(eu)) return html`<${TelaVoto} key=${e.id} estado=${estado} executar=${executar} agora=${agora} e=${e} eu=${eu} />`;
+  const { pendentes, respondidas, encerradas } = enquetesDaUnidade(estado, eu, agora);
+  const item = (x, detalhe) => html`<li key=${x.id}><a class="cartao link" href=${`#morador.enquetes.${x.id}`}><strong>${x.pergunta}</strong><span class="sub">${detalhe}</span></a></li>`;
+  return html`<section class="m-pagina">
+    <h1 class="m-titulo">Enquetes</h1>
+    <h2>Para responder</h2>
+    ${pendentes.length ? html`<ul class="m-lista">${pendentes.map((x) => item(x, textoDiasRestantes(x, agora)))}</ul>` : html`<${Vazio} texto="Nenhuma enquete esperando sua resposta." />`}
+    ${respondidas.length > 0 && html`<h2>Respondidas</h2><ul class="m-lista">${respondidas.map((x) => item(x, `Você já votou · ${textoDiasRestantes(x, agora)}`))}</ul>`}
+    <h2>Encerradas</h2>
+    ${encerradas.length ? html`<ul class="m-lista">${encerradas.map((x) => item(x, textoResultado(estado, x)))}</ul>` : html`<${Vazio} texto="Nenhuma enquete encerrada." />`}
+  </section>`;
+}
+
 // ---- src/ui/infracoes.js ----
 
 // Processo de infração: cartão na notificação, lista e detalhe do síndico, e a defesa do morador.
@@ -9376,9 +10106,9 @@ function tipoEtiquetaAviso(c) {
 
 function TelaMorador(props) {
   const eu = props.estado.moradorAtual;
-  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao };
+  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao, enquetes: MEnquetes };
   const Conteudo = telas[props.rota.tela] || MInicio;
-  const aba = ['documentos', 'encomendas', 'preferencias', 'avisos', 'prestacao'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
+  const aba = ['documentos', 'encomendas', 'preferencias', 'avisos', 'prestacao', 'enquetes'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
   return html`<div class="celular">
     <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
     <div class="cel-pessoa" role="group" aria-label="Morador da demonstração">
@@ -9418,6 +10148,7 @@ function MInicio({ estado, agora, eu }) {
     <p class="m-sub">Apto ${eu} · Residencial Ipê Amarelo</p>
     <${CartaoInfracaoInicio} estado=${estado} eu=${eu} agora=${agora} />
     <${CartaoCobrancaInicio} estado=${estado} eu=${eu} agora=${agora} />
+    <${CartaoEnqueteInicio} estado=${estado} eu=${eu} agora=${agora} />
     <a class="cartao link com-icone" href="#morador.avisos"><${QuadroIcone} nome="megafone" /><span><strong>Avisos</strong><span class="sub">${naoLidos ? `${naoLidos} não ${naoLidos === 1 ? 'lido' : 'lidos'}` : 'Tudo lido'}</span></span></a>
     <h2>Encomendas na portaria</h2>
     ${pacotes.length ? pacotes.map((e) => html`<${MCartaoEncomenda} key=${e.id} encomenda=${e} agora=${agora} />`) : html`<${Vazio} texto="Nenhuma encomenda esperando por você." />`}
@@ -9751,6 +10482,7 @@ function MMais() {
     <h1 class="m-titulo">Mais</h1>
     <a class="cartao link com-icone" href="#morador.avisos"><${QuadroIcone} nome="megafone" /><span><strong>Avisos</strong><span class="sub">Comunicados do síndico e confirmação de leitura</span></span></a>
     <a class="cartao link com-icone" href="#morador.encomendas"><${QuadroIcone} nome="pacote" /><span><strong>Encomendas</strong><span class="sub">Na portaria e histórico de retiradas</span></span></a>
+    <a class="cartao link com-icone" href="#morador.enquetes"><${QuadroIcone} nome="enquete" /><span><strong>Enquetes</strong><span class="sub">Responda e veja os resultados</span></span></a>
     <a class="cartao link com-icone" href="#morador.prestacao"><${QuadroIcone} nome="grafico" /><span><strong>Prestação de contas</strong><span class="sub">Receitas, despesas e saldo de cada mês</span></span></a>
     <a class="cartao link com-icone" href="#morador.documentos"><${QuadroIcone} nome="documento" /><span><strong>Documentos</strong><span class="sub">Convenção, regimento, atas e laudos</span></span></a>
     <a class="cartao link com-icone" href="#morador.preferencias"><${QuadroIcone} nome="pessoa" /><span><strong>Minhas preferências</strong><span class="sub">Avisos de anúncios e situação de vendedor</span></span></a>
@@ -9815,7 +10547,7 @@ function MPreferencias({ estado, executar, eu }) {
 
 // ---- src/ui/sindico.js ----
 
-const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['financeiro', 'Financeiro', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
+const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['financeiro', 'Financeiro', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['enquetes', 'Enquetes', 'enquete'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
 const EM_BREVE = [['Estoque, checklist e rondas', 'Avançado']];
 const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
 const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
@@ -9840,7 +10572,7 @@ function tipoEtiquetaComunicado(c) {
 
 function TelaSindico(props) {
   const tela = MENU_SINDICO.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'inicio';
-  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, financeiro: SFinanceiro, manutencao: SManutencao, escala: SEscala }[tela];
+  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, enquetes: SEnquetes, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, financeiro: SFinanceiro, manutencao: SManutencao, escala: SEscala }[tela];
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
       <p class="painel-usuario"><strong>Roberto Lima</strong><small>Síndico · apto 801</small></p>
@@ -9859,7 +10591,7 @@ function SInicio({ estado, agora }) {
   const vendedoresPendentes = estado.pessoas.filter((p) => p.vendedor === 'pendente');
   const pendCobranca = [...pendenciasCobranca(estado, isoDia(agora)), ...(liberado(estado.plano, 'contasPagar') ? alertasContas(estado, isoDia(agora)) : []), ...(liberado(estado.plano, 'prestacaoContas') ? alertasPrestacao(estado, isoDia(agora)) : [])];
   const comPrazo = liberado(estado.plano, 'notificacoesPrazo');
-  const pendOperacao = [...(comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : []), ...(liberado(estado.plano, 'escala') ? alertasEscala(estado, agora) : []), ...(liberado(estado.plano, 'multasDefesa') ? alertasInfracoes(estado, isoDia(agora)) : [])];
+  const pendOperacao = [...(comPrazo ? [...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora)] : []), ...(liberado(estado.plano, 'escala') ? alertasEscala(estado, agora) : []), ...(liberado(estado.plano, 'multasDefesa') ? alertasInfracoes(estado, isoDia(agora)) : []), ...alertasEnquetes(estado, agora)];
   const pct = Math.round((ind.adesao.com / ind.adesao.total) * 100);
   const cartoes = [
     ['Reservas pendentes', ind.pendentes, '#sindico.reservas', ind.pendentes ? 'alerta' : 'ok', 'Aguardando sua aprovação', 'calendario'],
@@ -10715,7 +11447,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

@@ -533,3 +533,24 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .grafico-fluxo .captura { fill: transparent; cursor: crosshair; }
 .dica-fluxo { position: absolute; top: 8px; display: flex; flex-direction: column; gap: 2px; max-width: 280px; padding: 8px 10px; background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); box-shadow: 0 4px 14px rgba(0, 0, 0, .12); pointer-events: none; font-size: 12px; color: var(--texto); }
 .dica-fluxo strong { color: var(--titulo); font-variant-numeric: tabular-nums; }
+
+/* Enquetes: formulário com prévia ao lado, barras por opção e unidades faltantes. */
+.grade-enquete { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .grade-enquete { grid-template-columns: 1fr; } }
+.previa-enquete { position: sticky; top: 12px; }
+.opcao-enquete { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.opcao-enquete input { flex: 1; min-width: 0; }
+.barras-enquete { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.barras-enquete li { display: flex; flex-direction: column; gap: 4px; }
+.barra-enquete { display: block; height: 10px; border-radius: 4px; background: var(--sup-2); overflow: hidden; }
+.barra-enquete span { display: block; height: 100%; border-radius: 4px; background: var(--serie-receita); }
+.faltantes-enquete { display: flex; flex-wrap: wrap; gap: 6px; }
+.grafico-evolucao svg { display: block; width: 100%; height: auto; }
+.grafico-evolucao .grade { stroke: var(--borda); }
+.grafico-evolucao .eixo { fill: var(--suave); font-size: 11px; }
+.grafico-evolucao .reserva { stroke: var(--suave); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.grafico-evolucao .rotulo-reserva, .grafico-evolucao .rotulo-minimo { fill: var(--texto); font-size: 11.5px; font-weight: 600; }
+.grafico-evolucao .linha-saldo { fill: none; stroke: var(--serie-receita); stroke-width: 2; stroke-linejoin: round; }
+.grafico-evolucao .ponto-foco { fill: var(--serie-receita); stroke: var(--sup); stroke-width: 2; }
+.campo-curto { width: 72px; }
+.enquete-inicio { border-left: 4px solid var(--serie-receita); }

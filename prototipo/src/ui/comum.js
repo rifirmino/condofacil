@@ -76,6 +76,7 @@ const ICONES = {
   etiqueta: 'M3 12V4h8l10 10-8 8zM7.5 7.5h.01',
   pessoa: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
   ferramenta: 'M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.6 2.6-2.4-.6-.6-2.4z',
+  enquete: 'M4 5h16v14H4zM8 9h1M11 9h5M8 13h1M11 13h5M8 17h1M11 17h3',
   cifrao: 'M12 3v18M17 7H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H6',
 };
 
