@@ -564,6 +564,63 @@ const ROTEIROS = {
     await esperar(`!document.querySelector('[data-semana-turno]')`, 'a grade só de leitura na portaria');
   },
 
+  async contaPagar() {
+    await irPara('#sindico.financeiro.contas');
+    await preencher('Mostrar', 'vencidas');
+    await clicarSeletor('[data-pagar="CT-011"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Imunizadora Verde')`, 'o pagamento da dedetização');
+    await esperarTexto('Conta CT-011 paga');
+    await irPara('#sindico.financeiro.auditoria');
+    await esperarTexto('Conta paga');
+  },
+
+  async prestacaoConselho() {
+    const escrever = (rotulo, valor) => js(`(() => { const el = document.querySelector('input[aria-label=${JSON.stringify(rotulo)}]'); el.value = ${JSON.stringify(valor)}; el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+    await clicar('Avançado');
+    await irPara('#sindico.financeiro.prestacao');
+    const mes = await js(`document.querySelectorAll('[data-mes]')[1].dataset.mes`);
+    const item = `${mes}-manutencao-dedetizacao`;
+    await irPara(`#sindico.financeiro.prestacao-${mes}`);
+    await clicarSeletor('[data-acao="fechar-mes"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('pronto para análise')`, 'o aviso ao conselho');
+    await clicar('Conselho');
+    await irPara(`#conselho.prestacao.${mes}`);
+    await esperarTexto('Parecer do conselho');
+    await clicarSeletor(`[data-comentar="${item}"]`);
+    await escrever('Comentário do conselho', 'Falta a nota da dedetização');
+    await clicarSeletor('[data-acao="enviar-comentario"]');
+    await esperarTexto('Comentário registrado');
+    await preencher('Motivo da correção', 'Anexar a nota da dedetização');
+    await clicarSeletor('[data-acao="pedir-correcao"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('pediu correção')`, 'o pedido de correção');
+    await clicar('Síndico');
+    await irPara(`#sindico.financeiro.prestacao-${mes}`);
+    await esperarTexto('Correção pedida por Gustavo Freitas');
+    await clicarSeletor(`[data-anexar="${item}"]`);
+    await esperarTexto('Nota anexada');
+    await escrever('Resposta ao conselho', 'Nota anexada ao lançamento');
+    await clicar('Responder');
+    await esperarTexto('Resposta enviada');
+    await clicarSeletor('[data-acao="reenviar-conselho"]');
+    await esperarTexto('Balancete reenviado ao conselho');
+    await clicar('Conselho');
+    await irPara(`#conselho.prestacao.${mes}`);
+    await clicarSeletor('[data-acao="aprovar-mes"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('aprovado pelo conselho')`, 'a aprovação');
+    await clicar('Síndico');
+    await irPara(`#sindico.financeiro.prestacao-${mes}`);
+    await clicarSeletor('[data-acao="publicar-resumo"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('publicada')`, 'o resumo publicado');
+    await esperarTexto('Registrar ajuste no mês corrente');
+    await irPara('#morador.prestacao');
+    await esperar(`document.querySelectorAll('.m-lista li').length >= 2`, 'dois resumos para o morador');
+    await irPara('#sindico.financeiro.fluxo');
+    await esperarTexto('Próximos lançamentos');
+    await esperarTexto('o ponto mais baixo é');
+    await esperar(`!!document.querySelector('.grafico-fluxo .linha-saldo')`, 'a linha do saldo');
+    await clicar('Intermediário');
+  },
+
   async orcamentoPrevisao() {
     await irPara('#sindico.cobranca.orcamento');
     await clicarSeletor('[data-abrir-previsao="PO-001"]');
@@ -632,7 +689,7 @@ const ROTEIROS = {
   async larguraCelular() {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await pausa(300);
-    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas', '#sindico.escala.semana', '#sindico.ocorrencias.PI-001', '#sindico.ocorrencias.OC-0043', '#sindico.cobranca.orcamento']) {
+    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas', '#sindico.escala.semana', '#sindico.ocorrencias.PI-001', '#sindico.ocorrencias.OC-0043', '#sindico.cobranca.orcamento', '#sindico.financeiro.contas', '#sindico.financeiro.prestacao', '#conselho.prestacao', '#morador.prestacao']) {
       await irPara(hash);
       const largura = await js('document.documentElement.scrollWidth');
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);
