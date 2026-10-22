@@ -525,6 +525,20 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .comentario-balancete { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; border-left: 3px solid var(--alerta); background: var(--alerta-bg); }
 .comentario-balancete input, .lancamentos-balancete .acoes input { min-width: 200px; }
 
+/* Fluxo de caixa: uma série, grade recessiva, reserva tracejada e mínimo marcado com anel da superfície. */
+.grafico-fluxo { position: relative; }
+.grafico-fluxo svg { display: block; width: 100%; height: auto; }
+.grafico-fluxo .grade { stroke: var(--borda); stroke-width: 1; }
+.grafico-fluxo .eixo { fill: var(--suave); font-size: 11px; font-variant-numeric: tabular-nums; }
+.grafico-fluxo .reserva { stroke: var(--suave); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.grafico-fluxo .rotulo-reserva, .grafico-fluxo .rotulo-minimo { fill: var(--texto); font-size: 11.5px; font-weight: 600; }
+.grafico-fluxo .linha-saldo { fill: none; stroke: var(--serie-receita); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.grafico-fluxo .ponto-minimo, .grafico-fluxo .ponto-foco { fill: var(--serie-receita); stroke: var(--sup); stroke-width: 2; }
+.grafico-fluxo .mira { stroke: var(--suave); stroke-width: 1; }
+.grafico-fluxo .captura { fill: transparent; cursor: crosshair; }
+.dica-fluxo { position: absolute; top: 8px; display: flex; flex-direction: column; gap: 2px; max-width: 280px; padding: 8px 10px; background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); box-shadow: 0 4px 14px rgba(0, 0, 0, .12); pointer-events: none; font-size: 12px; color: var(--texto); }
+.dica-fluxo strong { color: var(--titulo); font-variant-numeric: tabular-nums; }
+
 </style>
 <div id="app"></div>
 <script type="module">
@@ -2679,6 +2693,79 @@ function mesesParaOConselho(estado) {
 
 function dataDoInstante(iso) {
   return isoDia(new Date(iso));
+}
+
+// ---- src/financeiro/fluxo.js ----
+
+// Fluxo de caixa projetado (Avançado): entradas previstas descontadas da inadimplência e saídas das contas, dia a dia.
+const DIAS_FLUXO = 90;
+
+function entradasDeCobrancas(fin, hoje, fim, fator) {
+  const grupos = {};
+  for (const c of fin.cobrancas) {
+    if (c.status !== 'aberta' || c.vencimento < hoje || c.vencimento > fim) continue;
+    const descricao = c.acordo ? 'Parcelas de acordo' : `Taxas de ${nomeMes(c.competencia)}`;
+    const chave = `${c.vencimento}|${descricao}`;
+    grupos[chave] = { dia: c.vencimento, descricao, valor: (grupos[chave] ? grupos[chave].valor : 0) + c.valor };
+  }
+  return Object.values(grupos).map((g) => ({ ...g, valor: Math.round(g.valor * fator) }));
+}
+
+function entradasPrevistas(estado, hoje, fim, fator) {
+  const fin = estado.financeiro;
+  const lista = [];
+  for (let c = primeiraNaoEmitida(fin); vencimentoDa(fin, c) <= fim; c = somarMes(c, 1)) {
+    const dia = vencimentoDa(fin, c);
+    if (dia < hoje) continue;
+    const total = previaCompetencia(estado, c).linhas.filter((l) => !l.bloqueada).reduce((s, l) => s + l.total, 0);
+    lista.push({ dia, descricao: `Taxas de ${nomeMes(c)} (previsão)`, valor: Math.round(total * fator) });
+  }
+  return lista;
+}
+
+function saidasDeContas(fin, hoje, fim) {
+  const abertas = fin.contas.filter((c) => c.situacao === 'aberta').map((c) => ({ dia: c.vencimento < hoje ? hoje : c.vencimento, descricao: c.descricao, valor: -c.valor })).filter((s) => s.dia <= fim);
+  const series = {};
+  for (const c of fin.contas.filter((x) => x.recorrente)) (series[serieDaConta(c)] = series[serieDaConta(c)] || []).push(c);
+  const projetadas = [];
+  for (const contas of Object.values(series)) {
+    const meses = new Set(contas.map((c) => c.vencimento.slice(0, 7)));
+    const ultima = contas.reduce((a, b) => (a.vencimento > b.vencimento ? a : b));
+    for (let n = 1; ; n++) {
+      const dia = mesmoDiaDoMes(ultima.vencimento, n);
+      if (dia > fim) break;
+      if (dia >= hoje && !meses.has(dia.slice(0, 7))) projetadas.push({ dia, descricao: `${ultima.descricao} (previsão)`, valor: -ultima.valor });
+    }
+  }
+  return [...abertas, ...projetadas];
+}
+
+function eventosDoFluxo(estado, hoje, margemPct, dias = DIAS_FLUXO) {
+  const fin = estado.financeiro;
+  const fim = somarDias(hoje, dias);
+  const fator = 1 - margemPct / 100;
+  return [...entradasDeCobrancas(fin, hoje, fim, fator), ...entradasPrevistas(estado, hoje, fim, fator), ...saidasDeContas(fin, hoje, fim)]
+    .sort((a, b) => a.dia.localeCompare(b.dia) || b.valor - a.valor);
+}
+
+function fluxoProjetado(estado, hoje, margemPct, dias = DIAS_FLUXO) {
+  const eventos = eventosDoFluxo(estado, hoje, margemPct, dias);
+  const reserva = indicadoresFinanceiros(estado, hoje).saldo.despesaMedia;
+  let saldo = estado.financeiro.saldo;
+  const serie = Array.from({ length: dias + 1 }, (_, i) => {
+    const dia = somarDias(hoje, i);
+    const doDia = eventos.filter((e) => e.dia === dia);
+    saldo += doDia.reduce((s, e) => s + e.valor, 0);
+    return { dia, saldo, eventos: doDia };
+  });
+  const minimo = serie.reduce((m, p) => (p.saldo < m.saldo ? p : m), serie[0]);
+  const abaixo = serie.find((p) => p.saldo < reserva) || null;
+  return { serie, eventos, reserva, minimo, abaixo, final: serie.at(-1).saldo };
+}
+
+function fraseDoFluxo(f) {
+  if (f.abaixo) return `Em ${fmtDataCurta(f.abaixo.dia)} o saldo fica abaixo da reserva de ${fmtReais(f.reserva)}`;
+  return `O saldo fica acima da reserva nos próximos ${f.serie.length - 1} dias; o ponto mais baixo é ${fmtReais(f.minimo.saldo)} em ${fmtDataCurta(f.minimo.dia)}`;
 }
 
 // ---- src/financeiro/acoes.js ----
@@ -6158,6 +6245,26 @@ const CASOS_FINANCEIRO = [
       igual([resumo.inadimplenciaPct, resumo.despesas.length, JSON.stringify(resumo).includes('unidade')], [9.4, 5, false]);
     },
   },
+  {
+    nome: 'fluxo: entradas com margem, contas e recorrentes projetadas',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const fin = e.financeiro;
+      const ev = eventosDoFluxo(e, HOJE_FIN, 12.5);
+      const nov = ev.find((x) => x.descricao === 'Taxas de novembro de 2026 (previsão)');
+      const totalNov = previaCompetencia(e, '2026-11').linhas.filter((l) => !l.bloqueada).reduce((s, l) => s + l.total, 0);
+      igual([nov.dia, nov.valor], [vencimentoDa(fin, '2026-11'), Math.round(totalNov * 0.875)]);
+      igual(ev.find((x) => x.descricao === 'Dedetização trimestral').dia, HOJE_FIN);
+      igual(ev.filter((x) => x.descricao === 'Salários do zelador e dos porteiros CLT (previsão)').map((x) => x.dia), ['2026-11-04', '2026-12-04', '2027-01-04']);
+      igual(ev.filter((x) => x.descricao.startsWith('Portaria terceirizada')).map((x) => x.dia), ['2026-10-21', '2026-11-21', '2026-12-21']);
+      const f = fluxoProjetado(e, HOJE_FIN, 12.5);
+      igual([f.serie.length, f.serie[0].dia, f.serie.at(-1).dia], [91, '2026-10-19', '2027-01-17']);
+      igual(f.final, fin.saldo + ev.reduce((s, x) => s + x.valor, 0));
+      igual(f.minimo.saldo <= fin.saldo, true);
+      const pobre = { ...e, financeiro: { ...fin, saldo: 100000 } };
+      igual(fraseDoFluxo(fluxoProjetado(pobre, HOJE_FIN, 12.5)).startsWith('Em 19/10/2026 o saldo fica abaixo da reserva'), true);
+    },
+  },
 ];
 
 // ---- src/armazenamento.js ----
@@ -7706,8 +7813,91 @@ function FPrestacao({ estado, executar, agora, rota }) {
 }
 
 
-function FFluxo() {
-  return html`<${Vazio} texto="Em construção." />`;
+// Uma série (saldo dia a dia): sem legenda, título com a conclusão, reserva tracejada, mínimo rotulado, hover e tabela.
+const GRAFICO_FLUXO = { largura: 760, altura: 260, esquerda: 64, direita: 16, topo: 16, base: 30 };
+
+function passoBonito(bruto) {
+  const potencia = 10 ** Math.floor(Math.log10(bruto));
+  const n = bruto / potencia;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * potencia;
+}
+
+function GraficoFluxo({ fluxo, hoje }) {
+  const [foco, setFoco] = useState(null);
+  const g = GRAFICO_FLUXO;
+  const valores = [...fluxo.serie.map((p) => p.saldo), fluxo.reserva];
+  const min = Math.min(...valores);
+  const max = Math.max(...valores);
+  const folga = (max - min) * 0.08 || 100000;
+  const y0 = min - folga;
+  const y1 = max + folga;
+  const larguraUtil = g.largura - g.esquerda - g.direita;
+  const alturaUtil = g.altura - g.topo - g.base;
+  const x = (i) => g.esquerda + (i / (fluxo.serie.length - 1)) * larguraUtil;
+  const y = (v) => g.topo + (1 - (v - y0) / (y1 - y0)) * alturaUtil;
+  const caminho = fluxo.serie.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.saldo).toFixed(1)}`).join(' ');
+  const passo = passoBonito((y1 - y0) / 4);
+  const marcas = [];
+  for (let v = Math.ceil(y0 / passo) * passo; v <= y1; v += passo) marcas.push(v);
+  const inicioMes = fluxo.serie.map((p, i) => ({ p, i })).filter(({ p, i }) => i === 0 || p.dia.endsWith('-01'));
+  const iMin = fluxo.serie.indexOf(fluxo.minimo);
+  const ponto = foco !== null ? fluxo.serie[foco] : null;
+
+  function mover(ev) {
+    const caixa = ev.currentTarget.getBoundingClientRect();
+    const px = ((ev.clientX - caixa.left) / caixa.width) * g.largura;
+    const i = Math.round(((px - g.esquerda) / larguraUtil) * (fluxo.serie.length - 1));
+    setFoco(Math.max(0, Math.min(fluxo.serie.length - 1, i)));
+  }
+
+  return html`<div class="grafico-fluxo">
+    <svg viewBox=${`0 0 ${g.largura} ${g.altura}`} role="img" aria-label=${`Saldo projetado de ${fmtDataCurta(hoje)} a ${fmtDataCurta(fluxo.serie.at(-1).dia)}`} onMouseMove=${mover} onMouseLeave=${() => setFoco(null)}>
+      ${marcas.map((v) => html`<g key=${v}><line class="grade" x1=${g.esquerda} x2=${g.largura - g.direita} y1=${y(v)} y2=${y(v)} /><text class="eixo" x=${g.esquerda - 8} y=${y(v) + 4} text-anchor="end">${fmtReaisCurto(v)}</text></g>`)}
+      ${inicioMes.map(({ p, i }) => html`<text key=${p.dia} class="eixo" x=${x(i)} y=${g.altura - 8} text-anchor=${i === 0 ? 'start' : 'middle'}>${i === 0 ? 'Hoje' : nomeMes(p.dia.slice(0, 7)).split(' de ')[0]}</text>`)}
+      <line class="reserva" x1=${g.esquerda} x2=${g.largura - g.direita} y1=${y(fluxo.reserva)} y2=${y(fluxo.reserva)} />
+      <text class="rotulo-reserva" x=${g.largura - g.direita} y=${y(fluxo.reserva) - 6} text-anchor="end">Reserva mínima ${fmtReaisCurto(fluxo.reserva)}</text>
+      <path class="linha-saldo" d=${caminho} />
+      <circle class="ponto-minimo" cx=${x(iMin)} cy=${y(fluxo.minimo.saldo)} r="5" />
+      <text class="rotulo-minimo" x=${x(iMin)} y=${y(fluxo.minimo.saldo) + 20} text-anchor=${iMin > fluxo.serie.length * 0.8 ? 'end' : 'middle'}>Mínimo ${fmtReaisCurto(fluxo.minimo.saldo)} em ${fmtDataCurta(fluxo.minimo.dia).slice(0, 5)}</text>
+      ${ponto && html`<g><line class="mira" x1=${x(foco)} x2=${x(foco)} y1=${g.topo} y2=${g.altura - g.base} /><circle class="ponto-foco" cx=${x(foco)} cy=${y(ponto.saldo)} r="4.5" /></g>`}
+      <rect class="captura" x=${g.esquerda} y=${g.topo} width=${larguraUtil} height=${alturaUtil} />
+    </svg>
+    ${ponto && html`<div class="dica-fluxo" style=${`left:${Math.min(70, Math.max(2, (x(foco) / g.largura) * 100 - 10))}%`}>
+      <strong>${fmtDataCurta(ponto.dia)} · ${fmtReais(ponto.saldo)}</strong>
+      ${ponto.eventos.length ? ponto.eventos.map((e, n) => html`<small key=${n}>${e.valor >= 0 ? '+' : '−'}${fmtReais(Math.abs(e.valor))} · ${e.descricao}</small>`) : html`<small>Sem lançamentos no dia</small>`}
+    </div>`}
+  </div>`;
+}
+
+function FFluxo({ estado, agora }) {
+  const hoje = isoDia(agora);
+  const [margem, setMargem] = useState(String(indicadoresFinanceiros(estado, hoje).inadimplencia.pct).replace('.', ','));
+  if (!liberado(estado.plano, 'fluxoCaixa')) return html`<${Bloqueado} estado=${estado} recurso="fluxoCaixa" titulo="Fluxo de caixa projetado para 90 dias" />`;
+  const pct = Number(String(margem).replace(',', '.'));
+  const valida = Number.isFinite(pct) && pct >= 0 && pct < 100;
+  const fluxo = valida ? fluxoProjetado(estado, hoje, pct) : null;
+  const saldoApos = (evento) => fluxo.serie.find((p) => p.dia === evento.dia).saldo;
+  return html`<div class="pilha">
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Inadimplência esperada (%)" dica="Desconta as entradas previstas. Começa com a de hoje."><input id="fluxo-margem" inputmode="decimal" value=${margem} onInput=${(ev) => setMargem(ev.target.value)} /><//>
+    </div>
+    ${fluxo
+      ? html`<section class="cartao pilha">
+          <p class=${`titulo-grafico${fluxo.abaixo ? ' erro' : ''}`}>${fraseDoFluxo(fluxo)}.</p>
+          <small class="sub">Saldo de hoje ${fmtReais(estado.financeiro.saldo)} · em 90 dias ${fmtReais(fluxo.final)} · reserva mínima = despesa média de um mês</small>
+          <${GraficoFluxo} fluxo=${fluxo} hoje=${hoje} />
+        </section>
+        <h2>Próximos lançamentos</h2>
+        <div class="tabela-rolagem"><table class="tabela">
+          <thead><tr><th>Data</th><th>Lançamento</th><th>Entrada</th><th>Saída</th><th>Saldo no dia</th></tr></thead>
+          <tbody>${fluxo.eventos.map((e, n) => html`<tr key=${n}>
+            <td>${fmtDataCurta(e.dia)}</td><td>${e.descricao}</td>
+            <td>${e.valor > 0 ? fmtReais(e.valor) : ''}</td><td>${e.valor < 0 ? fmtReais(-e.valor) : ''}</td>
+            <td>${fmtReais(saldoApos(e))}</td>
+          </tr>`)}</tbody>
+        </table></div>`
+      : html`<small class="sub">Informe uma inadimplência entre 0% e 99%.</small>`}
+  </div>`;
 }
 
 // ---- src/ui/conselho.js ----

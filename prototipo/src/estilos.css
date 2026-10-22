@@ -519,3 +519,17 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .lancamentos-balancete > li:first-child { border-top: 0; }
 .comentario-balancete { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; border-left: 3px solid var(--alerta); background: var(--alerta-bg); }
 .comentario-balancete input, .lancamentos-balancete .acoes input { min-width: 200px; }
+
+/* Fluxo de caixa: uma série, grade recessiva, reserva tracejada e mínimo marcado com anel da superfície. */
+.grafico-fluxo { position: relative; }
+.grafico-fluxo svg { display: block; width: 100%; height: auto; }
+.grafico-fluxo .grade { stroke: var(--borda); stroke-width: 1; }
+.grafico-fluxo .eixo { fill: var(--suave); font-size: 11px; font-variant-numeric: tabular-nums; }
+.grafico-fluxo .reserva { stroke: var(--suave); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.grafico-fluxo .rotulo-reserva, .grafico-fluxo .rotulo-minimo { fill: var(--texto); font-size: 11.5px; font-weight: 600; }
+.grafico-fluxo .linha-saldo { fill: none; stroke: var(--serie-receita); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.grafico-fluxo .ponto-minimo, .grafico-fluxo .ponto-foco { fill: var(--serie-receita); stroke: var(--sup); stroke-width: 2; }
+.grafico-fluxo .mira { stroke: var(--suave); stroke-width: 1; }
+.grafico-fluxo .captura { fill: transparent; cursor: crosshair; }
+.dica-fluxo { position: absolute; top: 8px; display: flex; flex-direction: column; gap: 2px; max-width: 280px; padding: 8px 10px; background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); box-shadow: 0 4px 14px rgba(0, 0, 0, .12); pointer-events: none; font-size: 12px; color: var(--texto); }
+.dica-fluxo strong { color: var(--titulo); font-variant-numeric: tabular-nums; }

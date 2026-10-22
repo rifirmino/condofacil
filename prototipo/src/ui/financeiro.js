@@ -1,6 +1,7 @@
 import { html, useState } from '../vendor.js';
 import { CATEGORIAS_DESPESA } from '../cobranca/dados.js';
-import { fmtReais } from '../cobranca/regras.js';
+import { fmtReais, fmtReaisCurto, indicadoresFinanceiros } from '../cobranca/regras.js';
+import { fluxoProjetado, fraseDoFluxo } from '../financeiro/fluxo.js';
 import { NOMES_SITUACAO_CONTA, FILTROS_CONTAS, situacaoConta, contasFiltradas, totalAPagar } from '../financeiro/contas.js';
 import { novaConta, pagarConta, fecharMes, comentarLancamento, anexarNota, responderComentario, reenviarAoConselho, registrarAjuste, publicarResumo } from '../financeiro/acoes.js';
 import { NOMES_SITUACAO_BALANCETE, SITUACOES_TRAVADAS, balanceteDe, mesesDaPrestacao, totalReceitas, totalDespesas, totalCategoria, saldoFinal } from '../financeiro/balancete.js';
@@ -231,6 +232,89 @@ function FPrestacao({ estado, executar, agora, rota }) {
 }
 
 
-function FFluxo() {
-  return html`<${Vazio} texto="Em construção." />`;
+// Uma série (saldo dia a dia): sem legenda, título com a conclusão, reserva tracejada, mínimo rotulado, hover e tabela.
+const GRAFICO_FLUXO = { largura: 760, altura: 260, esquerda: 64, direita: 16, topo: 16, base: 30 };
+
+function passoBonito(bruto) {
+  const potencia = 10 ** Math.floor(Math.log10(bruto));
+  const n = bruto / potencia;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * potencia;
+}
+
+function GraficoFluxo({ fluxo, hoje }) {
+  const [foco, setFoco] = useState(null);
+  const g = GRAFICO_FLUXO;
+  const valores = [...fluxo.serie.map((p) => p.saldo), fluxo.reserva];
+  const min = Math.min(...valores);
+  const max = Math.max(...valores);
+  const folga = (max - min) * 0.08 || 100000;
+  const y0 = min - folga;
+  const y1 = max + folga;
+  const larguraUtil = g.largura - g.esquerda - g.direita;
+  const alturaUtil = g.altura - g.topo - g.base;
+  const x = (i) => g.esquerda + (i / (fluxo.serie.length - 1)) * larguraUtil;
+  const y = (v) => g.topo + (1 - (v - y0) / (y1 - y0)) * alturaUtil;
+  const caminho = fluxo.serie.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.saldo).toFixed(1)}`).join(' ');
+  const passo = passoBonito((y1 - y0) / 4);
+  const marcas = [];
+  for (let v = Math.ceil(y0 / passo) * passo; v <= y1; v += passo) marcas.push(v);
+  const inicioMes = fluxo.serie.map((p, i) => ({ p, i })).filter(({ p, i }) => i === 0 || p.dia.endsWith('-01'));
+  const iMin = fluxo.serie.indexOf(fluxo.minimo);
+  const ponto = foco !== null ? fluxo.serie[foco] : null;
+
+  function mover(ev) {
+    const caixa = ev.currentTarget.getBoundingClientRect();
+    const px = ((ev.clientX - caixa.left) / caixa.width) * g.largura;
+    const i = Math.round(((px - g.esquerda) / larguraUtil) * (fluxo.serie.length - 1));
+    setFoco(Math.max(0, Math.min(fluxo.serie.length - 1, i)));
+  }
+
+  return html`<div class="grafico-fluxo">
+    <svg viewBox=${`0 0 ${g.largura} ${g.altura}`} role="img" aria-label=${`Saldo projetado de ${fmtDataCurta(hoje)} a ${fmtDataCurta(fluxo.serie.at(-1).dia)}`} onMouseMove=${mover} onMouseLeave=${() => setFoco(null)}>
+      ${marcas.map((v) => html`<g key=${v}><line class="grade" x1=${g.esquerda} x2=${g.largura - g.direita} y1=${y(v)} y2=${y(v)} /><text class="eixo" x=${g.esquerda - 8} y=${y(v) + 4} text-anchor="end">${fmtReaisCurto(v)}</text></g>`)}
+      ${inicioMes.map(({ p, i }) => html`<text key=${p.dia} class="eixo" x=${x(i)} y=${g.altura - 8} text-anchor=${i === 0 ? 'start' : 'middle'}>${i === 0 ? 'Hoje' : nomeMes(p.dia.slice(0, 7)).split(' de ')[0]}</text>`)}
+      <line class="reserva" x1=${g.esquerda} x2=${g.largura - g.direita} y1=${y(fluxo.reserva)} y2=${y(fluxo.reserva)} />
+      <text class="rotulo-reserva" x=${g.largura - g.direita} y=${y(fluxo.reserva) - 6} text-anchor="end">Reserva mínima ${fmtReaisCurto(fluxo.reserva)}</text>
+      <path class="linha-saldo" d=${caminho} />
+      <circle class="ponto-minimo" cx=${x(iMin)} cy=${y(fluxo.minimo.saldo)} r="5" />
+      <text class="rotulo-minimo" x=${x(iMin)} y=${y(fluxo.minimo.saldo) + 20} text-anchor=${iMin > fluxo.serie.length * 0.8 ? 'end' : 'middle'}>Mínimo ${fmtReaisCurto(fluxo.minimo.saldo)} em ${fmtDataCurta(fluxo.minimo.dia).slice(0, 5)}</text>
+      ${ponto && html`<g><line class="mira" x1=${x(foco)} x2=${x(foco)} y1=${g.topo} y2=${g.altura - g.base} /><circle class="ponto-foco" cx=${x(foco)} cy=${y(ponto.saldo)} r="4.5" /></g>`}
+      <rect class="captura" x=${g.esquerda} y=${g.topo} width=${larguraUtil} height=${alturaUtil} />
+    </svg>
+    ${ponto && html`<div class="dica-fluxo" style=${`left:${Math.min(70, Math.max(2, (x(foco) / g.largura) * 100 - 10))}%`}>
+      <strong>${fmtDataCurta(ponto.dia)} · ${fmtReais(ponto.saldo)}</strong>
+      ${ponto.eventos.length ? ponto.eventos.map((e, n) => html`<small key=${n}>${e.valor >= 0 ? '+' : '−'}${fmtReais(Math.abs(e.valor))} · ${e.descricao}</small>`) : html`<small>Sem lançamentos no dia</small>`}
+    </div>`}
+  </div>`;
+}
+
+function FFluxo({ estado, agora }) {
+  const hoje = isoDia(agora);
+  const [margem, setMargem] = useState(String(indicadoresFinanceiros(estado, hoje).inadimplencia.pct).replace('.', ','));
+  if (!liberado(estado.plano, 'fluxoCaixa')) return html`<${Bloqueado} estado=${estado} recurso="fluxoCaixa" titulo="Fluxo de caixa projetado para 90 dias" />`;
+  const pct = Number(String(margem).replace(',', '.'));
+  const valida = Number.isFinite(pct) && pct >= 0 && pct < 100;
+  const fluxo = valida ? fluxoProjetado(estado, hoje, pct) : null;
+  const saldoApos = (evento) => fluxo.serie.find((p) => p.dia === evento.dia).saldo;
+  return html`<div class="pilha">
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Inadimplência esperada (%)" dica="Desconta as entradas previstas. Começa com a de hoje."><input id="fluxo-margem" inputmode="decimal" value=${margem} onInput=${(ev) => setMargem(ev.target.value)} /><//>
+    </div>
+    ${fluxo
+      ? html`<section class="cartao pilha">
+          <p class=${`titulo-grafico${fluxo.abaixo ? ' erro' : ''}`}>${fraseDoFluxo(fluxo)}.</p>
+          <small class="sub">Saldo de hoje ${fmtReais(estado.financeiro.saldo)} · em 90 dias ${fmtReais(fluxo.final)} · reserva mínima = despesa média de um mês</small>
+          <${GraficoFluxo} fluxo=${fluxo} hoje=${hoje} />
+        </section>
+        <h2>Próximos lançamentos</h2>
+        <div class="tabela-rolagem"><table class="tabela">
+          <thead><tr><th>Data</th><th>Lançamento</th><th>Entrada</th><th>Saída</th><th>Saldo no dia</th></tr></thead>
+          <tbody>${fluxo.eventos.map((e, n) => html`<tr key=${n}>
+            <td>${fmtDataCurta(e.dia)}</td><td>${e.descricao}</td>
+            <td>${e.valor > 0 ? fmtReais(e.valor) : ''}</td><td>${e.valor < 0 ? fmtReais(-e.valor) : ''}</td>
+            <td>${fmtReais(saldoApos(e))}</td>
+          </tr>`)}</tbody>
+        </table></div>`
+      : html`<small class="sub">Informe uma inadimplência entre 0% e 99%.</small>`}
+  </div>`;
 }

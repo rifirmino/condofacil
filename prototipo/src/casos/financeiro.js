@@ -3,6 +3,8 @@ import { trocarPlano } from '../cobranca/acoes.js';
 import { situacaoConta, contasFiltradas, alertasContas, totalAPagar } from '../financeiro/contas.js';
 import { novaConta, pagarConta, fecharMes, comentarLancamento, pedirCorrecao, aprovarMes, anexarNota, responderComentario, reenviarAoConselho, registrarAjuste, publicarResumo } from '../financeiro/acoes.js';
 import { balanceteVivo, balanceteDe, saldoFinal, totalDespesas, totalReceitas, itensSemNota, resumoDoBalancete, alertasPrestacao, mesesDaPrestacao, resumosPublicados } from '../financeiro/balancete.js';
+import { eventosDoFluxo, fluxoProjetado, fraseDoFluxo } from '../financeiro/fluxo.js';
+import { previaCompetencia, vencimentoDa } from '../cobranca/regras.js';
 import { igual, AGORA_FASE2 } from './afirmar.js';
 
 const HOJE_FIN = '2026-10-19';
@@ -138,6 +140,26 @@ export const CASOS_FINANCEIRO = [
       const e = dadosIniciais(AGORA_FASE2);
       const resumo = resumoDoBalancete(e, balanceteDe(e, '2026-08', HOJE_FIN));
       igual([resumo.inadimplenciaPct, resumo.despesas.length, JSON.stringify(resumo).includes('unidade')], [9.4, 5, false]);
+    },
+  },
+  {
+    nome: 'fluxo: entradas com margem, contas e recorrentes projetadas',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const fin = e.financeiro;
+      const ev = eventosDoFluxo(e, HOJE_FIN, 12.5);
+      const nov = ev.find((x) => x.descricao === 'Taxas de novembro de 2026 (previsão)');
+      const totalNov = previaCompetencia(e, '2026-11').linhas.filter((l) => !l.bloqueada).reduce((s, l) => s + l.total, 0);
+      igual([nov.dia, nov.valor], [vencimentoDa(fin, '2026-11'), Math.round(totalNov * 0.875)]);
+      igual(ev.find((x) => x.descricao === 'Dedetização trimestral').dia, HOJE_FIN);
+      igual(ev.filter((x) => x.descricao === 'Salários do zelador e dos porteiros CLT (previsão)').map((x) => x.dia), ['2026-11-04', '2026-12-04', '2027-01-04']);
+      igual(ev.filter((x) => x.descricao.startsWith('Portaria terceirizada')).map((x) => x.dia), ['2026-10-21', '2026-11-21', '2026-12-21']);
+      const f = fluxoProjetado(e, HOJE_FIN, 12.5);
+      igual([f.serie.length, f.serie[0].dia, f.serie.at(-1).dia], [91, '2026-10-19', '2027-01-17']);
+      igual(f.final, fin.saldo + ev.reduce((s, x) => s + x.valor, 0));
+      igual(f.minimo.saldo <= fin.saldo, true);
+      const pobre = { ...e, financeiro: { ...fin, saldo: 100000 } };
+      igual(fraseDoFluxo(fluxoProjetado(pobre, HOJE_FIN, 12.5)).startsWith('Em 19/10/2026 o saldo fica abaixo da reserva'), true);
     },
   },
 ];
