@@ -594,11 +594,20 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
   .abel-painel { left: 0; right: 0; bottom: 0; width: 100%; max-width: none; height: min(78vh, 620px); border-radius: 12px 12px 0 0; }
 }
 
+/* Sr. Abel com IA: nova conversa, pensando e cartão de ação feita pelo chat. */
+.abel-nova { margin-left: auto; min-height: 32px; padding: 4px 10px; border: 1px solid var(--ardosia-suave); border-radius: var(--raio); background: none; color: var(--ardosia-texto); font-size: 12px; font-weight: 600; cursor: pointer; }
+.abel-nova + .abel-fechar { margin-left: 0; }
+.abel-pensando .abel-bolha { color: var(--suave); font-style: italic; }
+.abel-acao { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; border: 1px solid var(--borda); border-left: 3px solid var(--laranja); border-radius: var(--raio); background: var(--sup); font-size: 12.5px; }
+.abel-acao strong { color: var(--laranja-forte); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; }
+.abel-sugestoes button:disabled, .abel-nova:disabled { opacity: .5; cursor: default; }
+.abel-msgs .bloqueado { margin: auto 0; }
+
 </style>
 <div id="app"></div>
 <script type="module">
 // ---- src/vendor.js ----
-import { html, render, useState, useEffect } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
+import { html, render, useState, useEffect, useRef } from 'https://unpkg.com/htm@3.1.1/preact/standalone.module.js';
 
 // ---- src/datas.js ----
 // Datas como texto 'AAAA-MM-DD' no fuso local; instantes como Date ou ISO completo.
@@ -715,6 +724,8 @@ const RECURSOS_PLANO = {
   multasDefesa: 'intermediario',
   simuladorTaxa: 'intermediario',
   contasPagar: 'intermediario',
+  assistente: 'intermediario',
+  assistenteIA: 'avancado',
   prestacaoContas: 'intermediario',
   aprovacaoConselho: 'avancado',
   fluxoCaixa: 'avancado',
@@ -4786,9 +4797,30 @@ Mais → Documentos. Pastas como Convenção, Regimento interno, Atas, Balancete
 
 ## 11. Enquetes
 
-- Morador: Mais → Enquetes (ou o aviso no Início). Escolha a opção e confirme. O voto pode ser secreto (padrão) ou aberto, conforme a enquete.
-- O resultado aparece quando a enquete encerra. No plano Intermediário o síndico publica o resultado como comunicado e documento.
-- Avançado: peso por fração ideal e quórum mínimo.
+Decisões simples sem assembleia (horário da academia, cor da fachada). O síndico pergunta, os moradores respondem pelo app.
+
+**Morador**
+- **Onde:** cartão "Enquete · faltam N dias" no Início (some depois que você vota) ou Mais → Enquetes, com as abas Para responder, Respondidas e Encerradas.
+- **Votar:** abra a enquete → escolha a opção (ou até N opções, se for múltipla escolha) → comentário opcional, se a enquete permitir → **Enviar voto**.
+- **Um voto por unidade:** se alguém do apartamento já votou, aparece "Sua unidade já votou". Dá para trocar o voto até o encerramento (**Trocar o voto**).
+- **Voto secreto (padrão):** o síndico vê só os totais e quais unidades já responderam, nunca o voto de cada uma. **Voto aberto:** o síndico vê o voto de cada unidade; a tela avisa antes de você votar.
+- **Resultado:** aparece quando a enquete encerra. Se o síndico liberar, a parcial aparece logo depois do seu voto.
+
+**Síndico**
+- **Criar:** Enquetes → **Nova enquete**: pergunta, contexto, de 2 a 8 respostas (reordenáveis), prazo de 1 a 60 dias (encerra às 23h59), público (todos, um andar ou unidades escolhidas). Ao lado aparece a prévia de como o morador vê. **Salvar rascunho** ou **Publicar enquete** (aviso por app, e-mail e WhatsApp).
+- **Painel:** participação (ex.: 14 de 32 unidades), prazo, gráfico da evolução das respostas por dia, votos por opção, comentários e unidades que ainda não responderam (marcando as sem app, que recebem por e-mail e WhatsApp).
+- **Lembretes:** **Enviar lembrete agora** vai só para quem não respondeu, com os dias restantes ("Faltam 4 dias…" ou "Hoje é o último dia…"). No Intermediário há lembretes automáticos 3 dias antes e no último dia.
+- **Encerrar e prorrogar:** **Encerrar agora** (pede confirmação) ou **Prorrogar** uma única vez. A enquete também encerra sozinha na data limite.
+- **Resultado (Intermediário):** **Publicar resultado** gera um comunicado no mural e um documento em Documentos → Enquetes, com percentuais e participação, sem votos individuais.
+
+**Por plano**
+- Básico: escolha única, voto secreto, painel de participação e lembrete manual.
+- Intermediário: + múltipla escolha, comentário, voto aberto ou secreto, parcial visível, lembretes automáticos e resultado publicado.
+- Avançado: + peso por fração ideal e quórum mínimo. Abaixo do quórum, o resultado sai como "Sem quórum".
+
+**Mensagens:** "Escolha só uma opção" · "Escolha até N opções" · "A enquete está encerrada" · "Sua unidade não faz parte do público desta enquete" · "Só é possível prorrogar uma vez".
+
+O Sr. Abel nunca conta como outra unidade votou, nem em enquete de voto aberto. Também não vota pelo morador sem ele confirmar a opção.
 
 ## 12. Vendas entre moradores (feira do condomínio)
 
@@ -4852,8 +4884,7 @@ Quando um recurso não está no plano do condomínio, o app mostra "Disponível 
 - **O boleto está no nome do proprietário:** o responsável financeiro da unidade é quem o condomínio cadastrou (titular, inquilino ou proprietário). Peça ajuste ao síndico.
 - **Posso reservar para outra pessoa?** A reserva é da unidade; quem reserva é responsável pelo uso.
 - **Como falar com o síndico?** Abra uma ocorrência (tipo Sugestão para assuntos gerais) ou use o canal indicado nos Avisos.
-- **O app funciona sem internet?** Precisa de internet para enviar e receber dados.
-`;
+- **O app funciona sem internet?** Precisa de internet para enviar e receber dados.`;
 
 // ---- src/assistente/avatar.js ----
 // Avatar do Sr. Abel (JPEG 134×168). Para trocar, gere um novo data URI com a imagem.
@@ -4865,8 +4896,8 @@ const AVATAR_ABEL = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAQD
 // Mesmas regras de privacidade da versão com IA: cada perfil só recebe o que já pode ver no app.
 
 const PERFIS_ABEL = {
-  morador: { sugestoes: ['Tenho encomenda na portaria?', 'Como pago o condomínio?', 'Minhas reservas', 'Como abro uma ocorrência?', 'Quem está devendo?', 'Como começo a vender?'] },
-  sindico: { sugestoes: ['Quem está inadimplente?', 'Encomendas paradas', 'Como emito os boletos?', 'Como faço um acordo?', 'Como reajusto a taxa?', 'Multa com defesa'] },
+  morador: { sugestoes: ['Tenho encomenda na portaria?', 'Tem enquete para eu votar?', 'Como pago o condomínio?', 'Minhas reservas', 'Como abro uma ocorrência?', 'Quem está devendo?', 'Como começo a vender?'] },
+  sindico: { sugestoes: ['Quem está inadimplente?', 'Como está a enquete da academia?', 'Encomendas paradas', 'Como emito os boletos?', 'Como faço um acordo?', 'Como reajusto a taxa?', 'Multa com defesa'] },
   portaria: { sugestoes: ['Reservas de hoje', 'Encomendas aguardando', 'Morador perdeu o código', 'Como troco meu plantão?'] },
   zelador: { sugestoes: ['Minhas OS', 'Como concluo uma OS?', 'Preciso comprar material', 'Caixa pequeno'] },
   conselho: { sugestoes: ['Como aprovo a prestação de contas?', 'Onde vejo os balancetes?', 'O que é fluxo de caixa?'] },
@@ -4890,6 +4921,7 @@ function intencaoAbel(pergunta) {
   if (/quem (esta|ta|anda)? ?devendo|inadimpl|devedor|quem deve|quem nao pagou|quem esta atrasad/.test(t)) return 'devedores';
   if (/quem reservou|de quem e a reserva|quem abriu|quem fez a (denuncia|ocorrencia)|telefone d[oa] (morador|vizinh)|onde mora/.test(t)) return 'dadoTerceiro';
   if (/encomenda|pacote|entrega|correio|mercado livre|amazon|shopee|codigo de retirada|perdeu o codigo/.test(t)) return 'encomendas';
+  if (/(tem|ha|existe)\b.*(enquete|votacao)|enquetes? (da|de|do|aberta|pendente)|como (esta|anda|vai) a enquete|quero votar|minhas? enquetes?|participacao da enquete/.test(t)) return 'enquetes';
   if (/minhas? reservas?|reservas? de hoje|tenho reserva/.test(t)) return 'reservas';
   if (/minhas? os\b|ordens? de servico|minhas ordens/.test(t)) return 'os';
   if (/(meu|minha|quanto).*(boleto|condominio|taxa|cobranca)|(boleto|cobranca).*(aberto|vencid|atrasad|pagar)|2a via|segunda via/.test(t)) return 'cobranca';
@@ -4985,6 +5017,23 @@ function responderAbel(estado, perfil, pergunta, agora) {
     }
   }
 
+  if (intencao === 'enquetes' && perfil === 'morador') {
+    const { pendentes, respondidas } = enquetesDaUnidade(estado, estado.moradorAtual, agora);
+    if (!pendentes.length) return { texto: `Nenhuma enquete esperando o seu voto. ${respondidas.length ? `Você já votou em ${respondidas.length} enquete(s) aberta(s) e pode trocar o voto até o encerramento.` : ''}`.trim(), links: [linkAbel('Ver enquetes', 'morador', 'enquetes')] };
+    const lista = pendentes.map((e) => `- **${e.pergunta}** · ${textoDiasRestantes(e, agora)}`).join('\n');
+    return { texto: `Enquete(s) esperando o seu voto:\n${lista}\n\nAbra a enquete, escolha a opção e toque em **Enviar voto**.`, links: [linkAbel('Votar agora', 'morador', 'enquetes')] };
+  }
+
+  if (intencao === 'enquetes' && perfil === 'sindico') {
+    const abertas = estado.enquetes.filter((e) => situacaoEnquete(e, agora) === 'aberta');
+    if (!abertas.length) return { texto: 'Nenhuma enquete aberta agora. Para criar, vá em **Enquetes** → **Nova enquete**.', links: [linkAbel('Abrir Enquetes', 'sindico', 'enquetes')] };
+    const lista = abertas.map((e) => {
+      const a = apuracao(estado, e);
+      return `- **${e.pergunta}**: ${a.participantes} de ${a.total} responderam, ${textoDiasRestantes(e, agora)}, ${faltantes(estado, e).length} sem resposta`;
+    }).join('\n');
+    return { texto: `Enquetes abertas:\n${lista}\n\nNo painel da enquete você manda lembrete só para quem falta.`, links: [linkAbel('Abrir Enquetes', 'sindico', 'enquetes')] };
+  }
+
   if (intencao === 'os' && (perfil === 'zelador' || perfil === 'sindico')) {
     const abertas = estado.manutencao.os.filter((o) => o.status !== 'concluida' && o.status !== 'validada');
     if (!abertas.length) return { texto: 'Nenhuma OS em aberto. Bom trabalho! 🐝', links: [] };
@@ -5006,6 +5055,248 @@ function responderAbel(estado, perfil, pergunta, agora) {
   const secao = buscarNoManual(pergunta);
   if (!secao) return { texto: 'Hmm, essa eu não sei responder 🐝. Eu entendo de reservas, boletos, encomendas, ocorrências, vendas, escala e planos do CondoFácil. Para outros assuntos, fale com o síndico.', links: [] };
   return { texto: `Sobre **${secao.titulo}**:\n\n${trechoSecao(secao)}`, links: [] };
+}
+
+// ---- src/assistente/ia.js ----
+
+// Sr. Abel com IA (Avançado): o que cada perfil pode ver, montado do estado real, e as instruções enviadas ao Claude.
+function quandoReservaAbel(estado, r) {
+  return `${areaPorId(estado, r.areaId).nome}, ${fmtDataCurta(r.data)}, ${fmtHora(r.inicio)}–${fmtHora(r.fim)} (${r.status})`;
+}
+
+function contextoMorador(estado, eu, agora) {
+  const hoje = isoDia(agora);
+  const pessoa = pessoaDaUnidade(estado, eu);
+  const fin = estado.financeiro;
+  const responsavel = fin.unidades[eu].responsavel;
+  const souResponsavel = !!responsavel && !!pessoa && responsavel.nome === pessoa.nome;
+  const linhas = [`Pessoa: ${pessoa ? pessoa.nome : `Apto ${eu}`}, morador(a) do apto ${eu}. Responsável financeiro da unidade: ${responsavel ? responsavel.nome : 'não cadastrado'}${souResponsavel ? ' (é a própria pessoa)' : ' (outra pessoa: ela não vê as cobranças)'}.`];
+  const pacotes = estado.encomendas.filter((e) => e.unidade === eu && e.status === 'aguardando');
+  linhas.push(pacotes.length ? `Encomendas aguardando retirada: ${pacotes.map((e) => `${e.transportadora}, código ${e.codigo}, chegou em ${fmtDataCurta(isoDia(new Date(e.chegadaEm)))}${encomendaParada(e, agora) ? ' (parada há mais de 3 dias)' : ''}`).join('; ')}.` : 'Nenhuma encomenda aguardando retirada.');
+  const reservas = estado.reservas.filter((r) => r.unidade === eu && ['pendente', 'confirmada'].includes(r.status) && r.data >= hoje);
+  linhas.push(reservas.length ? `Reservas futuras da unidade: ${reservas.map((r) => quandoReservaAbel(estado, r)).join('; ')}.` : 'Nenhuma reserva futura.');
+  if (souResponsavel) {
+    const abertas = fin.cobrancas.filter((c) => c.unidade === eu && c.status === 'aberta');
+    linhas.push(abertas.length
+      ? `Cobranças em aberto: ${abertas.map((c) => `${nomeMes(c.competencia)}, ${situacaoCobranca(c, hoje) === 'vencida' ? 'vencida' : 'a vencer'}, vencimento ${fmtDataCurta(c.vencimento)}, valor atualizado ${fmtReais(valorAtualizado(c, fin.parametros, hoje).total)} (id ${c.id})`).join('; ')}.`
+      : 'Nenhuma cobrança em aberto: financeiro em dia.');
+  }
+  const ocorrencias = estado.ocorrencias.filter((o) => o.unidade === eu);
+  if (ocorrencias.length) linhas.push(`Ocorrências abertas por esta unidade: ${ocorrencias.map((o) => `${o.id} ${CATEGORIAS[o.categoria].nome} (${o.arquivada ? 'arquivada' : NOMES_STATUS[o.status]})`).join('; ')}.`);
+  const naoLidos = comunicadosDaUnidade(estado, eu).filter((c) => !c.leituras.includes(eu));
+  if (naoLidos.length) linhas.push(`Avisos não lidos: ${naoLidos.map((c) => `"${c.titulo}"`).join(', ')}.`);
+  const { pendentes, respondidas, encerradas } = enquetesDaUnidade(estado, eu, agora);
+  for (const e of pendentes) linhas.push(`Enquete aberta sem voto da unidade: ${e.id} "${e.pergunta}". Opções: ${e.opcoes.map((o) => `"${o.texto}" (id ${o.id})`).join(', ')}. ${e.tipo === 'multipla' ? `Até ${e.maxEscolhas} opções` : 'Escolha única'}, ${e.secreto ? 'voto secreto' : 'voto aberto'}, ${textoDiasRestantes(e, agora)}.`);
+  for (const e of respondidas) linhas.push(`Enquete aberta já votada pela unidade: ${e.id} "${e.pergunta}" (pode trocar o voto até o encerramento).`);
+  for (const e of encerradas) linhas.push(`Enquete encerrada: ${e.id} "${e.pergunta}": ${textoResultado(estado, e)}.`);
+  for (const p of infracoesDaUnidade(estado, eu)) linhas.push(`Processo ${p.id} contra a unidade: ${NOMES_TIPO_INFRACAO[p.tipo]}${p.valor ? ` de ${fmtReais(p.valor)}` : ''}, ${p.artigo}, fato: "${p.fato}", situação: ${situacaoInfracao(p, hoje)}, prazo de defesa até ${fmtDataCurta(p.prazoAte)}${p.defesa ? ', defesa já enviada' : ''}.`);
+  linhas.push(`Áreas reserváveis: ${estado.areas.map((a) => a.nome).join(', ')}.`);
+  linhas.push('Esta pessoa NÃO pode ver: quem reservou outras datas, dívidas de outras unidades, autor de ocorrência anônima, votos de outras unidades, pedidos e conversas de outros moradores.');
+  return linhas.join('\n');
+}
+
+function contextoSindico(estado, agora) {
+  const hoje = isoDia(agora);
+  const ind = indicadoresFinanceiros(estado, hoje);
+  const atencao = [
+    ...estado.reservas.filter((r) => r.status === 'pendente').map((r) => `Reserva pendente: ${quandoReservaAbel(estado, r)}, apto ${r.unidade}`),
+    ...alertasNotificacoes(estado, agora), ...alertasManutencao(estado, agora), ...alertasEscala(estado, agora), ...alertasInfracoes(estado, hoje),
+    ...alertasEnquetes(estado, agora), ...alertasContas(estado, hoje), ...alertasPrestacao(estado, hoje),
+  ].map((a) => (typeof a === 'string' ? a : a.texto));
+  const docs = alertasDocumentos(estado.documentos, hoje).map((a) => `${a.documento.titulo}: ${a.dias < 0 ? `vencido há ${-a.dias} dias` : `vence em ${a.dias} dias`}`);
+  const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora)).map((e) => `encomenda do apto ${e.unidade} parada desde ${fmtDataCurta(isoDia(new Date(e.chegadaEm)))}`);
+  const linhas = [`Pessoa: Roberto Lima, síndico (apto 801). Plano: ${estado.plano}. Condomínio: ${estado.condominio.nome}, ${estado.condominio.unidades.length} unidades.`];
+  linhas.push(`Precisa da atenção: ${[...atencao, ...docs, ...paradas].join('; ') || 'nada pendente'}.`);
+  linhas.push(`Financeiro: saldo ${fmtReais(ind.saldo.valor)}; arrecadação de ${nomeMes(ind.arrecadado.competencia)}: ${fmtReais(ind.arrecadado.recebido)} de ${fmtReais(ind.arrecadado.previsto)} (${ind.arrecadado.pct}%); despesas do mês ${fmtReais(ind.despesas.valor)} contra orçado ${fmtReais(ind.despesas.orcado)}; próxima competência ${nomeMes(proximaCompetencia(estado.financeiro))}.`);
+  const lista = devedores(estado, hoje);
+  linhas.push(`Inadimplência: ${lista.length} unidades (${ind.inadimplencia.pct}%): ${lista.map((d) => `${d.unidade} (${d.cobrancas} cobranças, ${fmtReais(d.valor)}, ${d.dias} dias${d.acordo ? `, acordo ${d.acordo}` : ''})`).join('; ')}.`);
+  for (const e of estado.enquetes.filter((x) => x.situacao !== 'rascunho')) {
+    const a = apuracao(estado, e);
+    linhas.push(`Enquete ${e.id} "${e.pergunta}": ${a.participantes} de ${a.total} responderam; ${a.opcoes.map((o) => `${o.texto} ${o.votos}`).join(', ')}; ${textoResultado(estado, e)}; ${faltantes(estado, e).length} unidades sem resposta.`);
+  }
+  linhas.push('O síndico pode ver inadimplência e processos; trate esses dados com discrição. O Sr. Abel não aprova, não multa e não decide nada pelo síndico.');
+  return linhas.join('\n');
+}
+
+function contextoPortaria(estado, agora) {
+  const hoje = isoDia(agora);
+  const plantao = plantaoAgora(estado, agora);
+  const turnos = Object.entries(POSTOS).map(([id, p]) => {
+    const { atual, proximo } = plantao[id];
+    return `${p.nome}: ${atual ? (atual.porteiro ? porteiroPorId(atual.porteiro).nome : 'descoberto') : 'fechado agora'}${proximo ? `, próximo ${proximo.porteiro ? porteiroPorId(proximo.porteiro).nome : 'descoberto'} às ${Number(proximo.inicio.slice(11, 13))}h` : ''}`;
+  });
+  const reservas = estado.reservas.filter((r) => r.data === hoje && ['pendente', 'confirmada'].includes(r.status));
+  const pacotes = estado.encomendas.filter((e) => e.status === 'aguardando');
+  return [
+    'Pessoa: equipe da portaria (tablet da portaria).',
+    `Plantão agora: ${turnos.join('; ')}.`,
+    `Reservas de hoje: ${reservas.length ? reservas.map((r) => `${quandoReservaAbel(estado, r)}, apto ${r.unidade}, ${r.convidados.length} convidados`).join('; ') : 'nenhuma'}.`,
+    `Encomendas aguardando retirada: ${pacotes.length} (${pacotes.map((e) => `apto ${e.unidade}`).join(', ')}).`,
+    'A portaria NÃO vê dados financeiros nem autor de ocorrência anônima.',
+  ].join('\n');
+}
+
+function contextoZelador(estado) {
+  const os = listaOS(estado).filter((o) => o.status !== 'validada');
+  const compras = estado.manutencao.compras.filter((c) => c.status !== 'recebida');
+  return [
+    `Pessoa: ${ZELADOR}, zelador. Plano: ${estado.plano}.`,
+    `Ordens de serviço: ${os.length ? os.map((o) => `${o.id} "${o.descricao}" em ${o.local} (${o.status}, prioridade ${o.prioridade}, prazo ${fmtDataCurta(isoDia(new Date(o.prazo)))})`).join('; ') : 'nenhuma'}.`,
+    `Compras em andamento: ${compras.length ? compras.map((c) => `${c.id} ${c.item} (${c.status})`).join('; ') : 'nenhuma'}.`,
+    'O zelador NÃO vê receitas, inadimplência, saldo do condomínio nem dados pessoais de moradores.',
+  ].join('\n');
+}
+
+function contextoConselho(estado, agora) {
+  const hoje = isoDia(agora);
+  const meses = mesesDaPrestacao(estado, hoje).map((m) => {
+    const b = balanceteDe(estado, m, hoje);
+    return `${nomeMes(m)}: ${NOMES_SITUACAO_BALANCETE[b.situacao]}${b.parcial ? ' (parcial)' : ''}, saldo final ${fmtReais(saldoFinal(b))}${b.comentarios.length ? `, ${b.comentarios.length} comentários` : ''}`;
+  });
+  return [`Pessoa: ${CONSELHEIRO.nome}, ${CONSELHEIRO.papel.toLowerCase()} (apto ${CONSELHEIRO.unidade}). Plano: ${estado.plano}.`, `Prestação de contas: ${meses.join('; ')}.`].join('\n');
+}
+
+function contextoAbel(estado, perfil, agora) {
+  if (perfil === 'morador') return contextoMorador(estado, estado.moradorAtual, agora);
+  if (perfil === 'sindico') return contextoSindico(estado, agora);
+  if (perfil === 'portaria') return contextoPortaria(estado, agora);
+  if (perfil === 'zelador') return contextoZelador(estado);
+  return contextoConselho(estado, agora);
+}
+
+function instrucoesAbel(estado, perfil, agora) {
+  return `Você é o Sr. Abel, a abelhinha assistente do aplicativo CondoFácil (gestão de condomínios). Siga à risca o MANUAL abaixo: ele define personalidade, limites e o funcionamento do app.
+
+QUEM ESTÁ FALANDO COM VOCÊ: perfil "${perfil}". Hoje é ${fmtDataCurta(isoDia(agora))} (${isoDia(agora)}).
+
+DADOS QUE ESTE PERFIL PODE VER (use para responder perguntas pessoais; nunca revele nada além disso):
+${contextoAbel(estado, perfil, agora)}
+
+REGRAS DE RESPOSTA:
+- Português do Brasil, simpático, curto (2 a 6 frases ou passos numerados). Use **negrito** só para nomes de botões e telas.
+- Responda apenas sobre o CondoFácil e a vida no condomínio. Fora disso, recuse com gentileza e volte ao tema.
+- Se a pergunta pedir dados que este perfil não pode ver, explique que é privado e ofereça o que pode fazer.
+- Antes de qualquer ação (reserva, ocorrência, voto, 2ª via), mostre um resumo e peça confirmação; só use a ferramenta depois do "sim".
+- Se não souber, diga que não sabe e indique o síndico, a portaria ou comercial@condofacil.cloud. Não invente telas nem regras.
+
+=== MANUAL DO SR. ABEL ===
+${MANUAL_ABEL}
+=== FIM DO MANUAL ===
+
+Agora responda à conversa a seguir como Sr. Abel.`;
+}
+
+// ---- src/assistente/ferramentas.js ----
+
+// Ferramentas do Sr. Abel para o morador: as mesmas ações do app, com as mesmas regras e mensagens de erro.
+function normalizarAbel(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
+function areaDoTexto(estado, texto) {
+  const t = normalizarAbel(texto);
+  return estado.areas.find((a) => normalizarAbel(a.nome).includes(t) || t.includes(normalizarAbel(a.nome)) || a.id === t) || null;
+}
+
+function dataDoTexto(texto) {
+  const t = String(texto || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null;
+}
+
+function categoriaDoTexto(texto) {
+  const t = normalizarAbel(texto);
+  return Object.keys(CATEGORIAS).find((k) => k === t || normalizarAbel(CATEGORIAS[k].nome) === t || normalizarAbel(CATEGORIAS[k].nome).includes(t)) || null;
+}
+
+// obterEstado() devolve o estado atual; executar(fn) aplica a ação no app e devolve o resultado dela; aoAgir(titulo, texto) mostra o cartão no chat.
+function ferramentasAbel({ obterEstado, executar, agora, aoAgir = () => {} }) {
+  const eu = () => obterEstado().moradorAtual;
+  const rodar = (acao) => {
+    const r = executar(acao);
+    if (r.erro) throw new Error(r.erro);
+    return r;
+  };
+  return [
+    {
+      name: 'consultar_agenda',
+      description: 'Mostra os horários de uma área comum numa data, com livre ou ocupado, sem revelar quem reservou. Use antes de propor uma reserva.',
+      inputSchema: { type: 'object', properties: { area: { type: 'string', description: 'Nome da área, ex.: churrasqueira' }, data: { type: 'string', description: 'AAAA-MM-DD' } }, required: ['area', 'data'] },
+      execute(input) {
+        const estado = obterEstado();
+        const area = areaDoTexto(estado, input.area);
+        if (!area) throw new Error('Área inexistente');
+        const data = dataDoTexto(input.data);
+        if (!data) throw new Error('Data inválida, use AAAA-MM-DD');
+        return { area: area.nome, data: fmtDataCurta(data), taxa: area.taxa ? `R$ ${area.taxa},00` : 'grátis', aprovacao: area.aprovacao === 'automatica' ? 'automática' : 'o síndico aprova', horarios: horariosDaArea(estado, area.id, data, agora()).map((h) => ({ horario: h.rotulo, inicio: h.inicio, situacao: h.livre ? 'livre' : h.motivo.toLowerCase() })) };
+      },
+    },
+    {
+      name: 'solicitar_reserva',
+      description: 'Pede a reserva de uma área para a unidade da pessoa. SÓ chame depois que a pessoa confirmou área, data, horário e taxa. Devolve confirmada ou pendente, ou o erro de regra.',
+      inputSchema: { type: 'object', properties: { area: { type: 'string' }, data: { type: 'string', description: 'AAAA-MM-DD' }, inicio: { type: 'number', description: 'Hora de início do horário escolhido, ex.: 18' } }, required: ['area', 'data', 'inicio'] },
+      execute(input) {
+        const estado = obterEstado();
+        const area = areaDoTexto(estado, input.area);
+        if (!area) throw new Error('Área inexistente');
+        const data = dataDoTexto(input.data);
+        if (!data) throw new Error('Data inválida, use AAAA-MM-DD');
+        const horario = horariosDaArea(estado, area.id, data, agora()).find((h) => h.inicio === Number(input.inicio));
+        if (!horario) throw new Error('Horário inexistente para esta área');
+        const r = rodar((e) => solicitarReserva(e, { areaId: area.id, unidade: eu(), data, inicio: horario.inicio, fim: horario.fim, aceiteTermo: true, convidados: [] }, agora()));
+        const reserva = obterEstado().reservas.find((x) => x.id === r.id);
+        aoAgir('Reserva solicitada', `${area.nome} · ${fmtDataCurta(data)} · ${horario.rotulo} · ${reserva.status}`);
+        return { ok: true, area: area.nome, data: fmtDataCurta(data), horario: horario.rotulo, situacao: reserva.status, observacao: 'A taxa entra no próximo boleto. Cancelar com menos de 72 h pode ter multa.' };
+      },
+    },
+    {
+      name: 'abrir_ocorrencia',
+      description: 'Registra uma ocorrência da unidade e devolve o protocolo. SÓ chame depois de mostrar o resumo (categoria, descrição, local, anônima, pública) e a pessoa confirmar.',
+      inputSchema: { type: 'object', properties: { categoria: { type: 'string', description: `Uma de: ${Object.values(CATEGORIAS).map((c) => c.nome).join(', ')}` }, descricao: { type: 'string' }, local: { type: 'string' }, anonima: { type: 'boolean' }, publica: { type: 'boolean' } }, required: ['categoria', 'descricao'] },
+      execute(input) {
+        const categoria = categoriaDoTexto(input.categoria);
+        if (!categoria) throw new Error('Escolha o tipo e a categoria');
+        const r = rodar((e) => abrirOcorrencia(e, { categoria, descricao: input.descricao, local: input.local || '', unidade: eu(), anonima: !!input.anonima, publica: !!input.publica, foto: false }, agora()));
+        aoAgir(`Ocorrência ${r.id} aberta`, `${CATEGORIAS[categoria].nome}${input.local ? ` · ${input.local}` : ''}${input.anonima ? ' · anônima' : ''}${input.publica ? ' · pública' : ''}`);
+        return { ok: true, protocolo: r.id, acompanhamento: 'Ocorrências → Minhas' };
+      },
+    },
+    {
+      name: 'votar_enquete',
+      description: 'Registra ou troca o voto da unidade numa enquete aberta. SÓ chame depois que a pessoa confirmou a opção. Use os ids das opções que estão nos dados.',
+      inputSchema: { type: 'object', properties: { enquete: { type: 'string', description: 'Ex.: EN-001' }, opcoes: { type: 'array', items: { type: 'string' }, description: 'Ids ou textos das opções escolhidas' }, comentario: { type: 'string' } }, required: ['enquete', 'opcoes'] },
+      execute(input) {
+        const estado = obterEstado();
+        const e = enquetePorId(estado, String(input.enquete || '').toUpperCase());
+        if (!e) throw new Error('Enquete não encontrada');
+        const escolhidas = [].concat(input.opcoes || []).map((o) => {
+          const t = normalizarAbel(o);
+          const achada = e.opcoes.find((x) => x.id === o || normalizarAbel(x.texto) === t || normalizarAbel(x.texto).includes(t));
+          return achada ? achada.id : String(o);
+        });
+        const pessoa = pessoaDaUnidade(estado, eu());
+        const r = rodar((s) => votar(s, e.id, { unidade: eu(), autor: pessoa ? pessoa.nome : `Apto ${eu()}`, opcoes: escolhidas, comentario: input.comentario }, agora()));
+        aoAgir(r.trocou ? 'Voto alterado' : 'Voto registrado', `${e.id} · ${escolhidas.map((id) => e.opcoes.find((o) => o.id === id).texto).join(', ')} · ${e.secreto ? 'voto secreto' : 'voto aberto'}`);
+        return { ok: true, enquete: e.id, trocou: r.trocou, observacao: 'Dá para trocar até o encerramento.' };
+      },
+    },
+    {
+      name: 'segunda_via',
+      description: 'Envia a 2ª via da cobrança em aberto mais antiga da unidade, com valor atualizado, para o app e o WhatsApp do responsável financeiro.',
+      execute() {
+        const estado = obterEstado();
+        const responsavel = estado.financeiro.unidades[eu()].responsavel;
+        const pessoa = pessoaDaUnidade(estado, eu());
+        if (!responsavel || !pessoa || responsavel.nome !== pessoa.nome) throw new Error(`As cobranças do apto ${eu()} vão para o responsável financeiro${responsavel ? ` (${responsavel.nome})` : ''}`);
+        const c = estado.financeiro.cobrancas.filter((x) => x.unidade === eu() && x.status === 'aberta').sort((a, b) => a.vencimento.localeCompare(b.vencimento))[0];
+        if (!c) throw new Error('Nenhuma cobrança em aberto: o financeiro está em dia');
+        const r = rodar((e) => enviarSegundaVia(e, c.id, agora()));
+        aoAgir('2ª via enviada', r.notificacao.texto);
+        return { ok: true, texto: r.notificacao.texto };
+      },
+    },
+  ];
 }
 
 // ---- src/casos/afirmar.js ----
@@ -7155,6 +7446,70 @@ const CASOS_ASSISTENTE = [
       contem(responderAbel(e, 'sindico', 'Como reajusto a taxa?', AGORA_FASE2).texto, 'reajuste', 'reajuste');
       contem(responderAbel(e, 'morador', 'qual a capital da Mongólia?', AGORA_FASE2).texto, 'não sei', 'fora do tema');
       contem(saudacaoAbel(e, 'morador'), 'Ana', 'saudação');
+    },
+  },
+  {
+    nome: 'assistente IA: contexto de cada perfil respeita a privacidade',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const ana = contextoAbel(e, 'morador', AGORA_FASE2);
+      contem(ana, 'Ana Souza', 'Ana');
+      contem(ana, '481203', 'encomenda da Ana');
+      contem(ana, 'EN-001', 'enquete pendente');
+      naoContem(ana, '219884', 'encomenda do 504');
+      naoContem(ana, 'Inadimplência', 'devedores');
+      naoContem(ana, 'Sônia', 'autora de outra ocorrência');
+      naoContem(ana, 'PI-001', 'processo do 104');
+      const juliana = contextoAbel(trocarMorador(e, '104').estado, 'morador', AGORA_FASE2);
+      contem(juliana, 'PI-001', 'processo da Juliana');
+      naoContem(juliana, '481203', 'encomenda da Ana');
+      const sindico = contextoAbel(e, 'sindico', AGORA_FASE2);
+      contem(sindico, 'Inadimplência', 'síndico');
+      contem(sindico, '704', 'devedor');
+      const portaria = contextoAbel(e, 'portaria', AGORA_FASE2);
+      naoContem(portaria, 'Inadimplência', 'portaria');
+      naoContem(contextoAbel(e, 'zelador', AGORA_FASE2), 'R$', 'zelador sem valores');
+      contem(instrucoesAbel(e, 'morador', AGORA_FASE2), '=== MANUAL DO SR. ABEL ===', 'instruções');
+    },
+  },
+  {
+    nome: 'assistente IA: ferramentas do morador usam as ações do app',
+    rodar() {
+      let estado = dadosIniciais(AGORA_FASE2);
+      const feitos = [];
+      const executar = (acao) => { const r = acao(estado); if (!r.erro) estado = r.estado; return r; };
+      const t = Object.fromEntries(ferramentasAbel({ obterEstado: () => estado, executar, agora: () => AGORA_FASE2, aoAgir: (a) => feitos.push(a) }).map((x) => [x.name, x]));
+      const agenda = t.consultar_agenda.execute({ area: 'churrasqueira', data: '2026-10-24' });
+      igual([agenda.area, agenda.horarios.length > 0, JSON.stringify(agenda).includes('apto')], ['Churrasqueira', true, false]);
+      const livre = agenda.horarios.find((h) => h.situacao === 'livre');
+      const r = t.solicitar_reserva.execute({ area: 'churrasqueira', data: '2026-10-24', inicio: livre.inicio });
+      igual([r.ok, estado.reservas.at(-1).unidade, estado.reservas.at(-1).areaId], [true, '302', 'churrasqueira']);
+      let erro = null;
+      try { t.solicitar_reserva.execute({ area: 'churrasqueira', data: '2026-10-24', inicio: livre.inicio }); } catch (x) { erro = x.message; }
+      igual(erro, 'Horário já reservado');
+      const oc = t.abrir_ocorrencia.execute({ categoria: 'iluminação', descricao: 'Lâmpada queimada no hall', local: 'Hall do 3º andar' }) ;
+      igual(oc.ok, true);
+      const v = t.votar_enquete.execute({ enquete: 'EN-001', opcoes: ['Às 7h'] });
+      igual([v.ok, enquetePorId(estado, 'EN-001').votos['302'].opcoes, v.trocou], [true, ['o2'], false]);
+      igual(t.votar_enquete.execute({ enquete: 'en-001', opcoes: ['o3'] }).trocou, true);
+      erro = null;
+      try { t.segunda_via.execute({}); } catch (x) { erro = x.message; }
+      igual(erro, 'Nenhuma cobrança em aberto: o financeiro está em dia');
+      estado = trocarMorador(estado, '104').estado;
+      erro = null;
+      try { t.segunda_via.execute({}); } catch (x) { erro = x.message; }
+      igual(erro.startsWith('As cobranças do apto 104 vão para o responsável financeiro'), true);
+      igual(feitos.length, 4);
+    },
+  },
+  {
+    nome: 'assistente: enquetes respondidas com os dados do perfil',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(['Tem enquete para eu votar?', 'Como está a enquete da academia?', 'Como funciona a enquete?'].map(intencaoAbel), ['enquetes', 'enquetes', null]);
+      contem(responderAbel(e, 'morador', 'Tem enquete para eu votar?', AGORA_FASE2).texto, 'Qual horário a academia deve abrir aos domingos?', 'Ana');
+      contem(responderAbel(e, 'sindico', 'Como está a enquete da academia?', AGORA_FASE2).texto, '14 de 32 responderam', 'síndico');
+      contem(responderAbel(e, 'morador', 'Tem enquete para eu votar?', AGORA_FASE2).texto, 'faltam 4 dias', 'prazo');
     },
   },
 ];
@@ -11828,67 +12183,155 @@ function ZCaixa({ estado, executar }) {
 
 // ---- src/ui/assistente.js ----
 
-// Texto do Sr. Abel com **negrito** e listas "- ". Escapa tudo antes de formatar.
+// Sr. Abel: Intermediário responde pelo manual e pelos dados do perfil; Avançado conversa com o Claude, vendo o estado real.
+const COPIA_ERRO_ABEL = {
+  rate_limited: 'Muitas perguntas seguidas. Espere um pouquinho e tente de novo.',
+  session_expired: 'Sua sessão expirou. Entre de novo no Claude e tente outra vez.',
+  refused: 'Não posso responder isso. Tente perguntar de outro jeito.',
+  empty_completion: 'Fiquei sem palavras 🐝. Tente perguntar de outro jeito.',
+  prompt_too_large: 'A conversa ficou longa demais. Toque em Nova conversa.',
+};
+const SEM_IA_ABEL = ['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'];
+
+// Texto do Sr. Abel com **negrito** e listas "- " ou "1. ". Escapa tudo antes de formatar.
 function TextoAbel({ texto }) {
   const blocos = [];
   let lista = null;
   texto.split('\n').forEach((linha, i) => {
-    const partes = linha.replace(/^- /, '').split(/\*\*(.+?)\*\*/g).map((p, j) => (j % 2 ? html`<strong key=${j}>${p}</strong>` : p));
-    if (linha.startsWith('- ')) {
+    const item = linha.match(/^\s*(?:[-•*]|\d+[.)])\s+(.*)/);
+    const partes = (item ? item[1] : linha).split(/\*\*(.+?)\*\*/g).map((p, j) => (j % 2 ? html`<strong key=${j}>${p}</strong>` : p));
+    if (item) {
       if (!lista) { lista = []; blocos.push(html`<ul key=${`l${i}`}>${lista}</ul>`); }
       lista.push(html`<li key=${i}>${partes}</li>`);
     } else {
       lista = null;
-      if (linha.trim()) blocos.push(html`<p key=${i}>${partes}</p>`);
+      if (linha.trim()) blocos.push(html`<p key=${i}>${partes.map((p) => (typeof p === 'string' ? p.replace(/^#+\s*/, '') : p))}</p>`);
     }
   });
   return blocos;
 }
 
-function SrAbel({ estado, rota, agora }) {
+function AvisoPlanoAbel({ estado }) {
+  const minimo = planoMinimo('assistente');
+  const unidades = estado.condominio.unidades.length;
+  return html`<div class="abel-msgs"><div class="bloqueado">
+    <strong>Sr. Abel, o assistente do CondoFácil</strong>
+    <span>Disponível no plano ${minimo.nome} (+${fmtReais(mensalidade(minimo.id, unidades) - mensalidade(estado.plano, unidades))}/mês)</span>
+    <small class="sub">Tira dúvidas do app e consulta os seus dados. No Avançado, conversa com IA e faz ações como reservar e votar.</small>
+  </div></div>`;
+}
+
+function SrAbel({ estado, rota, agora, executar, obterEstado }) {
   const perfil = rota.perfil;
   const chaveConversa = perfil === 'morador' ? `${perfil}-${estado.moradorAtual}` : perfil;
+  const comAbel = liberado(estado.plano, 'assistente');
+  const comIA = liberado(estado.plano, 'assistenteIA');
   const [aberto, setAberto] = useState(false);
   const [conversa, setConversa] = useState({ chave: null, mensagens: [] });
   const [texto, setTexto] = useState('');
+  const [sample, setSample] = useState(null);
+  const [comFerramentas, setComFerramentas] = useState(false);
+  const [pensando, setPensando] = useState(false);
+  const controle = useRef(null);
+
+  useEffect(() => {
+    let ativo = true;
+    if (!comIA || !window.claude || !window.claude.use) { setSample(null); return undefined; }
+    window.claude.use('sample').then(async (s) => {
+      if (!ativo) return;
+      setSample(() => s);
+      const lim = s ? await s.limits().catch(() => null) : null;
+      if (ativo) setComFerramentas(!!(lim && lim.tools));
+    }).catch(() => ativo && setSample(null));
+    return () => { ativo = false; };
+  }, [comIA]);
 
   const mensagens = conversa.chave === chaveConversa ? conversa.mensagens : [{ de: 'abel', texto: saudacaoAbel(estado, perfil), links: [] }];
+  const comIAAgora = comIA && !!sample;
 
   useEffect(() => {
     const el = document.getElementById('abel-msgs');
     if (el) el.scrollTop = el.scrollHeight;
-  }, [mensagens.length, aberto]);
+  }, [mensagens.length, aberto, mensagens.at(-1) && mensagens.at(-1).texto]);
+
+  function guardar(lista) {
+    setConversa({ chave: chaveConversa, mensagens: lista });
+  }
+
+  async function perguntarIA(base, p) {
+    const pendente = { de: 'abel', texto: 'O Sr. Abel está pensando…', links: [], pensando: true };
+    let atual = [...base, pendente];
+    guardar(atual);
+    setPensando(true);
+    const ctl = new AbortController();
+    controle.current = ctl;
+    const trocar = (msg) => { atual = [...atual.slice(0, -1), msg]; guardar(atual); };
+    const acoes = [];
+    const turnos = base.filter((m) => !m.pensando && !m.acao).slice(-14).map((m) => ({ role: m.de === 'eu' ? 'user' : 'assistant', content: m.texto }));
+    while (turnos.length && turnos[0].role === 'assistant') turnos.shift();
+    try {
+      const opcoes = {
+        modelTier: 'quick', cache: false, signal: ctl.signal,
+        onText: ({ text }) => trocar({ de: 'abel', texto: text, links: [], acoes }),
+      };
+      if (comFerramentas && perfil === 'morador') {
+        delete opcoes.cache;
+        opcoes.tools = ferramentasAbel({ obterEstado, executar, agora: () => new Date(), aoAgir: (titulo, detalhe) => acoes.push({ titulo, detalhe }) });
+      }
+      const { text, truncated } = await sample([{ role: 'user', content: instrucoesAbel(obterEstado(), perfil, new Date()) }, ...turnos], opcoes);
+      trocar({ de: 'abel', texto: text + (truncated ? '\n\n(Resposta cortada: peça em partes.)' : ''), links: [], acoes });
+    } catch (e) {
+      const code = e && e.code;
+      if (code === 'cancelled') trocar({ de: 'abel', texto: (e.text || '') || 'Parado.', links: [], acoes });
+      else if (SEM_IA_ABEL.includes(code) || code === 'tools_unavailable') {
+        if (code === 'tools_unavailable') setComFerramentas(false); else setSample(null);
+        const r = responderAbel(obterEstado(), perfil, p, new Date());
+        trocar({ de: 'abel', ...r, texto: `${r.texto}\n\n(IA não liberada neste acesso: respondi pelo manual.)` });
+      } else trocar({ de: 'abel', texto: `${e && e.text ? `${e.text}\n\n` : ''}${COPIA_ERRO_ABEL[code] || 'Deu um probleminha na conexão. Tente de novo.'}`, links: [], acoes });
+    } finally {
+      controle.current = null;
+      setPensando(false);
+    }
+  }
 
   function perguntar(pergunta) {
     const p = pergunta.trim();
-    if (!p) return;
-    const resposta = responderAbel(estado, perfil, p, agora);
-    setConversa({ chave: chaveConversa, mensagens: [...mensagens, { de: 'eu', texto: p, links: [] }, { de: 'abel', ...resposta }] });
+    if (!p || pensando) return;
     setTexto('');
+    const base = [...mensagens, { de: 'eu', texto: p, links: [] }];
+    if (comIAAgora) { perguntarIA(base, p); return; }
+    guardar([...base, { de: 'abel', ...responderAbel(estado, perfil, p, agora) }]);
   }
 
   const sugestoes = (PERFIS_ABEL[perfil] || PERFIS_ABEL.morador).sugestoes;
+  const modo = !comAbel ? null : comIAAgora ? 'IA ativa' : 'respostas pelo manual';
 
   return html`
     ${aberto && html`<section class="abel-painel" role="dialog" aria-label="Sr. Abel, assistente do CondoFácil">
       <header class="abel-topo">
         <img class="abel-avatar" src=${AVATAR_ABEL} alt="" />
-        <div><strong>Sr. Abel</strong><small>Assistente do CondoFácil</small></div>
+        <div><strong>Sr. Abel</strong><small>${modo ? `Assistente do CondoFácil · ${modo}` : 'Assistente do CondoFácil'}</small></div>
+        ${comAbel && html`<button type="button" class="abel-nova" disabled=${pensando} onClick=${() => guardar([])}>Nova conversa</button>`}
         <button type="button" class="abel-fechar" aria-label="Fechar o Sr. Abel" onClick=${() => setAberto(false)}>×</button>
       </header>
-      <div class="abel-msgs" id="abel-msgs" aria-live="polite">
-        ${mensagens.map((m, i) => html`<div key=${i} class=${`abel-msg abel-${m.de}`}>
-          <div class="abel-bolha"><${TextoAbel} texto=${m.texto} /></div>
-          ${m.links && m.links.length ? html`<div class="abel-links">${m.links.map((l) => html`<button type="button" key=${l.rotulo} class="btn-link" onClick=${() => ir(l.perfil, l.tela)}>${l.rotulo} →</button>`)}</div>` : null}
-        </div>`)}
-      </div>
-      <div class="abel-sugestoes">${sugestoes.map((s) => html`<button type="button" key=${s} onClick=${() => perguntar(s)}>${s}</button>`)}</div>
-      <form class="abel-entrada" onSubmit=${(ev) => { ev.preventDefault(); perguntar(texto); }}>
-        <label class="so-leitor" for="abel-caixa">Pergunte ao Sr. Abel</label>
-        <input id="abel-caixa" type="text" autocomplete="off" placeholder="Pergunte ao Sr. Abel…" value=${texto} onInput=${(ev) => setTexto(ev.target.value)} />
-        <button type="submit" class="btn primario" disabled=${!texto.trim()}>Enviar</button>
-      </form>
-      <small class="abel-aviso">Versão do protótipo: respostas pelo manual, sem IA. Decisões são do síndico.</small>
+      ${comAbel
+        ? html`<div class="abel-msgs" id="abel-msgs" aria-live="polite">
+            ${mensagens.map((m, i) => html`<div key=${i} class=${`abel-msg abel-${m.de}${m.pensando ? ' abel-pensando' : ''}`}>
+              <div class="abel-bolha"><${TextoAbel} texto=${m.texto} /></div>
+              ${m.acoes && m.acoes.map((a, n) => html`<div key=${n} class="abel-acao"><strong>${a.titulo}</strong><span>${a.detalhe}</span></div>`)}
+              ${m.links && m.links.length ? html`<div class="abel-links">${m.links.map((l) => html`<button type="button" key=${l.rotulo} class="btn-link" onClick=${() => ir(l.perfil, l.tela)}>${l.rotulo} →</button>`)}</div>` : null}
+            </div>`)}
+          </div>
+          <div class="abel-sugestoes">${sugestoes.map((s) => html`<button type="button" key=${s} disabled=${pensando} onClick=${() => perguntar(s)}>${s}</button>`)}</div>
+          <form class="abel-entrada" onSubmit=${(ev) => { ev.preventDefault(); perguntar(texto); }}>
+            <label class="so-leitor" for="abel-caixa">Pergunte ao Sr. Abel</label>
+            <input id="abel-caixa" type="text" autocomplete="off" placeholder="Pergunte ao Sr. Abel…" value=${texto} disabled=${pensando} onInput=${(ev) => setTexto(ev.target.value)} />
+            ${pensando
+              ? html`<button type="button" class="btn secundario" onClick=${() => controle.current && controle.current.abort()}>Parar</button>`
+              : html`<button type="submit" class="btn primario" disabled=${!texto.trim()}>Enviar</button>`}
+          </form>
+          <small class="abel-aviso">${comIAAgora ? 'O Sr. Abel usa a IA do Claude e pode errar. Ações sempre pedem sua confirmação; decisões do condomínio são do síndico.' : comIA ? 'IA do plano Avançado: disponível quando o protótipo é aberto no Claude. Agora respondo pelo manual.' : 'Respostas pelo manual e pelos seus dados. A conversa com IA é do plano Avançado.'}</small>`
+        : html`<${AvisoPlanoAbel} estado=${estado} />`}
     </section>`}
     <button type="button" class="abel-botao" aria-expanded=${aberto} aria-label=${aberto ? 'Fechar o Sr. Abel' : 'Falar com o Sr. Abel'} onClick=${() => setAberto(!aberto)}>
       <img src=${AVATAR_ABEL} alt="" /><span>${aberto ? 'Fechar' : 'Sr. Abel'}</span>
@@ -11908,6 +12351,8 @@ function estadoDeHoje() {
 
 function App() {
   const [estado, setEstado] = useState(estadoDeHoje);
+  const estadoAtual = useRef(estado);
+  estadoAtual.current = estado;
   const [rota, setRota] = useState(lerRota);
   const [selo, setSelo] = useState(null);
   const [geracao, setGeracao] = useState(0);
@@ -11931,9 +12376,11 @@ function App() {
 
   ultimaRota[rota.perfil] = rota;
 
+  // Lê sempre o estado mais recente: o Sr. Abel pode encadear várias ações numa mesma resposta.
   function executar(acao) {
-    const resultado = acao(estado);
+    const resultado = acao(estadoAtual.current);
     if (!resultado.erro) {
+      estadoAtual.current = resultado.estado;
       setEstado(resultado.estado);
       if (resultado.notificacao) setSelo({ ...resultado.notificacao, chave: Date.now() });
     }
@@ -11972,7 +12419,7 @@ function App() {
     <main class=${`palco palco-${rota.perfil}`}>
       <${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />
     </main>
-    <${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} />
+    <${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} executar=${executar} obterEstado=${() => estadoAtual.current} />
     ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
   `;
 }

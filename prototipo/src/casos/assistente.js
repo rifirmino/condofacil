@@ -1,6 +1,10 @@
 import { dadosIniciais } from '../dados.js';
 import { MANUAL_ABEL } from '../assistente/manual.js';
 import { secoesManualAbel, intencaoAbel, responderAbel, saudacaoAbel } from '../assistente/regras.js';
+import { contextoAbel, instrucoesAbel } from '../assistente/ia.js';
+import { ferramentasAbel } from '../assistente/ferramentas.js';
+import { trocarMorador } from '../vendas/acoes.js';
+import { enquetePorId } from '../enquetes/regras.js';
 import { igual, AGORA_FASE2 } from './afirmar.js';
 
 function contem(texto, trecho, contexto) {
@@ -73,6 +77,70 @@ export const CASOS_ASSISTENTE = [
       contem(responderAbel(e, 'sindico', 'Como reajusto a taxa?', AGORA_FASE2).texto, 'reajuste', 'reajuste');
       contem(responderAbel(e, 'morador', 'qual a capital da Mongólia?', AGORA_FASE2).texto, 'não sei', 'fora do tema');
       contem(saudacaoAbel(e, 'morador'), 'Ana', 'saudação');
+    },
+  },
+  {
+    nome: 'assistente IA: contexto de cada perfil respeita a privacidade',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const ana = contextoAbel(e, 'morador', AGORA_FASE2);
+      contem(ana, 'Ana Souza', 'Ana');
+      contem(ana, '481203', 'encomenda da Ana');
+      contem(ana, 'EN-001', 'enquete pendente');
+      naoContem(ana, '219884', 'encomenda do 504');
+      naoContem(ana, 'Inadimplência', 'devedores');
+      naoContem(ana, 'Sônia', 'autora de outra ocorrência');
+      naoContem(ana, 'PI-001', 'processo do 104');
+      const juliana = contextoAbel(trocarMorador(e, '104').estado, 'morador', AGORA_FASE2);
+      contem(juliana, 'PI-001', 'processo da Juliana');
+      naoContem(juliana, '481203', 'encomenda da Ana');
+      const sindico = contextoAbel(e, 'sindico', AGORA_FASE2);
+      contem(sindico, 'Inadimplência', 'síndico');
+      contem(sindico, '704', 'devedor');
+      const portaria = contextoAbel(e, 'portaria', AGORA_FASE2);
+      naoContem(portaria, 'Inadimplência', 'portaria');
+      naoContem(contextoAbel(e, 'zelador', AGORA_FASE2), 'R$', 'zelador sem valores');
+      contem(instrucoesAbel(e, 'morador', AGORA_FASE2), '=== MANUAL DO SR. ABEL ===', 'instruções');
+    },
+  },
+  {
+    nome: 'assistente IA: ferramentas do morador usam as ações do app',
+    rodar() {
+      let estado = dadosIniciais(AGORA_FASE2);
+      const feitos = [];
+      const executar = (acao) => { const r = acao(estado); if (!r.erro) estado = r.estado; return r; };
+      const t = Object.fromEntries(ferramentasAbel({ obterEstado: () => estado, executar, agora: () => AGORA_FASE2, aoAgir: (a) => feitos.push(a) }).map((x) => [x.name, x]));
+      const agenda = t.consultar_agenda.execute({ area: 'churrasqueira', data: '2026-10-24' });
+      igual([agenda.area, agenda.horarios.length > 0, JSON.stringify(agenda).includes('apto')], ['Churrasqueira', true, false]);
+      const livre = agenda.horarios.find((h) => h.situacao === 'livre');
+      const r = t.solicitar_reserva.execute({ area: 'churrasqueira', data: '2026-10-24', inicio: livre.inicio });
+      igual([r.ok, estado.reservas.at(-1).unidade, estado.reservas.at(-1).areaId], [true, '302', 'churrasqueira']);
+      let erro = null;
+      try { t.solicitar_reserva.execute({ area: 'churrasqueira', data: '2026-10-24', inicio: livre.inicio }); } catch (x) { erro = x.message; }
+      igual(erro, 'Horário já reservado');
+      const oc = t.abrir_ocorrencia.execute({ categoria: 'iluminação', descricao: 'Lâmpada queimada no hall', local: 'Hall do 3º andar' }) ;
+      igual(oc.ok, true);
+      const v = t.votar_enquete.execute({ enquete: 'EN-001', opcoes: ['Às 7h'] });
+      igual([v.ok, enquetePorId(estado, 'EN-001').votos['302'].opcoes, v.trocou], [true, ['o2'], false]);
+      igual(t.votar_enquete.execute({ enquete: 'en-001', opcoes: ['o3'] }).trocou, true);
+      erro = null;
+      try { t.segunda_via.execute({}); } catch (x) { erro = x.message; }
+      igual(erro, 'Nenhuma cobrança em aberto: o financeiro está em dia');
+      estado = trocarMorador(estado, '104').estado;
+      erro = null;
+      try { t.segunda_via.execute({}); } catch (x) { erro = x.message; }
+      igual(erro.startsWith('As cobranças do apto 104 vão para o responsável financeiro'), true);
+      igual(feitos.length, 4);
+    },
+  },
+  {
+    nome: 'assistente: enquetes respondidas com os dados do perfil',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      igual(['Tem enquete para eu votar?', 'Como está a enquete da academia?', 'Como funciona a enquete?'].map(intencaoAbel), ['enquetes', 'enquetes', null]);
+      contem(responderAbel(e, 'morador', 'Tem enquete para eu votar?', AGORA_FASE2).texto, 'Qual horário a academia deve abrir aos domingos?', 'Ana');
+      contem(responderAbel(e, 'sindico', 'Como está a enquete da academia?', AGORA_FASE2).texto, '14 de 32 responderam', 'síndico');
+      contem(responderAbel(e, 'morador', 'Tem enquete para eu votar?', AGORA_FASE2).texto, 'faltam 4 dias', 'prazo');
     },
   },
 ];

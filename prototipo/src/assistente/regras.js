@@ -3,13 +3,14 @@ import { isoDia, fmtDia, fmtDataCurta } from '../datas.js';
 import { areaPorId } from '../regras.js';
 import { fmtReais, situacaoCobranca, valorAtualizado, rotuloCobranca, devedores } from '../cobranca/regras.js';
 import { NOMES_STATUS_OS } from '../manutencao/dados.js';
+import { enquetesDaUnidade, situacaoEnquete, apuracao, textoDiasRestantes, faltantes } from '../enquetes/regras.js';
 
 // Sr. Abel sem IA: entende algumas intenções com dados do próprio perfil e, no resto, busca a seção do manual.
 // Mesmas regras de privacidade da versão com IA: cada perfil só recebe o que já pode ver no app.
 
 export const PERFIS_ABEL = {
-  morador: { sugestoes: ['Tenho encomenda na portaria?', 'Como pago o condomínio?', 'Minhas reservas', 'Como abro uma ocorrência?', 'Quem está devendo?', 'Como começo a vender?'] },
-  sindico: { sugestoes: ['Quem está inadimplente?', 'Encomendas paradas', 'Como emito os boletos?', 'Como faço um acordo?', 'Como reajusto a taxa?', 'Multa com defesa'] },
+  morador: { sugestoes: ['Tenho encomenda na portaria?', 'Tem enquete para eu votar?', 'Como pago o condomínio?', 'Minhas reservas', 'Como abro uma ocorrência?', 'Quem está devendo?', 'Como começo a vender?'] },
+  sindico: { sugestoes: ['Quem está inadimplente?', 'Como está a enquete da academia?', 'Encomendas paradas', 'Como emito os boletos?', 'Como faço um acordo?', 'Como reajusto a taxa?', 'Multa com defesa'] },
   portaria: { sugestoes: ['Reservas de hoje', 'Encomendas aguardando', 'Morador perdeu o código', 'Como troco meu plantão?'] },
   zelador: { sugestoes: ['Minhas OS', 'Como concluo uma OS?', 'Preciso comprar material', 'Caixa pequeno'] },
   conselho: { sugestoes: ['Como aprovo a prestação de contas?', 'Onde vejo os balancetes?', 'O que é fluxo de caixa?'] },
@@ -33,6 +34,7 @@ export function intencaoAbel(pergunta) {
   if (/quem (esta|ta|anda)? ?devendo|inadimpl|devedor|quem deve|quem nao pagou|quem esta atrasad/.test(t)) return 'devedores';
   if (/quem reservou|de quem e a reserva|quem abriu|quem fez a (denuncia|ocorrencia)|telefone d[oa] (morador|vizinh)|onde mora/.test(t)) return 'dadoTerceiro';
   if (/encomenda|pacote|entrega|correio|mercado livre|amazon|shopee|codigo de retirada|perdeu o codigo/.test(t)) return 'encomendas';
+  if (/(tem|ha|existe)\b.*(enquete|votacao)|enquetes? (da|de|do|aberta|pendente)|como (esta|anda|vai) a enquete|quero votar|minhas? enquetes?|participacao da enquete/.test(t)) return 'enquetes';
   if (/minhas? reservas?|reservas? de hoje|tenho reserva/.test(t)) return 'reservas';
   if (/minhas? os\b|ordens? de servico|minhas ordens/.test(t)) return 'os';
   if (/(meu|minha|quanto).*(boleto|condominio|taxa|cobranca)|(boleto|cobranca).*(aberto|vencid|atrasad|pagar)|2a via|segunda via/.test(t)) return 'cobranca';
@@ -126,6 +128,23 @@ export function responderAbel(estado, perfil, pergunta, agora) {
       if (!minhas.length) return { texto: 'Você não tem reservas futuras. Quer reservar? Vá em **Reservas**, escolha a área, o dia e o horário.', links: [linkAbel('Fazer uma reserva', 'morador', 'reservas')] };
       return { texto: `Suas próximas reservas:\n${minhas.map((r) => `- ${nomeArea(r)} · ${fmtDia(r.data)} · ${r.inicio}h–${r.fim}h · ${r.status === 'pendente' ? 'aguardando o síndico' : 'confirmada'}`).join('\n')}\n\nCancelar com menos de 72 h do início pode ter multa.`, links: [linkAbel('Abrir Reservas', 'morador', 'reservas')] };
     }
+  }
+
+  if (intencao === 'enquetes' && perfil === 'morador') {
+    const { pendentes, respondidas } = enquetesDaUnidade(estado, estado.moradorAtual, agora);
+    if (!pendentes.length) return { texto: `Nenhuma enquete esperando o seu voto. ${respondidas.length ? `Você já votou em ${respondidas.length} enquete(s) aberta(s) e pode trocar o voto até o encerramento.` : ''}`.trim(), links: [linkAbel('Ver enquetes', 'morador', 'enquetes')] };
+    const lista = pendentes.map((e) => `- **${e.pergunta}** · ${textoDiasRestantes(e, agora)}`).join('\n');
+    return { texto: `Enquete(s) esperando o seu voto:\n${lista}\n\nAbra a enquete, escolha a opção e toque em **Enviar voto**.`, links: [linkAbel('Votar agora', 'morador', 'enquetes')] };
+  }
+
+  if (intencao === 'enquetes' && perfil === 'sindico') {
+    const abertas = estado.enquetes.filter((e) => situacaoEnquete(e, agora) === 'aberta');
+    if (!abertas.length) return { texto: 'Nenhuma enquete aberta agora. Para criar, vá em **Enquetes** → **Nova enquete**.', links: [linkAbel('Abrir Enquetes', 'sindico', 'enquetes')] };
+    const lista = abertas.map((e) => {
+      const a = apuracao(estado, e);
+      return `- **${e.pergunta}**: ${a.participantes} de ${a.total} responderam, ${textoDiasRestantes(e, agora)}, ${faltantes(estado, e).length} sem resposta`;
+    }).join('\n');
+    return { texto: `Enquetes abertas:\n${lista}\n\nNo painel da enquete você manda lembrete só para quem falta.`, links: [linkAbel('Abrir Enquetes', 'sindico', 'enquetes')] };
   }
 
   if (intencao === 'os' && (perfil === 'zelador' || perfil === 'sindico')) {

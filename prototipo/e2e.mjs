@@ -564,6 +564,22 @@ const ROTEIROS = {
     await esperar(`!document.querySelector('[data-semana-turno]')`, 'a grade só de leitura na portaria');
   },
 
+  async srAbel() {
+    await irPara('#morador.inicio');
+    await clicarSeletor('.abel-botao');
+    await esperarTexto('respostas pelo manual');
+    await clicar('Tenho encomenda na portaria?');
+    await esperarTexto('Você tem 2 encomenda');
+    await clicar('Básico');
+    await esperar(`document.querySelector('.abel-painel').innerText.includes('Disponível no plano Intermediário')`, 'o Sr. Abel travado no Básico');
+    await clicar('Avançado');
+    await esperar(`document.querySelector('.abel-painel').innerText.includes('IA do plano Avançado')`, 'o aviso da IA no Avançado sem Claude');
+    await clicar('Tem enquete para eu votar?');
+    await esperarTexto('esperando o seu voto');
+    await clicar('Intermediário');
+    await clicarSeletor('.abel-fechar');
+  },
+
   async enquete() {
     const escrever = (rotulo, valor) => js(`(() => { const el = document.querySelector('input[aria-label=${JSON.stringify(rotulo)}]'); el.value = ${JSON.stringify(valor)}; el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
     await irPara('#sindico.enquetes.nova');

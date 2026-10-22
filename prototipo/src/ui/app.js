@@ -1,4 +1,4 @@
-import { html, render, useState, useEffect } from '../vendor.js';
+import { html, render, useState, useEffect, useRef } from '../vendor.js';
 import { dadosIniciais } from '../dados.js';
 import { isoDia } from '../datas.js';
 import { carregarEstado, salvarEstado, limparEstado } from '../armazenamento.js';
@@ -40,6 +40,8 @@ function estadoDeHoje() {
 
 function App() {
   const [estado, setEstado] = useState(estadoDeHoje);
+  const estadoAtual = useRef(estado);
+  estadoAtual.current = estado;
   const [rota, setRota] = useState(lerRota);
   const [selo, setSelo] = useState(null);
   const [geracao, setGeracao] = useState(0);
@@ -63,9 +65,11 @@ function App() {
 
   ultimaRota[rota.perfil] = rota;
 
+  // Lê sempre o estado mais recente: o Sr. Abel pode encadear várias ações numa mesma resposta.
   function executar(acao) {
-    const resultado = acao(estado);
+    const resultado = acao(estadoAtual.current);
     if (!resultado.erro) {
+      estadoAtual.current = resultado.estado;
       setEstado(resultado.estado);
       if (resultado.notificacao) setSelo({ ...resultado.notificacao, chave: Date.now() });
     }
@@ -104,7 +108,7 @@ function App() {
     <main class=${`palco palco-${rota.perfil}`}>
       <${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />
     </main>
-    <${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} />
+    <${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} executar=${executar} obterEstado=${() => estadoAtual.current} />
     ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
   `;
 }

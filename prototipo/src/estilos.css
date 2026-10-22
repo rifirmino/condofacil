@@ -588,3 +588,12 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
   .abel-botao { padding: 6px; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
   .abel-painel { left: 0; right: 0; bottom: 0; width: 100%; max-width: none; height: min(78vh, 620px); border-radius: 12px 12px 0 0; }
 }
+
+/* Sr. Abel com IA: nova conversa, pensando e cartão de ação feita pelo chat. */
+.abel-nova { margin-left: auto; min-height: 32px; padding: 4px 10px; border: 1px solid var(--ardosia-suave); border-radius: var(--raio); background: none; color: var(--ardosia-texto); font-size: 12px; font-weight: 600; cursor: pointer; }
+.abel-nova + .abel-fechar { margin-left: 0; }
+.abel-pensando .abel-bolha { color: var(--suave); font-style: italic; }
+.abel-acao { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; border: 1px solid var(--borda); border-left: 3px solid var(--laranja); border-radius: var(--raio); background: var(--sup); font-size: 12.5px; }
+.abel-acao strong { color: var(--laranja-forte); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; }
+.abel-sugestoes button:disabled, .abel-nova:disabled { opacity: .5; cursor: default; }
+.abel-msgs .bloqueado { margin: auto 0; }

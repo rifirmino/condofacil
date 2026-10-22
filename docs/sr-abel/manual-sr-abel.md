@@ -131,9 +131,30 @@ Mais → Documentos. Pastas como Convenção, Regimento interno, Atas, Balancete
 
 ## 11. Enquetes
 
-- Morador: Mais → Enquetes (ou o aviso no Início). Escolha a opção e confirme. O voto pode ser secreto (padrão) ou aberto, conforme a enquete.
-- O resultado aparece quando a enquete encerra. No plano Intermediário o síndico publica o resultado como comunicado e documento.
-- Avançado: peso por fração ideal e quórum mínimo.
+Decisões simples sem assembleia (horário da academia, cor da fachada). O síndico pergunta, os moradores respondem pelo app.
+
+**Morador**
+- **Onde:** cartão "Enquete · faltam N dias" no Início (some depois que você vota) ou Mais → Enquetes, com as abas Para responder, Respondidas e Encerradas.
+- **Votar:** abra a enquete → escolha a opção (ou até N opções, se for múltipla escolha) → comentário opcional, se a enquete permitir → **Enviar voto**.
+- **Um voto por unidade:** se alguém do apartamento já votou, aparece "Sua unidade já votou". Dá para trocar o voto até o encerramento (**Trocar o voto**).
+- **Voto secreto (padrão):** o síndico vê só os totais e quais unidades já responderam, nunca o voto de cada uma. **Voto aberto:** o síndico vê o voto de cada unidade; a tela avisa antes de você votar.
+- **Resultado:** aparece quando a enquete encerra. Se o síndico liberar, a parcial aparece logo depois do seu voto.
+
+**Síndico**
+- **Criar:** Enquetes → **Nova enquete**: pergunta, contexto, de 2 a 8 respostas (reordenáveis), prazo de 1 a 60 dias (encerra às 23h59), público (todos, um andar ou unidades escolhidas). Ao lado aparece a prévia de como o morador vê. **Salvar rascunho** ou **Publicar enquete** (aviso por app, e-mail e WhatsApp).
+- **Painel:** participação (ex.: 14 de 32 unidades), prazo, gráfico da evolução das respostas por dia, votos por opção, comentários e unidades que ainda não responderam (marcando as sem app, que recebem por e-mail e WhatsApp).
+- **Lembretes:** **Enviar lembrete agora** vai só para quem não respondeu, com os dias restantes ("Faltam 4 dias…" ou "Hoje é o último dia…"). No Intermediário há lembretes automáticos 3 dias antes e no último dia.
+- **Encerrar e prorrogar:** **Encerrar agora** (pede confirmação) ou **Prorrogar** uma única vez. A enquete também encerra sozinha na data limite.
+- **Resultado (Intermediário):** **Publicar resultado** gera um comunicado no mural e um documento em Documentos → Enquetes, com percentuais e participação, sem votos individuais.
+
+**Por plano**
+- Básico: escolha única, voto secreto, painel de participação e lembrete manual.
+- Intermediário: + múltipla escolha, comentário, voto aberto ou secreto, parcial visível, lembretes automáticos e resultado publicado.
+- Avançado: + peso por fração ideal e quórum mínimo. Abaixo do quórum, o resultado sai como "Sem quórum".
+
+**Mensagens:** "Escolha só uma opção" · "Escolha até N opções" · "A enquete está encerrada" · "Sua unidade não faz parte do público desta enquete" · "Só é possível prorrogar uma vez".
+
+O Sr. Abel nunca conta como outra unidade votou, nem em enquete de voto aberto. Também não vota pelo morador sem ele confirmar a opção.
 
 ## 12. Vendas entre moradores (feira do condomínio)
 

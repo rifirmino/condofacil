@@ -45,6 +45,8 @@ export const ORDEM = [
   'src/assistente/manual.js',
   'src/assistente/avatar.js',
   'src/assistente/regras.js',
+  'src/assistente/ia.js',
+  'src/assistente/ferramentas.js',
   'src/casos/afirmar.js',
   'src/casos/dados.js',
   'src/casos/regras.js',
