@@ -42,6 +42,9 @@ export const ORDEM = [
   'src/escala/acoes.js',
   'src/vendas/regras.js',
   'src/vendas/acoes.js',
+  'src/assistente/manual.js',
+  'src/assistente/avatar.js',
+  'src/assistente/regras.js',
   'src/casos/afirmar.js',
   'src/casos/dados.js',
   'src/casos/regras.js',
@@ -59,6 +62,7 @@ export const ORDEM = [
   'src/casos/orcamento.js',
   'src/casos/financeiro.js',
   'src/casos/enquetes.js',
+  'src/casos/assistente.js',
   'src/armazenamento.js',
   'src/ui/comum.js',
   'src/ui/escala-semana.js',
@@ -80,6 +84,7 @@ export const ORDEM = [
   'src/ui/morador.js',
   'src/ui/sindico.js',
   'src/ui/zelador.js',
+  'src/ui/assistente.js',
   'src/ui/app.js',
 ];
 

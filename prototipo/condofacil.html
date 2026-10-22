@@ -560,6 +560,40 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .campo-curto { width: 72px; }
 .enquete-inicio { border-left: 4px solid var(--serie-receita); }
 
+/* Sr. Abel: assistente flutuante, em todos os perfis */
+.abel-botao { position: fixed; right: 18px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 40; display: flex; align-items: center; gap: 8px; padding: 6px 16px 6px 6px; min-height: 56px; border: 2px solid var(--laranja); border-radius: 999px; background: var(--sup); color: var(--titulo); font-weight: 700; font-size: 14px; cursor: pointer; box-shadow: 0 8px 24px #1c22293d; }
+.abel-botao img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; object-position: 50% 18%; }
+.abel-botao:hover { border-color: var(--laranja-forte); }
+.abel-painel { position: fixed; right: 18px; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); z-index: 40; width: 380px; max-width: calc(100vw - 36px); height: min(560px, calc(100vh - 170px)); display: flex; flex-direction: column; background: var(--sup); border: 1px solid var(--borda); border-radius: var(--raio); box-shadow: 0 16px 40px #1c22294d; overflow: hidden; animation: entrar .2s ease-out; }
+.abel-topo { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--ardosia); color: var(--ardosia-texto); }
+.abel-topo strong { display: block; color: var(--ardosia-texto); }
+.abel-topo small { display: block; color: var(--ardosia-suave); font-size: 12px; }
+.abel-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; object-position: 50% 18%; border: 2px solid var(--laranja); background: #fff; }
+.abel-fechar { margin-left: auto; width: 40px; height: 40px; border: 0; background: none; color: var(--ardosia-texto); font-size: 26px; line-height: 1; cursor: pointer; }
+.abel-msgs { flex: 1; overflow-y: auto; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px; background: var(--fundo); }
+.abel-msg { display: flex; flex-direction: column; gap: 4px; max-width: 88%; }
+.abel-abel { align-self: flex-start; }
+.abel-eu { align-self: flex-end; }
+.abel-bolha { padding: 9px 12px; border-radius: 12px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.abel-abel .abel-bolha { background: var(--sup); color: var(--texto); border: 1px solid var(--borda); border-bottom-left-radius: 3px; }
+.abel-eu .abel-bolha { background: var(--laranja-forte); color: var(--sobre-laranja); border-bottom-right-radius: 3px; }
+.abel-bolha p { margin: 0 0 6px; } .abel-bolha p:last-child { margin-bottom: 0; }
+.abel-bolha ul { margin: 2px 0 6px; padding-left: 18px; } .abel-bolha li { margin-bottom: 2px; }
+.abel-links { display: flex; flex-wrap: wrap; gap: 10px; padding-left: 4px; }
+.abel-sugestoes { display: flex; gap: 6px; overflow-x: auto; padding: 8px 12px 0; border-top: 1px solid var(--borda); }
+.abel-sugestoes button { flex-shrink: 0; padding: 6px 11px; border: 1px solid var(--borda); border-radius: 999px; background: var(--sup); color: var(--titulo); font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.abel-sugestoes button:hover { border-color: var(--laranja); color: var(--laranja-forte); }
+.abel-entrada { display: flex; gap: 8px; padding: 8px 12px; }
+.abel-entrada input { flex: 1; min-width: 0; min-height: 44px; }
+.abel-entrada .btn { padding: 10px 14px; }
+.abel-aviso { padding: 0 12px 10px; color: var(--suave); font-size: 11.5px; }
+@media (max-width: 900px) {
+  .abel-botao span { display: none; }
+  .abel-botao[aria-expanded="true"] { display: none; }
+  .abel-botao { padding: 6px; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  .abel-painel { left: 0; right: 0; bottom: 0; width: 100%; max-width: none; height: min(78vh, 620px); border-radius: 12px 12px 0 0; }
+}
+
 </style>
 <div id="app"></div>
 <script type="module">
@@ -4616,6 +4650,364 @@ function enviarMensagem(estado, id, unidade, texto, agora) {
   };
 }
 
+// ---- src/assistente/manual.js ----
+// Manual do Sr. Abel: base de conhecimento do assistente. Fonte: docs/sr-abel/manual-sr-abel.md.
+// Mantenha os dois iguais (o teste 'assistente: manual tem as seções' confere o essencial).
+const MANUAL_ABEL = `# Manual do Sr. Abel — assistente do CondoFácil
+
+## 1. Quem é o Sr. Abel
+
+O Sr. Abel é a abelhinha assistente do CondoFácil. Usa capacete amarelo e colete, como quem trabalha no prédio, e conhece o aplicativo de ponta a ponta.
+
+**Jeito de falar**
+- Português do Brasil, simpático, direto e paciente. Trata a pessoa por "você".
+- Respostas curtas: 2 a 6 frases ou uma lista de passos numerados. Nada de textão.
+- Pode usar um toque de humor de abelha ("vamos zum-zum resolver isso") no máximo uma vez por conversa. Emojis com moderação (🐝 de vez em quando).
+- Sempre termina com um próximo passo claro: onde tocar no app, o que preencher, ou quem procurar.
+
+**O que ele faz**
+- Explica como usar cada parte do CondoFácil, conforme o perfil de quem pergunta (morador, síndico, portaria, zelador, conselho).
+- Consulta os dados da própria pessoa que o app permite ver (encomendas, reservas, cobranças, chamados).
+- Ajuda a executar ações simples, sempre pedindo confirmação antes: abrir uma ocorrência, solicitar uma reserva, gerar a 2ª via.
+- Explica regras do condomínio que estão no regimento interno e na convenção, citando o documento.
+
+**O que ele NÃO faz (limites)**
+- Não decide nada pelo síndico: aprovação de reserva, multa, acordo, aprovação de vendedor, desconto. Explica o caminho e encaminha.
+- Nunca mostra dados de outros moradores: nome de quem reservou, quem deve, quem abriu ocorrência anônima, pedidos e conversas de outros vendedores. Responde: "Essa informação é privada, mas posso te ajudar com…".
+- Não dá parecer jurídico nem contábil definitivo. Pode citar a regra do app (por exemplo, multa de 2% do Código Civil) e sugerir falar com o síndico ou a administradora.
+- Não fala de assuntos fora do condomínio e do app. Redireciona com gentileza.
+- Não inventa: se a informação não está no manual nem nos dados, diz que não sabe e indica quem sabe (síndico, portaria ou suporte comercial@condofacil.cloud).
+- Em emergência (incêndio, gás, alguém ferido, crime em andamento), primeiro orienta ligar 193 (Bombeiros), 192 (SAMU) ou 190 (Polícia) e avisar a portaria. Depois oferece abrir a ocorrência.
+
+## 2. Perfis do app
+
+| Perfil | Onde usa | O que vê |
+|---|---|---|
+| Morador | Celular | Início, Financeiro, Reservas, Ocorrências, Vendas e Mais (Avisos, Documentos, Encomendas, Enquetes) |
+| Síndico | Computador | Início com dashboard financeiro, Cobrança, Financeiro, Reservas, Comunicados, Ocorrências, Documentos, Encomendas, Escala, Enquetes, Vendas (moderação) |
+| Portaria | Tablet | Registrar encomenda, Entregar encomenda, Reservas de hoje, Escala |
+| Zelador | Celular | Ordens de serviço (OS), Compras, Caixa pequeno. Não vê receitas, inadimplência nem saldo |
+| Conselho | Computador | Prestação de contas (revisar e aprovar) e Documentos, inclusive balancetes |
+
+Proprietário que não mora no prédio (responsável financeiro) acessa o Financeiro da unidade dele.
+
+## 3. Reservas de áreas comuns
+
+**Como reservar (morador):** Reservas → escolha a área → escolha o dia no calendário → escolha período ou hora → confira o resumo com a taxa → aceite o termo de responsabilidade → (opcional) lista de convidados com nome e documento → Solicitar.
+
+**Cores do calendário:** livre, reservado, pendente (aguardando o síndico, já trava o horário) e bloqueado (manutenção). O calendário não mostra qual unidade reservou.
+
+**Áreas do Residencial Ipê Amarelo (exemplo):**
+
+| Área | Como reserva | Taxa | Aprovação | Antecedência | Limite |
+|---|---|---|---|---|---|
+| Salão de festas | Período: tarde 13–18h ou noite 18–23h | R$ 150 | Síndico aprova | 2 a 60 dias | 2 por mês por unidade |
+| Churrasqueira | Período: tarde ou noite | R$ 50 | Automática | 1 a 60 dias | 2 por mês |
+| Quadra | Por hora, 8h–22h | grátis | Automática | 0 a 15 dias | 4 por mês |
+| Academia | Por hora, 6h–23h | grátis | Automática | 0 a 7 dias | sem limite |
+
+- Reservar o salão bloqueia a churrasqueira no mesmo período (são vinculados).
+- Aprovação automática: a reserva já sai confirmada. Manual: fica pendente até o síndico aprovar ou recusar (a recusa sempre tem motivo).
+- A taxa da reserva entra como item avulso no próximo boleto do condomínio.
+- **Cancelamento:** Reservas → Minhas reservas → Cancelar. Com menos de 72 h do início, o app avisa que pode haver multa ou retenção da taxa, conforme o regimento.
+- A portaria vê as reservas do dia com a lista de convidados.
+
+**Mensagens comuns:** "Horário já reservado" · "Limite de 2 reservas/mês atingido para esta área" · "Reserve com pelo menos 2 dias de antecedência".
+
+## 4. Avisos (comunicados)
+
+- Morador: Início (cartão de avisos) ou Mais → Avisos. Abra o aviso e toque em "Li e estou ciente". Pode reagir com "útil" ou "dúvida".
+- Síndico: Comunicados → Novo comunicado. Há modelos por tipo (manutenção, assembleia, evento, aviso geral, urgente), público (todos, um andar ou unidades), anexo, canais (push, e-mail, WhatsApp; SMS fica obrigatório no urgente) e opção de fixar. O síndico vê quem leu e quem não leu.
+
+## 5. Ocorrências (notificações ao condomínio)
+
+**Abrir (morador):** Ocorrências → Abrir → tipo (Manutenção, Irregularidade ou Sugestão/elogio) → categoria → descrição → foto → local → marque "anônima" e/ou "pública" se quiser → Enviar. Você recebe um protocolo (ex.: OC-0043).
+
+- **Anônima:** o síndico não vê quem abriu.
+- **Pública:** outros moradores podem ver e tocar em "eu também" (bom para problemas coletivos, como elevador parado).
+- Acompanhe pela linha do tempo. Quando for resolvida, avalie de 1 a 5 estrelas.
+- Ocorrência nunca é apagada; fechada, só pode ser arquivada.
+
+**Categorias e prioridade padrão:**
+- Manutenção: Vazamento (urgente); Elétrica/iluminação, Elevador, Portão/garagem (alta); Interfone, Limpeza, Piscina, Outros (normal); Jardim (baixa).
+- Irregularidade: Segurança (alta); Barulho, Vaga ocupada, Lixo fora do lugar, Pet, Obra fora do horário, Uso indevido de área comum (normal).
+- Outro: Sugestão, Elogio (baixa).
+
+**Prazos (plano Intermediário ou superior):**
+
+| Prioridade | 1ª resposta do síndico | Solução |
+|---|---|---|
+| Urgente | 1 h | 24 h |
+| Alta | 4 h | 72 h |
+| Normal | 24 h | 7 dias |
+| Baixa | 72 h | sem prazo |
+
+Status: aberta → em análise → em andamento → resolvida → fechada. O síndico pode pedir mais informações, comentar ou gerar uma OS para o zelador.
+
+## 6. Encomendas
+
+- A portaria registra (lendo a etiqueta ou digitando a unidade, transportadora e foto). O morador recebe aviso no app/WhatsApp.
+- **Retirar (morador):** Início ou Mais → Encomendas mostra o QR Code e o código de 6 dígitos. Apresente na portaria.
+- **Entregar (portaria):** busque pelo código ou pela unidade, informe o nome de quem retirou e confirme. Fica registrado quem retirou, data e hora.
+- Encomenda parada há mais de 3 dias aparece em destaque para o síndico, que pode reenviar o lembrete.
+
+**Mensagens:** "Código inválido" · "Informe quem retirou" · "Unidade inexistente".
+
+## 7. Documentos
+
+Mais → Documentos. Pastas como Convenção, Regimento interno, Atas, Balancetes, Enquetes e Previsão orçamentária. Cada documento mostra a versão vigente e o histórico. Alguns são restritos (balancete detalhado: síndico e conselho). O síndico recebe alertas de vencimento de documentos (AVCB, seguro, limpeza da caixa d'água) com 60, 30 e 7 dias de antecedência.
+
+## 8. Financeiro do morador (taxa condominial)
+
+- **Onde:** aba Financeiro. Mostra a cobrança do mês, o que compõe o valor (ordinária, fundo de reserva, taxa extra, avulsos como taxa do salão, créditos), o histórico e o card "Mudanças na sua taxa" quando há reajuste.
+- **Como pagar:** dentro do app, por boleto, Pix (QR Code e copia-e-cola) ou cartão. O pagamento é processado pelo Asaas, parceiro de pagamentos, e a baixa é automática.
+- **2ª via:** Financeiro → toque na cobrança → 2ª via. Se estiver vencida, o valor já vem atualizado.
+- **Atraso:** multa de 2% (limite do Código Civil, art. 1.336) + juros de 1% ao mês, proporcionais aos dias de atraso.
+- **Vencimento padrão:** dia 10 (configurado pelo condomínio).
+- **Régua de lembretes:** 5 dias antes, no vencimento e, conforme o plano, 1, 15, 30 e 60 dias depois do vencimento.
+- Paguei por fora (transferência, dinheiro)? Envie o comprovante ao síndico; ele dá a baixa manual.
+- Pagamento em duplicidade vira crédito no boleto seguinte.
+
+**Exemplo (Residencial Ipê Amarelo, apto tipo A):** ordinária R$ 650,00 + fundo de reserva 10% R$ 65,00 + parcela da pintura da fachada R$ 150,00 = R$ 865,00. Cobertura: R$ 1.228,00.
+
+## 9. Acordos de inadimplência
+
+- Quem tem taxas vencidas pode negociar. O síndico monta a proposta (perdão de multa, parte dos juros, entrada e número de parcelas) e envia.
+- O morador ou o responsável financeiro vê a proposta no Financeiro, lê o termo e aceita. As cobranças antigas são substituídas pelas parcelas do acordo ("Acordo AC-001 · parcela 2/4").
+- Só o síndico cria e altera propostas. O Sr. Abel explica como pedir: falar com o síndico ou abrir uma ocorrência tipo Sugestão pedindo negociação.
+
+## 10. Multas e advertências (com direito de defesa)
+
+- O síndico abre um processo de infração (PI-001…) a partir de uma ocorrência de irregularidade, citando o artigo do regimento, o fato e, se for multa, o valor.
+- O morador da unidade recebe a notificação e tem um prazo (ex.: 10 dias) para apresentar defesa no app, com texto e anexo.
+- Depois da defesa ou do fim do prazo, o síndico decide: manter, converter em advertência ou cancelar, sempre com justificativa.
+- Multa mantida entra no próximo boleto.
+- O Sr. Abel ajuda o morador a encontrar o processo e a escrever uma defesa clara e educada, mas não promete resultado.
+
+## 11. Enquetes
+
+- Morador: Mais → Enquetes (ou o aviso no Início). Escolha a opção e confirme. O voto pode ser secreto (padrão) ou aberto, conforme a enquete.
+- O resultado aparece quando a enquete encerra. No plano Intermediário o síndico publica o resultado como comunicado e documento.
+- Avançado: peso por fração ideal e quórum mínimo.
+
+## 12. Vendas entre moradores (feira do condomínio)
+
+- **Comprar:** aba Vendas → Vitrine → escolha o produto e a quantidade → sacola → escolha forma de pagamento (Pix, dinheiro ou cartão na entrega, conforme o vendedor) e entrega (retirar no apartamento ou na porta) → Fechar pedido. Acompanhe em Meus pedidos e converse com o vendedor dentro do pedido.
+- O pagamento é combinado direto com o vendedor. O app só registra o pedido e a marcação "pago". O CondoFácil não intermedeia o dinheiro dessas vendas.
+- Cancelar: o comprador pode cancelar enquanto o pedido estiver "novo".
+- **Quero vender:** Vendas → Minha loja → Quero vender → conte o que pretende vender → o síndico aprova. Aprovado, publique anúncios com título, preço, quantidade, formas de pagamento e entrega. O estoque baixa a cada pedido e volta se o pedido for recusado ou cancelado.
+- **Painel do vendedor (Minha loja → Painel):** faturamento, pedidos, ticket médio, itens vendidos, mais vendidos, por 7 dias, 30 dias ou mês.
+- **Privacidade:** pedidos, conversas e números de cada vendedor são só dele. O síndico aprova ou suspende vendedores e pode ocultar anúncios com motivo, mas não lê conversas nem pedidos.
+- **Avisos de novidades:** ligue "Aceito receber ofertas" para ser avisado de anúncios novos (desligado por padrão).
+
+**Mensagens:** "Você não pode comprar o próprio anúncio" · "Só restam N unidades" · "Escolha a forma de pagamento" · "Escolha a forma de entrega".
+
+## 13. Zelador: OS, compras e caixa pequeno (plano Intermediário)
+
+- **OS (ordem de serviço):** o síndico gera a partir de uma ocorrência, ou o zelador abre numa ronda. O zelador inicia, executa e conclui com foto do depois e horas gastas. A ocorrência ligada vira resolvida e o morador é avisado.
+- **Compras:** o zelador pede (item, quantidade, valor), o síndico aprova, o zelador recebe com nota fiscal (obrigatória acima de R$ 200). A despesa entra automaticamente no financeiro. No Avançado, compras acima de um valor exigem cotações mínimas.
+- **Caixa pequeno (Avançado):** gastos pequenos até R$ 200 com foto do cupom.
+
+**Mensagens:** "Anexe a foto do depois" · "Informe as horas gastas" · "Anexe a nota fiscal (obrigatória acima de R$ 200,00)" · "Gasto acima de R$ 200,00: faça uma compra" · "Saldo do caixa pequeno insuficiente".
+
+## 14. Escala de porteiros (plano Intermediário)
+
+- Síndico: menu Escala, com calendário, pendências, equipe e horas. Modelos 12x36, 6x1 (8 h) e noturno 12x36. Gera o mês, mostra buracos de cobertura e feriados, e publica com aviso.
+- Portaria: aba Escala mostra "de plantão agora", próximo turno, pedido de troca com colega, falta ou atestado (com sugestão de cobertura) e férias. Alerta de descanso mínimo de 11 h entre turnos.
+- Avançado: check-in e check-out com foto e relatório de horas.
+
+## 15. Gestão financeira do síndico
+
+- **Início:** dashboard com saldo, arrecadação do mês, inadimplência, despesas × orçado e a lista "Precisa da sua atenção".
+- **Cobrança:** prévia e emissão do mês, cobranças emitidas, régua, devedores, acordos, taxa e reajustes, orçamento e parâmetros. Unidade sem responsável financeiro fica bloqueada na emissão.
+- **Taxas e reajustes:** reajuste com vigência futura, ata obrigatória e simulação antes de confirmar; ordinária fixa por tipo ou rateio por fração ideal; fundo de reserva; taxas extras (rateio igual ou por fração). Os moradores recebem comunicado e aviso individual.
+- **Orçamento:** previsão anual por categoria com margem de inadimplência; calcula a taxa necessária, compara previsões e gera o documento para a AGO.
+- **Financeiro:** contas a pagar (pagar lança a despesa e baixa o saldo; recorrentes geram a do mês seguinte), prestação de contas mensal (fechar o mês, enviar ao conselho, responder comentários, aprovar; mês aprovado fica travado), fluxo de caixa projetado de 90 dias (Avançado) e auditoria de tudo.
+- A multa por atraso é limitada a 2%. Desconto de pontualidade exige a ata ou cláusula que o aprova.
+
+## 16. Planos do CondoFácil
+
+| Plano | Para quem | Destaques |
+|---|---|---|
+| Básico | Começar a organizar | Reservas, avisos, ocorrências, documentos, encomendas, vendas entre moradores, cobrança com boleto/Pix/cartão, régua básica (antes e no vencimento), enquetes simples |
+| Intermediário (mais escolhido) | Gestão completa do dia a dia | Tudo do Básico + prazos nas ocorrências, zelador (OS e compras), escala de porteiros, acordos, multas com defesa, taxas extras e fração ideal, simulador de orçamento, contas a pagar, prestação de contas, régua completa, enquetes completas |
+| Avançado | Prédios exigentes | Tudo do Intermediário + cotações mínimas, caixa pequeno, fluxo de caixa de 90 dias, aprovação do conselho, check-in de porteiros com foto, relatório de horas, peso e quórum nas enquetes, notificação formal em PDF |
+
+Preço de referência (faixa de 31 a 70 unidades, plano Básico): implantação R$ 399,00 e R$ 9,90 por unidade ao mês. Intermediário = 1,5× e Avançado = 2,2× o Básico. Valores para confirmar com o comercial (comercial@condofacil.cloud).
+
+Quando um recurso não está no plano do condomínio, o app mostra "Disponível no plano Intermediário" (ou Avançado). O Sr. Abel explica o recurso e diz que a contratação é decisão do síndico.
+
+## 17. Privacidade (LGPD)
+
+- Cada pessoa só vê o que o perfil dela permite. O Sr. Abel segue as mesmas regras.
+- Ocorrência anônima: ninguém, nem o síndico, vê quem abriu.
+- Inadimplência é vista só pelo síndico (e pelo conselho, de forma agregada na prestação de contas). Nunca é exposta a outros moradores.
+- Documentos de convidados são usados só para a portaria liberar a entrada.
+- Para corrigir ou excluir dados pessoais, fale com o síndico (controlador dos dados do condomínio) ou com comercial@condofacil.cloud.
+
+## 18. Perguntas frequentes
+
+- **Esqueci minha senha / não consigo entrar:** o acesso é por código enviado ao celular ou e-mail cadastrado. Se mudou de número, peça ao síndico para atualizar o cadastro.
+- **Mudei de apartamento ou sou inquilino novo:** o síndico atualiza a unidade e o responsável financeiro.
+- **O boleto está no nome do proprietário:** o responsável financeiro da unidade é quem o condomínio cadastrou (titular, inquilino ou proprietário). Peça ajuste ao síndico.
+- **Posso reservar para outra pessoa?** A reserva é da unidade; quem reserva é responsável pelo uso.
+- **Como falar com o síndico?** Abra uma ocorrência (tipo Sugestão para assuntos gerais) ou use o canal indicado nos Avisos.
+- **O app funciona sem internet?** Precisa de internet para enviar e receber dados.
+`;
+
+// ---- src/assistente/avatar.js ----
+// Avatar do Sr. Abel (JPEG 134×168). Para trocar, gere um novo data URI com a imagem.
+const AVATAR_ABEL = 'data:image/jpeg;base64,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';
+
+// ---- src/assistente/regras.js ----
+
+// Sr. Abel sem IA: entende algumas intenções com dados do próprio perfil e, no resto, busca a seção do manual.
+// Mesmas regras de privacidade da versão com IA: cada perfil só recebe o que já pode ver no app.
+
+const PERFIS_ABEL = {
+  morador: { sugestoes: ['Tenho encomenda na portaria?', 'Como pago o condomínio?', 'Minhas reservas', 'Como abro uma ocorrência?', 'Quem está devendo?', 'Como começo a vender?'] },
+  sindico: { sugestoes: ['Quem está inadimplente?', 'Encomendas paradas', 'Como emito os boletos?', 'Como faço um acordo?', 'Como reajusto a taxa?', 'Multa com defesa'] },
+  portaria: { sugestoes: ['Reservas de hoje', 'Encomendas aguardando', 'Morador perdeu o código', 'Como troco meu plantão?'] },
+  zelador: { sugestoes: ['Minhas OS', 'Como concluo uma OS?', 'Preciso comprar material', 'Caixa pequeno'] },
+  conselho: { sugestoes: ['Como aprovo a prestação de contas?', 'Onde vejo os balancetes?', 'O que é fluxo de caixa?'] },
+};
+
+const PALAVRAS_VAZIAS = new Set('a o e de da do das dos em no na nos nas um uma para por com como que eu meu minha qual quais quando onde tem ter ser se ao os as e posso faco fazer voce sr abel oi ola bom dia tarde noite favor'.split(' '));
+
+function semAcentoAbel(texto) {
+  return String(texto || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+function secoesManualAbel(manual = MANUAL_ABEL) {
+  return manual.split(/\n(?=## )/).filter((s) => s.startsWith('## ')).map((s) => ({ titulo: s.split('\n')[0].replace(/^## \d+\.\s*/, ''), corpo: s }));
+}
+
+const SECOES = secoesManualAbel();
+
+function intencaoAbel(pergunta) {
+  const t = semAcentoAbel(pergunta);
+  if (/incendio|fogo|fumaca|cheiro de gas|vazamento de gas|ferid|desmai|assalt|invas|socorro/.test(t)) return 'emergencia';
+  if (/quem (esta|ta|anda)? ?devendo|inadimpl|devedor|quem deve|quem nao pagou|quem esta atrasad/.test(t)) return 'devedores';
+  if (/quem reservou|de quem e a reserva|quem abriu|quem fez a (denuncia|ocorrencia)|telefone d[oa] (morador|vizinh)|onde mora/.test(t)) return 'dadoTerceiro';
+  if (/encomenda|pacote|entrega|correio|mercado livre|amazon|shopee|codigo de retirada|perdeu o codigo/.test(t)) return 'encomendas';
+  if (/minhas? reservas?|reservas? de hoje|tenho reserva/.test(t)) return 'reservas';
+  if (/minhas? os\b|ordens? de servico|minhas ordens/.test(t)) return 'os';
+  if (/(meu|minha|quanto).*(boleto|condominio|taxa|cobranca)|(boleto|cobranca).*(aberto|vencid|atrasad|pagar)|2a via|segunda via/.test(t)) return 'cobranca';
+  return null;
+}
+
+function linkAbel(rotulo, perfil, tela) {
+  return { rotulo, perfil, tela };
+}
+
+function buscarNoManual(pergunta) {
+  const termos = semAcentoAbel(pergunta).split(/[^a-z0-9]+/).filter((t) => t.length > 2 && !PALAVRAS_VAZIAS.has(t));
+  let melhor = null;
+  let nota = 0;
+  for (const s of SECOES) {
+    const corpo = semAcentoAbel(s.corpo);
+    const titulo = semAcentoAbel(s.titulo);
+    let n = 0;
+    for (const t of termos) {
+      const raiz = t.slice(0, Math.max(4, t.length - 2));
+      n += Math.min(corpo.split(raiz).length - 1, 4) + (titulo.includes(raiz) ? 6 : 0);
+    }
+    if (n > nota) { nota = n; melhor = s; }
+  }
+  return nota >= 3 ? melhor : null;
+}
+
+function trechoSecao(secao, max = 9) {
+  return secao.corpo.split('\n').slice(1).filter((l) => l.trim() && !l.startsWith('|') && !l.startsWith('**Mensagens')).slice(0, max).join('\n');
+}
+
+function nomeDaUnidade(estado, unidade) {
+  const p = estado.pessoas.find((x) => x.unidade === unidade);
+  return p ? p.nome.split(' ')[0] : `apto ${unidade}`;
+}
+
+function saudacaoAbel(estado, perfil) {
+  if (perfil === 'morador') return `Oi, ${nomeDaUnidade(estado, estado.moradorAtual)}! Eu sou o **Sr. Abel** 🐝. Posso ajudar com encomendas, boletos, reservas, ocorrências e vendas. O que você precisa?`;
+  if (perfil === 'sindico') return 'Olá, Roberto! **Sr. Abel** na área 🐝. Pergunte sobre inadimplência, encomendas paradas ou como usar qualquer tela.';
+  if (perfil === 'portaria') return 'Olá! Aqui é o **Sr. Abel** 🐝. Posso ajudar com encomendas, reservas de hoje e a escala.';
+  if (perfil === 'zelador') return 'E aí, Seu Antônio! **Sr. Abel** por aqui 🐝. Quer ver suas OS ou tirar dúvida de compra?';
+  return 'Olá! Eu sou o **Sr. Abel** 🐝. Posso explicar a prestação de contas e onde achar os documentos.';
+}
+
+// Devolve { texto, links } — texto com **negrito** e listas com "- ".
+function responderAbel(estado, perfil, pergunta, agora) {
+  const hoje = isoDia(agora);
+  const intencao = intencaoAbel(pergunta);
+
+  if (intencao === 'emergencia') {
+    return { texto: 'Isso é uma emergência! Primeiro ligue:\n- **193** Bombeiros (fogo, gás, resgate)\n- **192** SAMU (pessoa ferida ou passando mal)\n- **190** Polícia\n\nDepois avise a portaria. Quando estiver seguro, abra uma ocorrência para registrar.', links: [] };
+  }
+
+  if (intencao === 'devedores' || intencao === 'dadoTerceiro') {
+    if (perfil === 'sindico' && intencao === 'devedores') {
+      const lista = devedores(estado, hoje);
+      if (!lista.length) return { texto: 'Boa notícia: nenhuma unidade com cobrança vencida hoje. 🐝', links: [] };
+      const linhas = lista.map((d) => `- **${d.unidade}**${d.responsavel ? ` · ${d.responsavel.nome}` : ''}: ${d.cobrancas} cobrança(s), ${fmtReais(d.valor)} atualizado, ${d.dias} dias${d.acordo ? ' · em acordo' : ''}`);
+      return { texto: `Unidades com cobrança vencida (trate com discrição):\n${linhas.join('\n')}\n\nVocê pode disparar a régua ou propor um acordo em **Cobrança**.`, links: [linkAbel('Abrir Cobrança', 'sindico', 'cobranca')] };
+    }
+    return { texto: 'Essa informação é privada e eu não posso compartilhar 🐝. Cada morador só vê os próprios dados, e assuntos de outras unidades ficam com o síndico. Posso te ajudar com alguma coisa da sua unidade?', links: [] };
+  }
+
+  if (intencao === 'encomendas') {
+    const aguardando = estado.encomendas.filter((e) => e.status === 'aguardando');
+    if (perfil === 'morador') {
+      const minhas = aguardando.filter((e) => e.unidade === estado.moradorAtual);
+      if (!minhas.length) return { texto: 'Nenhuma encomenda sua aguardando na portaria agora. Quando chegar, eu te aviso pelo app. 📦', links: [] };
+      const linhas = minhas.map((e) => `- ${e.transportadora}, chegou ${fmtDataCurta(e.chegadaEm.slice(0, 10))} · código **${e.codigo}**`);
+      return { texto: `Você tem ${minhas.length} encomenda(s) na portaria:\n${linhas.join('\n')}\n\nMostre o QR Code ou o código na portaria para retirar.`, links: [linkAbel('Ver encomendas', 'morador', 'mais')] };
+    }
+    if (perfil === 'portaria' || perfil === 'sindico') {
+      if (/perdeu|esqueceu/.test(semAcentoAbel(pergunta))) return { texto: 'Sem problema: em **Entregar**, busque pela **unidade** em vez do código, confirme com o morador e registre o nome de quem retirou. O morador também vê o código de novo no app, em Mais → Encomendas.', links: [linkAbel('Ir para Entregar', 'portaria', 'entregar')] };
+      const porUnidade = {};
+      for (const e of aguardando) porUnidade[e.unidade] = (porUnidade[e.unidade] || 0) + 1;
+      const linhas = Object.entries(porUnidade).map(([u, n]) => `- apto **${u}**: ${n}`);
+      return { texto: `${aguardando.length} encomenda(s) aguardando retirada:\n${linhas.join('\n')}`, links: perfil === 'portaria' ? [linkAbel('Ir para Entregar', 'portaria', 'entregar')] : [linkAbel('Abrir Encomendas', 'sindico', 'encomendas')] };
+    }
+  }
+
+  if (intencao === 'reservas') {
+    const nomeArea = (r) => (areaPorId(estado, r.areaId) || { nome: r.areaId }).nome;
+    if (perfil === 'portaria' || /hoje/.test(semAcentoAbel(pergunta))) {
+      const deHoje = estado.reservas.filter((r) => r.data === hoje && r.status === 'confirmada');
+      if (perfil !== 'portaria' && perfil !== 'sindico') return { texto: 'Eu só mostro as reservas da sua unidade. Toque em **Reservas** para ver o calendário com os horários livres.', links: [linkAbel('Abrir Reservas', 'morador', 'reservas')] };
+      if (!deHoje.length) return { texto: 'Nenhuma reserva confirmada para hoje.', links: [] };
+      return { texto: `Reservas de hoje:\n${deHoje.map((r) => `- ${nomeArea(r)} · ${r.inicio}h–${r.fim}h · apto ${r.unidade} · ${r.convidados.length} convidado(s)`).join('\n')}`, links: perfil === 'portaria' ? [linkAbel('Ver lista de convidados', 'portaria', 'hoje')] : [] };
+    }
+    if (perfil === 'morador') {
+      const minhas = estado.reservas.filter((r) => r.unidade === estado.moradorAtual && r.data >= hoje && (r.status === 'confirmada' || r.status === 'pendente'));
+      if (!minhas.length) return { texto: 'Você não tem reservas futuras. Quer reservar? Vá em **Reservas**, escolha a área, o dia e o horário.', links: [linkAbel('Fazer uma reserva', 'morador', 'reservas')] };
+      return { texto: `Suas próximas reservas:\n${minhas.map((r) => `- ${nomeArea(r)} · ${fmtDia(r.data)} · ${r.inicio}h–${r.fim}h · ${r.status === 'pendente' ? 'aguardando o síndico' : 'confirmada'}`).join('\n')}\n\nCancelar com menos de 72 h do início pode ter multa.`, links: [linkAbel('Abrir Reservas', 'morador', 'reservas')] };
+    }
+  }
+
+  if (intencao === 'os' && (perfil === 'zelador' || perfil === 'sindico')) {
+    const abertas = estado.manutencao.os.filter((o) => o.status !== 'concluida' && o.status !== 'validada');
+    if (!abertas.length) return { texto: 'Nenhuma OS em aberto. Bom trabalho! 🐝', links: [] };
+    return { texto: `OS em aberto:\n${abertas.map((o) => `- **${o.id}** · ${o.local}: ${o.descricao} · ${NOMES_STATUS_OS[o.status]} · prazo ${fmtDataCurta(o.prazo.slice(0, 10))}`).join('\n')}\n\nPara concluir, anexe a foto do depois e informe as horas gastas.`, links: [linkAbel('Abrir OS', perfil, perfil === 'zelador' ? 'os' : 'manutencao')] };
+  }
+
+  if (intencao === 'cobranca' && perfil === 'morador') {
+    const fin = estado.financeiro;
+    const minhas = fin.cobrancas.filter((c) => c.unidade === estado.moradorAtual && c.status === 'aberta');
+    if (!minhas.length) return { texto: 'Você está em dia: nenhuma cobrança em aberto. 🎉 Quando a próxima for emitida, ela aparece em **Financeiro** para pagar por boleto, Pix ou cartão.', links: [linkAbel('Abrir Financeiro', 'morador', 'financeiro')] };
+    const linhas = minhas.map((c) => {
+      const v = valorAtualizado(c, fin.parametros, hoje);
+      const vencida = situacaoCobranca(c, hoje) === 'vencida';
+      return `- ${rotuloCobranca(c)} · ${fmtReais(v.total)} · ${vencida ? `vencida há ${v.dias} dias (com multa e juros)` : `vence ${fmtDataCurta(c.vencimento)}`}`;
+    });
+    return { texto: `Cobranças em aberto da sua unidade:\n${linhas.join('\n')}\n\nPague em **Financeiro** por boleto, Pix ou cartão. A baixa é automática.`, links: [linkAbel('Pagar agora', 'morador', 'financeiro')] };
+  }
+
+  const secao = buscarNoManual(pergunta);
+  if (!secao) return { texto: 'Hmm, essa eu não sei responder 🐝. Eu entendo de reservas, boletos, encomendas, ocorrências, vendas, escala e planos do CondoFácil. Para outros assuntos, fale com o síndico.', links: [] };
+  return { texto: `Sobre **${secao.titulo}**:\n\n${trechoSecao(secao)}`, links: [] };
+}
+
 // ---- src/casos/afirmar.js ----
 // Asserções mínimas que rodam tanto no Node quanto no navegador (?teste=1).
 const AGORA_TESTE = new Date(2026, 9, 8, 10, 0);
@@ -6687,6 +7079,82 @@ const CASOS_ENQUETES = [
       const en = enquetePorId(s, 'EN-004');
       igual([apuracao(s, en).vencedoras.length, textoResultado(s, en)], [2, 'Sem quórum: 6% de participação, mínimo de 50%']);
       igual(textoResultado(s, { ...en, quorumPct: null }), 'Empate entre Sim e Não');
+    },
+  },
+];
+
+// ---- src/casos/assistente.js ----
+
+function contem(texto, trecho, contexto) {
+  if (!texto.includes(trecho)) throw new Error(`${contexto}: esperado conter "${trecho}", obtido "${texto.slice(0, 160)}"`);
+}
+function naoContem(texto, trecho, contexto) {
+  if (texto.includes(trecho)) throw new Error(`${contexto}: não deveria conter "${trecho}"`);
+}
+
+const CASOS_ASSISTENTE = [
+  {
+    nome: 'assistente: manual tem as seções',
+    rodar() {
+      const titulos = secoesManualAbel(MANUAL_ABEL).map((s) => s.titulo);
+      for (const t of ['Quem é o Sr. Abel', 'Reservas de áreas comuns', 'Encomendas', 'Financeiro do morador (taxa condominial)', 'Vendas entre moradores (feira do condomínio)', 'Planos do CondoFácil', 'Privacidade (LGPD)']) igual(titulos.includes(t), true, t);
+    },
+  },
+  {
+    nome: 'assistente: reconhece intenções',
+    rodar() {
+      igual(['Tenho encomenda na portaria?', 'quem está devendo condomínio?', 'Tem cheiro de gás no corredor!', 'Minhas reservas', 'quanto é meu boleto?', 'quem reservou o salão sábado?', 'Como funciona a enquete?'].map(intencaoAbel), ['encomendas', 'devedores', 'emergencia', 'reservas', 'cobranca', 'dadoTerceiro', null]);
+    },
+  },
+  {
+    nome: 'assistente: morador vê só as próprias encomendas',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const r = responderAbel(e, 'morador', 'Tenho encomenda na portaria?', AGORA_FASE2);
+      contem(r.texto, 'Você tem 2 encomenda(s)', 'Ana');
+      contem(r.texto, '481203', 'código da Ana');
+      naoContem(r.texto, '219884', 'código do 504');
+      igual(r.links.map((l) => l.tela), ['mais']);
+    },
+  },
+  {
+    nome: 'assistente: privacidade da inadimplência por perfil',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      const morador = responderAbel(e, 'morador', 'Quem está devendo?', AGORA_FASE2);
+      contem(morador.texto, 'privada', 'morador');
+      naoContem(morador.texto, '704', 'morador');
+      const sindico = responderAbel(e, 'sindico', 'Quem está inadimplente?', AGORA_FASE2);
+      contem(sindico.texto, '**704**', 'síndico');
+      contem(sindico.texto, '**202**', 'síndico');
+      igual(responderAbel(e, 'portaria', 'quem deve condomínio?', AGORA_FASE2).texto.includes('privada'), true, 'portaria');
+    },
+  },
+  {
+    nome: 'assistente: emergência vem antes de tudo',
+    rodar() {
+      const r = responderAbel(dadosIniciais(AGORA_FASE2), 'morador', 'Socorro, tem fumaça no 5º andar', AGORA_FASE2);
+      contem(r.texto, '193', 'bombeiros');
+    },
+  },
+  {
+    nome: 'assistente: reservas de hoje na portaria e do morador',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      contem(responderAbel(e, 'portaria', 'Reservas de hoje', AGORA_FASE2).texto, 'Churrasqueira · 13h–18h · apto 603', 'portaria');
+      const ana = responderAbel(e, 'morador', 'Minhas reservas', AGORA_FASE2).texto;
+      contem(ana, 'Quadra', 'Ana');
+      naoContem(ana, '603', 'Ana');
+    },
+  },
+  {
+    nome: 'assistente: busca no manual e fora do tema',
+    rodar() {
+      const e = dadosIniciais(AGORA_FASE2);
+      contem(responderAbel(e, 'morador', 'Como começo a vender meus doces?', AGORA_FASE2).texto, 'Vendas entre moradores', 'vendas');
+      contem(responderAbel(e, 'sindico', 'Como reajusto a taxa?', AGORA_FASE2).texto, 'reajuste', 'reajuste');
+      contem(responderAbel(e, 'morador', 'qual a capital da Mongólia?', AGORA_FASE2).texto, 'não sei', 'fora do tema');
+      contem(saudacaoAbel(e, 'morador'), 'Ana', 'saudação');
     },
   },
 ];
@@ -11358,6 +11826,76 @@ function ZCaixa({ estado, executar }) {
   </section>`;
 }
 
+// ---- src/ui/assistente.js ----
+
+// Texto do Sr. Abel com **negrito** e listas "- ". Escapa tudo antes de formatar.
+function TextoAbel({ texto }) {
+  const blocos = [];
+  let lista = null;
+  texto.split('\n').forEach((linha, i) => {
+    const partes = linha.replace(/^- /, '').split(/\*\*(.+?)\*\*/g).map((p, j) => (j % 2 ? html`<strong key=${j}>${p}</strong>` : p));
+    if (linha.startsWith('- ')) {
+      if (!lista) { lista = []; blocos.push(html`<ul key=${`l${i}`}>${lista}</ul>`); }
+      lista.push(html`<li key=${i}>${partes}</li>`);
+    } else {
+      lista = null;
+      if (linha.trim()) blocos.push(html`<p key=${i}>${partes}</p>`);
+    }
+  });
+  return blocos;
+}
+
+function SrAbel({ estado, rota, agora }) {
+  const perfil = rota.perfil;
+  const chaveConversa = perfil === 'morador' ? `${perfil}-${estado.moradorAtual}` : perfil;
+  const [aberto, setAberto] = useState(false);
+  const [conversa, setConversa] = useState({ chave: null, mensagens: [] });
+  const [texto, setTexto] = useState('');
+
+  const mensagens = conversa.chave === chaveConversa ? conversa.mensagens : [{ de: 'abel', texto: saudacaoAbel(estado, perfil), links: [] }];
+
+  useEffect(() => {
+    const el = document.getElementById('abel-msgs');
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [mensagens.length, aberto]);
+
+  function perguntar(pergunta) {
+    const p = pergunta.trim();
+    if (!p) return;
+    const resposta = responderAbel(estado, perfil, p, agora);
+    setConversa({ chave: chaveConversa, mensagens: [...mensagens, { de: 'eu', texto: p, links: [] }, { de: 'abel', ...resposta }] });
+    setTexto('');
+  }
+
+  const sugestoes = (PERFIS_ABEL[perfil] || PERFIS_ABEL.morador).sugestoes;
+
+  return html`
+    ${aberto && html`<section class="abel-painel" role="dialog" aria-label="Sr. Abel, assistente do CondoFácil">
+      <header class="abel-topo">
+        <img class="abel-avatar" src=${AVATAR_ABEL} alt="" />
+        <div><strong>Sr. Abel</strong><small>Assistente do CondoFácil</small></div>
+        <button type="button" class="abel-fechar" aria-label="Fechar o Sr. Abel" onClick=${() => setAberto(false)}>×</button>
+      </header>
+      <div class="abel-msgs" id="abel-msgs" aria-live="polite">
+        ${mensagens.map((m, i) => html`<div key=${i} class=${`abel-msg abel-${m.de}`}>
+          <div class="abel-bolha"><${TextoAbel} texto=${m.texto} /></div>
+          ${m.links && m.links.length ? html`<div class="abel-links">${m.links.map((l) => html`<button type="button" key=${l.rotulo} class="btn-link" onClick=${() => ir(l.perfil, l.tela)}>${l.rotulo} →</button>`)}</div>` : null}
+        </div>`)}
+      </div>
+      <div class="abel-sugestoes">${sugestoes.map((s) => html`<button type="button" key=${s} onClick=${() => perguntar(s)}>${s}</button>`)}</div>
+      <form class="abel-entrada" onSubmit=${(ev) => { ev.preventDefault(); perguntar(texto); }}>
+        <label class="so-leitor" for="abel-caixa">Pergunte ao Sr. Abel</label>
+        <input id="abel-caixa" type="text" autocomplete="off" placeholder="Pergunte ao Sr. Abel…" value=${texto} onInput=${(ev) => setTexto(ev.target.value)} />
+        <button type="submit" class="btn primario" disabled=${!texto.trim()}>Enviar</button>
+      </form>
+      <small class="abel-aviso">Versão do protótipo: respostas pelo manual, sem IA. Decisões são do síndico.</small>
+    </section>`}
+    <button type="button" class="abel-botao" aria-expanded=${aberto} aria-label=${aberto ? 'Fechar o Sr. Abel' : 'Falar com o Sr. Abel'} onClick=${() => setAberto(!aberto)}>
+      <img src=${AVATAR_ABEL} alt="" /><span>${aberto ? 'Fechar' : 'Sr. Abel'}</span>
+    </button>
+  `;
+}
+
 // ---- src/ui/app.js ----
 
 const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
@@ -11434,6 +11972,7 @@ function App() {
     <main class=${`palco palco-${rota.perfil}`}>
       <${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />
     </main>
+    <${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} />
     ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
   `;
 }
@@ -11447,7 +11986,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

@@ -21,12 +21,14 @@ import { CASOS_INFRACOES } from '../casos/infracoes.js';
 import { CASOS_ORCAMENTO } from '../casos/orcamento.js';
 import { CASOS_FINANCEIRO } from '../casos/financeiro.js';
 import { CASOS_ENQUETES } from '../casos/enquetes.js';
+import { CASOS_ASSISTENTE } from '../casos/assistente.js';
 import { PERFIS, lerRota, ir, Selo, Icone } from './comum.js';
 import { TelaPortaria } from './portaria.js';
 import { TelaMorador } from './morador.js';
 import { TelaSindico } from './sindico.js';
 import { TelaZelador } from './zelador.js';
 import { TelaConselho } from './conselho.js';
+import { SrAbel } from './assistente.js';
 
 const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
 const ultimaRota = {};
@@ -102,6 +104,7 @@ function App() {
     <main class=${`palco palco-${rota.perfil}`}>
       <${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />
     </main>
+    <${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} />
     ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
   `;
 }
@@ -115,7 +118,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

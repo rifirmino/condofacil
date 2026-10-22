@@ -12,6 +12,7 @@ const CHECAGENS = [
   ['#portaria.registrar', ['Ler etiqueta', 'Registrar encomenda', 'Mercado Livre', 'Seu José']],
   ['#portaria.entregar', ['Buscar por código ou unidade', 'Apto 302', 'Parada']],
   ['#portaria.hoje', ['Churrasqueira', 'João Pereira', 'Apto 603']],
+  ['#zelador.os', ['Sr. Abel']],
   ['#morador.inicio', ['Olá, Ana', '481203', '730915', 'Retire em breve', 'Fixado pelo síndico', 'Quadra']],
   ['#morador.reservas', ['Salão de festas', 'Academia', 'Minhas reservas']],
   ['#morador.avisos', ['Falta de água', 'não lido']],
