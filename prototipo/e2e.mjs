@@ -564,6 +564,49 @@ const ROTEIROS = {
     await esperar(`!document.querySelector('[data-semana-turno]')`, 'a grade só de leitura na portaria');
   },
 
+  async enquete() {
+    const escrever = (rotulo, valor) => js(`(() => { const el = document.querySelector('input[aria-label=${JSON.stringify(rotulo)}]'); el.value = ${JSON.stringify(valor)}; el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+    await irPara('#sindico.enquetes.nova');
+    await preencher('Pergunta', 'Quais melhorias no salão de festas?');
+    await escrever('Opção 1', 'Ar-condicionado');
+    await escrever('Opção 2', 'Som ambiente');
+    await clicarSeletor('[data-acao="adicionar-opcao"]');
+    await escrever('Opção 3', 'Novas cadeiras');
+    await preencher('Tipo de resposta', 'multipla');
+    await preencher('Até quantas opções', '2');
+    await marcar('Permitir comentário junto com o voto');
+    await esperarTexto('Escolha até 2 opções');
+    await clicarSeletor('[data-acao="publicar-enquete"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Nova enquete')`, 'o aviso da enquete');
+    await esperarTexto('Enviar lembrete agora');
+    const id = await js(`location.hash.split('.').at(-1)`);
+    await irPara('#morador.inicio');
+    await esperarTexto('Quais melhorias no salão de festas?');
+    await irPara(`#morador.enquetes.${id}`);
+    await clicarSeletor(`[data-opcao="${id}-o1"]`);
+    await clicarSeletor(`[data-opcao="${id}-o3"]`);
+    await clicarSeletor('[data-acao="enviar-voto"]');
+    await esperarTexto('Seu voto foi registrado');
+    await irPara('#morador.inicio');
+    await esperar(`!document.body.innerText.includes('Quais melhorias no salão de festas?')`, 'o cartão sumir depois do voto');
+    await irPara(`#sindico.enquetes.${id}`);
+    await esperarTexto('1 de 32');
+    await clicarSeletor('[data-acao="enviar-lembrete"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('31 unidades')`, 'o lembrete aos faltantes');
+    await clicarSeletor('[data-acao="encerrar-enquete"]');
+    await clicarSeletor('[data-acao="confirmar-encerrar"]');
+    await esperarTexto('Resultado · Empate entre Ar-condicionado e Novas cadeiras');
+    await clicarSeletor('[data-acao="publicar-resultado"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Resultado publicado')`, 'o resultado publicado');
+    await irPara('#sindico.documentos');
+    await esperarTexto('Resultado da enquete: Quais melhorias no salão de festas?');
+    await clicar('Avançado');
+    await irPara('#sindico.enquetes.EN-002');
+    await esperarTexto('Quórum de 50%');
+    await esperarTexto('por fração ideal');
+    await clicar('Intermediário');
+  },
+
   async contaPagar() {
     await irPara('#sindico.financeiro.contas');
     await preencher('Mostrar', 'vencidas');
@@ -689,7 +732,7 @@ const ROTEIROS = {
   async larguraCelular() {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await pausa(300);
-    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas', '#sindico.escala.semana', '#sindico.ocorrencias.PI-001', '#sindico.ocorrencias.OC-0043', '#sindico.cobranca.orcamento', '#sindico.financeiro.contas', '#sindico.financeiro.prestacao', '#conselho.prestacao', '#morador.prestacao']) {
+    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas', '#sindico.escala.semana', '#sindico.ocorrencias.PI-001', '#sindico.ocorrencias.OC-0043', '#sindico.cobranca.orcamento', '#sindico.financeiro.contas', '#sindico.financeiro.prestacao', '#conselho.prestacao', '#morador.prestacao', '#sindico.enquetes.EN-001', '#sindico.enquetes.nova', '#morador.enquetes.EN-001']) {
       await irPara(hash);
       const largura = await js('document.documentElement.scrollWidth');
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);
