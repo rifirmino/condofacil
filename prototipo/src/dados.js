@@ -5,6 +5,7 @@ import { manutencaoInicial } from './manutencao/dados.js';
 import { comAcordoInicial } from './cobranca/acordos.js';
 import { comEscalaInicial } from './escala/acoes.js';
 import { comInfracaoInicial } from './infracoes/acoes.js';
+import { comPrestacaoInicial } from './financeiro/acoes.js';
 
 export const UNIDADES = Array.from({ length: 32 }, (_, i) => `${Math.floor(i / 4) + 1}0${(i % 4) + 1}`);
 export const UNIDADE_ANA = '302';
@@ -86,7 +87,7 @@ export function dadosIniciais(agora = new Date()) {
     { id: 'p704', nome: 'Vicente Moraes', unidade: '704', naoResidente: true, ...perfilVenda('704', em) },
   ];
 
-  return comInfracaoInicial(comEscalaInicial(comAcordoInicial({
+  return comPrestacaoInicial(comInfracaoInicial(comEscalaInicial(comAcordoInicial({
     versao: 10,
     geradoEm: hoje,
     proximoProtocolo: 44,
@@ -171,5 +172,5 @@ export function dadosIniciais(agora = new Date()) {
     manutencao: manutencaoInicial(em),
     plano: 'intermediario',
     financeiro: financeiroInicial(hoje, em, pessoas, UNIDADES),
-  }), agora), agora);
+  }), agora), agora));
 }

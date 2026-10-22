@@ -26,6 +26,7 @@ export const ORDEM = [
   'src/cobranca/orcamento.js',
   'src/cobranca/acoes-orcamento.js',
   'src/financeiro/contas.js',
+  'src/financeiro/balancete.js',
   'src/financeiro/acoes.js',
   'src/infracoes/regras.js',
   'src/infracoes/acoes.js',

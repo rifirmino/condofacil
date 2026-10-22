@@ -38,10 +38,10 @@ export const CASOS_DADOS = [
     },
   },
   {
-    nome: 'dados: 5 comunicados, 7 ocorrências e 8 documentos',
+    nome: 'dados: 5 comunicados, 7 ocorrências e 9 documentos',
     rodar() {
       const e = dadosIniciais(AGORA_TESTE);
-      igual([e.comunicados.length, e.ocorrencias.length, e.documentos.length], [5, 7, 8]);
+      igual([e.comunicados.length, e.ocorrencias.length, e.documentos.length], [5, 7, 9]);
       igual(e.proximoProtocolo, 44);
     },
   },
