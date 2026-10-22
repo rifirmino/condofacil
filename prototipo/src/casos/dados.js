@@ -15,7 +15,7 @@ export const CASOS_DADOS = [
       const e = dadosIniciais(AGORA_TESTE);
       igual(new Set(e.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, 20);
       igual(e.pessoas.filter((p) => p.naoResidente).map((p) => [p.unidade, p.nome, p.recebeOfertas, p.vendedor]), [['704', 'Vicente Moraes', false, 'nao']]);
-      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [10, 'Ana Souza']);
+      igual([e.versao, e.pessoas.find((p) => p.unidade === UNIDADE_ANA).nome], [11, 'Ana Souza']);
     },
   },
   {
@@ -38,10 +38,10 @@ export const CASOS_DADOS = [
     },
   },
   {
-    nome: 'dados: 5 comunicados, 7 ocorrências e 9 documentos',
+    nome: 'dados: 5 comunicados, 7 ocorrências e 10 documentos',
     rodar() {
       const e = dadosIniciais(AGORA_TESTE);
-      igual([e.comunicados.length, e.ocorrencias.length, e.documentos.length], [5, 7, 9]);
+      igual([e.comunicados.length, e.ocorrencias.length, e.documentos.length], [5, 7, 10]);
       igual(e.proximoProtocolo, 44);
     },
   },

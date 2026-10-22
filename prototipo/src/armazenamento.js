@@ -5,7 +5,7 @@ export function carregarEstado() {
     const texto = localStorage.getItem(CHAVE_ESTADO);
     if (!texto) return null;
     const estado = JSON.parse(texto);
-    return estado && estado.versao === 10 ? estado : null;
+    return estado && estado.versao === 11 ? estado : null;
   } catch {
     return null;
   }

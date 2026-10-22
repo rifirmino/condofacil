@@ -62,9 +62,9 @@ export const CASOS_ORCAMENTO = [
       igual(gerarDocumentoPrevisao(e, 'PO-009', 'sindico', AGORA_FASE2).erro, 'Salve a previsão antes de gerar o documento');
       const r = gerarDocumentoPrevisao(e, 'PO-001', 'sindico', AGORA_FASE2);
       const doc = r.estado.documentos.find((d) => d.id === r.id);
-      igual([r.id, doc.pasta, doc.titulo, doc.visibilidade, previsaoDe(r.estado, 'PO-001').documento], ['d10', 'Previsão orçamentária', 'Previsão orçamentária 2027 · Proposta do síndico', 'todos', 'd10']);
+      igual([r.id, doc.pasta, doc.titulo, doc.visibilidade, previsaoDe(r.estado, 'PO-001').documento], ['d11', 'Previsão orçamentária', 'Previsão orçamentária 2027 · Proposta do síndico', 'todos', 'd11']);
       const r2 = gerarDocumentoPrevisao(r.estado, 'PO-001', 'sindico', AGORA_FASE2);
-      igual([r2.versao, r2.estado.documentos.length, r2.estado.documentos.find((d) => d.id === 'd10').versoes.length], [2, e.documentos.length + 1, 2]);
+      igual([r2.versao, r2.estado.documentos.length, r2.estado.documentos.find((d) => d.id === 'd11').versoes.length], [2, e.documentos.length + 1, 2]);
     },
   },
 ];

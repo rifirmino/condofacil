@@ -6,6 +6,7 @@ import { comAcordoInicial } from './cobranca/acordos.js';
 import { comEscalaInicial } from './escala/acoes.js';
 import { comInfracaoInicial } from './infracoes/acoes.js';
 import { comPrestacaoInicial } from './financeiro/acoes.js';
+import { enquetesIniciais, DOC_RESULTADO_FACHADA } from './enquetes/dados.js';
 
 export const UNIDADES = Array.from({ length: 32 }, (_, i) => `${Math.floor(i / 4) + 1}0${(i % 4) + 1}`);
 export const UNIDADE_ANA = '302';
@@ -88,10 +89,12 @@ export function dadosIniciais(agora = new Date()) {
   ];
 
   return comPrestacaoInicial(comInfracaoInicial(comEscalaInicial(comAcordoInicial({
-    versao: 10,
+    versao: 11,
     geradoEm: hoje,
     proximoProtocolo: 44,
     infracoes: [],
+    enquetes: enquetesIniciais(hoje, em),
+    proximaEnquete: 4,
     proximaInfracao: 1,
     condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
     pessoas,
@@ -156,6 +159,7 @@ export function dadosIniciais(agora = new Date()) {
       { id: 'd6', pasta: 'AVCB', titulo: 'AVCB (auto de vistoria do Corpo de Bombeiros)', versoes: [{ versao: 1, data: '2021-11-02' }], vencimento: d(25), visibilidade: 'todos' },
       { id: 'd7', pasta: 'Apólice de seguro', titulo: 'Apólice do seguro predial', versoes: [{ versao: 1, data: '2025-12-05' }], vencimento: d(58), visibilidade: 'todos' },
       { id: 'd8', pasta: 'Laudos', titulo: 'Certificado de limpeza da caixa d’água', versoes: [{ versao: 1, data: '2026-04-05' }], vencimento: d(-3), visibilidade: 'todos' },
+      { id: DOC_RESULTADO_FACHADA, pasta: 'Enquetes', titulo: 'Resultado da enquete: Qual cor para a pintura da fachada?', versoes: [{ versao: 1, data: d(-5) }], visibilidade: 'todos' },
     ],
     encomendas: [
       { id: 'e1', unidade: UNIDADE_ANA, transportadora: 'Mercado Livre', codigo: '481203', chegadaEm: em(-1, 15), status: 'aguardando', foto: true, retiradaPor: null, retiradaEm: null, lembretes: 0, registradaPor: 'Seu José' },

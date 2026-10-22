@@ -20,6 +20,7 @@ import { CASOS_COMPOSICAO } from '../casos/composicao.js';
 import { CASOS_INFRACOES } from '../casos/infracoes.js';
 import { CASOS_ORCAMENTO } from '../casos/orcamento.js';
 import { CASOS_FINANCEIRO } from '../casos/financeiro.js';
+import { CASOS_ENQUETES } from '../casos/enquetes.js';
 import { PERFIS, lerRota, ir, Selo, Icone } from './comum.js';
 import { TelaPortaria } from './portaria.js';
 import { TelaMorador } from './morador.js';
@@ -114,7 +115,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };
