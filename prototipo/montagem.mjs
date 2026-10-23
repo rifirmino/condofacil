@@ -90,6 +90,7 @@ export const ORDEM = [
   'src/ui/sindico.js',
   'src/ui/zelador.js',
   'src/ui/assistente.js',
+  'src/ui/implantacao.js',
   'src/ui/app.js',
 ];
 

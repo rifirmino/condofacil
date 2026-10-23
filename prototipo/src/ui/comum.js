@@ -13,6 +13,7 @@ export const PERFIS = [
 // Rotas no formato #perfil.tela.id: o link compartilhado de um Artifact só repassa âncoras com letras, dígitos, ".", "_", "~" e "-".
 export function lerRota() {
   const [perfil, tela, id] = location.hash.replace(/^#/, '').split('.');
+  if (perfil === 'implantacao') return { perfil, tela: tela || 'condominio', id: id || null };
   const p = PERFIS.find((x) => x.id === perfil);
   if (!p) return { perfil: PERFIS[0].id, tela: PERFIS[0].inicial, id: null };
   return { perfil: p.id, tela: tela || p.inicial, id: id ? decodeURIComponent(id) : null };
@@ -167,12 +168,15 @@ export function Selo({ canal, para, texto }) {
   </div>`;
 }
 
+// Nome do condomínio ativo para o cabeçalho dos documentos; o App atualiza a cada desenho.
+export const CONDOMINIO_ATUAL = { nome: 'Residencial Ipê Amarelo' };
+
 export function PrevDoc({ documento, aoFechar }) {
   const atual = documento.versoes[documento.versoes.length - 1];
   return html`<div class="prev-doc" role="dialog" aria-label=${documento.titulo}>
     <div class="prev-topo"><strong>${documento.titulo}</strong><button type="button" class="btn secundario" onClick=${aoFechar}>Fechar</button></div>
     <div class="prev-pagina">
-      <p class="prev-cabecalho">Residencial Ipê Amarelo · ${documento.pasta} · versão ${atual.versao} de ${fmtDataCurta(atual.data)}</p>
+      <p class="prev-cabecalho">${CONDOMINIO_ATUAL.nome} · ${documento.pasta} · versão ${atual.versao} de ${fmtDataCurta(atual.data)}</p>
       <h3>${documento.titulo}</h3>
       ${[1, 2, 3, 4, 5, 6, 7].map((i) => html`<span key=${i} class="prev-linha" style=${`width:${70 + ((i * 37) % 30)}%`}></span>`)}
       <p class="prev-aviso">Prévia simulada do PDF para o protótipo.</p>

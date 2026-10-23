@@ -31,7 +31,8 @@ function textoLimpo(texto) {
 }
 
 export function trocarMorador(estado, unidade) {
-  if (!MORADORES_DEMO.some(([u]) => u === unidade)) return erroVenda(estado, 'Morador indisponível na demonstração');
+  const disponivel = estado.origem === 'novo' ? estado.pessoas.some((p) => p.unidade === unidade && p.situacao !== 'pendente') : MORADORES_DEMO.some(([u]) => u === unidade);
+  if (!disponivel) return erroVenda(estado, 'Morador indisponível na demonstração');
   return { estado: { ...estado, moradorAtual: unidade, sacola: [] } };
 }
 

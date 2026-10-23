@@ -1,4 +1,4 @@
-import { SINDICO } from '../dados.js';
+import { nomeSindico } from '../dados.js';
 import { PLANOS } from '../planos.js';
 import { isoDia } from '../datas.js';
 import { validarParametros, previaCompetencia, valorAtualizado, pendentesDaRegua, podeOperar, fmtReais, mesExtenso, rotuloCobranca } from './regras.js';
@@ -15,7 +15,7 @@ export function comFinanceiro(estado, mudanca) {
 }
 
 export function comAuditoria(estado, agora, acao, detalhe) {
-  return [...estado.financeiro.auditoria, { em: agora.toISOString(), quem: SINDICO, acao, detalhe }];
+  return [...estado.financeiro.auditoria, { em: agora.toISOString(), quem: nomeSindico(estado), acao, detalhe }];
 }
 
 function trocarCobranca(cobrancas, id, mudanca) {
@@ -106,7 +106,7 @@ export function baixaManual(estado, idCobranca, { data, comprovante }, perfil, a
   const dia = data || isoDia(agora);
   const { total } = valorAtualizado(c, fin.parametros, dia);
   const pago = comFinanceiro(estado, {
-    cobrancas: trocarCobranca(fin.cobrancas, idCobranca, { status: 'paga', pagaEm: agora.toISOString(), valorPago: total, forma: 'manual', baixaManual: { por: SINDICO, comprovante, em: dia } }),
+    cobrancas: trocarCobranca(fin.cobrancas, idCobranca, { status: 'paga', pagaEm: agora.toISOString(), valorPago: total, forma: 'manual', baixaManual: { por: nomeSindico(estado), comprovante, em: dia } }),
     saldo: fin.saldo + total,
     auditoria: comAuditoria(estado, agora, 'Baixa manual', `Apto ${c.unidade} · ${nomeCurtoCobranca(c)} · ${fmtReais(total)} · ${comprovante}`),
   });

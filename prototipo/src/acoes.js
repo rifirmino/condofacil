@@ -1,5 +1,5 @@
 import { podeReservar, podeEntregar, destinatarios, proximoStatus, areaPorId, avisoCancelamento, STATUS_ATIVOS } from './regras.js';
-import { CATEGORIAS, NOMES_STATUS, NOMES_CANAL, SINDICO } from './dados.js';
+import { CATEGORIAS, NOMES_STATUS, NOMES_CANAL, nomeSindico } from './dados.js';
 import { fmtDia, fmtHora, haQuanto } from './datas.js';
 
 // Cada ação recebe o estado e devolve { estado, notificacao?, erro?, id?, aviso? } sem mutar nada.
@@ -32,7 +32,7 @@ export function solicitarReserva(estado, pedido, agora) {
   const status = area.aprovacao === 'automatica' ? 'confirmada' : 'pendente';
   const reserva = { id: `r${estado.reservas.length + 1}`, areaId: area.id, unidade: pedido.unidade, data: pedido.data, inicio: pedido.inicio, fim: pedido.fim, status, convidados: pedido.convidados || [], criadaEm: agora.toISOString() };
   const notificacao = status === 'pendente'
-    ? { canal: 'Push', para: SINDICO, texto: `Nova reserva para aprovar: ${area.nome}, apto ${reserva.unidade}, ${quandoReserva(reserva)}` }
+    ? { canal: 'Push', para: nomeSindico(estado), texto: `Nova reserva para aprovar: ${area.nome}, apto ${reserva.unidade}, ${quandoReserva(reserva)}` }
     : { canal: 'Push', para: nomesDaUnidade(estado, reserva.unidade), texto: `Reserva confirmada: ${area.nome}, ${quandoReserva(reserva)}` };
   return { estado: { ...estado, reservas: [...estado.reservas, reserva] }, id: reserva.id, notificacao };
 }
@@ -67,7 +67,7 @@ export function cancelarReserva(estado, id, agora) {
   return {
     estado: { ...estado, reservas: trocarItem(estado.reservas, id, { status: 'cancelada' }) },
     aviso,
-    notificacao: { canal: 'Push', para: SINDICO, texto: `Reserva cancelada: ${area.nome}, apto ${r.unidade}, ${quandoReserva(r)}${aviso.multa ? ' (fora do prazo de 72 h)' : ''}` },
+    notificacao: { canal: 'Push', para: nomeSindico(estado), texto: `Reserva cancelada: ${area.nome}, apto ${r.unidade}, ${quandoReserva(r)}${aviso.multa ? ' (fora do prazo de 72 h)' : ''}` },
   };
 }
 
@@ -148,7 +148,7 @@ export function abrirOcorrencia(estado, dados, agora) {
   return {
     estado: { ...estado, ocorrencias: [ocorrencia, ...estado.ocorrencias], proximoProtocolo: estado.proximoProtocolo + 1 },
     id,
-    notificacao: { canal: 'Push', para: SINDICO, texto: `Nova ocorrência ${id}: ${CATEGORIAS[dados.categoria].nome}` },
+    notificacao: { canal: 'Push', para: nomeSindico(estado), texto: `Nova ocorrência ${id}: ${CATEGORIAS[dados.categoria].nome}` },
   };
 }
 
@@ -192,7 +192,7 @@ export function avaliarOcorrencia(estado, id, nota) {
   if (!Number.isInteger(nota) || nota < 1 || nota > 5) return erroAcao(estado, 'Escolha de 1 a 5 estrelas');
   return {
     estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { avaliacao: nota }) },
-    notificacao: { canal: 'Push', para: SINDICO, texto: `${oc.id} avaliada com ${nota} de 5 estrelas` },
+    notificacao: { canal: 'Push', para: nomeSindico(estado), texto: `${oc.id} avaliada com ${nota} de 5 estrelas` },
   };
 }
 

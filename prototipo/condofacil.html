@@ -603,6 +603,38 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .abel-sugestoes button:disabled, .abel-nova:disabled { opacity: .5; cursor: default; }
 .abel-msgs .bloqueado { margin: auto 0; }
 
+/* Implantação: passos, cartaz para imprimir e QR Code real. */
+.seletor-condominio select { min-height: 36px; max-width: 260px; padding: 6px 10px; border: 1px solid var(--ardosia-suave); border-radius: var(--raio); background: var(--ardosia-escura); color: var(--ardosia-texto); font-weight: 600; }
+.implantacao { max-width: 1080px; margin: 0 auto; padding: 24px 16px 40px; display: flex; flex-direction: column; gap: 16px; }
+.passos-implantacao { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.passos-implantacao a { display: inline-block; padding: 6px 12px; border: 1px solid var(--borda); border-radius: 999px; background: var(--sup); color: var(--suave); font-size: 13px; font-weight: 600; text-decoration: none; }
+.passos-implantacao .feito a { border-color: var(--ok); color: var(--ok); }
+.passos-implantacao .atual a { border-color: var(--laranja-forte); background: var(--laranja-tinta); color: var(--laranja-forte); }
+.implantacao-corpo { padding: 20px; }
+.implantacao-rodape { justify-content: flex-end; }
+.lista-unidades { display: flex; flex-wrap: wrap; gap: 4px; }
+.modelo-csv { margin: 0; padding: 10px 12px; background: var(--sup-2); border: 1px solid var(--borda); border-radius: var(--raio); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.erro-linha { color: var(--perigo); font-weight: 600; font-size: 13px; }
+.area-modelo { align-items: flex-start; }
+.grade-divulgacao { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 760px) { .grade-divulgacao { grid-template-columns: 1fr; } }
+.cartaz-implantacao { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px 20px; border: 2px solid var(--laranja); border-radius: 8px; background: #fff; color: #222; text-align: center; }
+.cartaz-marca { display: flex; align-items: center; gap: 6px; margin: 0; color: #bd5417; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.cartaz-titulo { margin: 0; font-size: 22px; color: #222; text-transform: none; letter-spacing: 0; }
+.cartaz-sub, .cartaz-passos, .cartaz-contato { margin: 0; font-size: 14px; color: #444; }
+.cartaz-passos { text-align: left; line-height: 1.7; }
+.cartaz-link { margin: 0; font-weight: 700; color: #222; overflow-wrap: anywhere; }
+.cartaz-contato { font-size: 12px; }
+.qr-real { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: #fff; }
+.qr-real svg { width: 100%; height: 100%; }
+.qr-falhou { border: 1px dashed #999; padding: 10px; font-size: 12px; overflow-wrap: anywhere; }
+.link-convite { display: block; padding: 8px 10px; background: var(--sup-2); border: 1px solid var(--borda); border-radius: var(--raio); overflow-wrap: anywhere; }
+@media print {
+  body * { visibility: hidden; }
+  #cartaz-implantacao, #cartaz-implantacao * { visibility: visible; }
+  #cartaz-implantacao { position: absolute; inset: 0; margin: auto; width: 170mm; border: 0; }
+}
+
 </style>
 <div id="app"></div>
 <script type="module">
@@ -1151,10 +1183,10 @@ function indicadoresFinanceiros(estado, hoje) {
   const daProxima = daCompetencia(proxima);
   const lista = devedores(estado, hoje);
   const totalUnidades = estado.condominio.unidades.length;
-  const despesaMedia = Math.round(fin.historico.reduce((soma, m) => soma + m.despesas, 0) / fin.historico.length);
+  const despesaMedia = fin.historico.length ? Math.round(fin.historico.reduce((soma, m) => soma + m.despesas, 0) / fin.historico.length) : 0;
   const despesas = Object.values(fin.despesasMes).reduce((soma, v) => soma + v, 0);
   const orcado = Object.values(fin.orcamento).reduce((soma, v) => soma + v, 0);
-  const desvio = Math.round(((despesas - orcado) / orcado) * 1000) / 10;
+  const desvio = orcado ? Math.round(((despesas - orcado) / orcado) * 1000) / 10 : 0;
   const pct = previsto ? Math.round((recebido / previsto) * 100) : 0;
   const inadimplenciaPct = Math.round((lista.length / totalUnidades) * 1000) / 10;
   return {
@@ -1192,7 +1224,8 @@ const MSG_VALORES = 'Informe um percentual ou valores válidos';
 const DIAS_AVISO_ENCERRADA = 60;
 
 function primeiraNaoEmitida(fin) {
-  return somarMes([...fin.emitidas].sort().at(-1), 1);
+  // Sem nenhuma emissão (condomínio recém-implantado), a primeira competência é a seguinte à vigente.
+  return somarMes([...fin.emitidas].sort().at(-1) || fin.vigente, 1);
 }
 
 function versaoAnterior(fin, vigencia) {
@@ -1268,11 +1301,13 @@ function valorPorTipoExtra(fin, extra) {
 
 function versoesAgendadas(fin) {
   const p = primeiraNaoEmitida(fin);
-  return fin.composicao.versoes.filter((v) => v.vigencia >= p).sort((a, b) => a.vigencia.localeCompare(b.vigencia));
+  // A primeira versão (implantação) não é reajuste: só conta a que tem uma versão anterior.
+  return fin.composicao.versoes.filter((v) => v.vigencia >= p && versaoAnterior(fin, v.vigencia)).sort((a, b) => a.vigencia.localeCompare(b.vigencia));
 }
 
 function versaoVigente(fin) {
-  return versaoEm(fin, somarMes(primeiraNaoEmitida(fin), -1));
+  // Antes da primeira emissão vale a primeira versão cadastrada (condomínio recém-implantado).
+  return versaoEm(fin, somarMes(primeiraNaoEmitida(fin), -1)) || [...fin.composicao.versoes].sort((x, y) => x.vigencia.localeCompare(y.vigencia))[0];
 }
 
 function mudancasDaUnidade(estado, unidade, hoje) {
@@ -1313,7 +1348,7 @@ function comFinanceiro(estado, mudanca) {
 }
 
 function comAuditoria(estado, agora, acao, detalhe) {
-  return [...estado.financeiro.auditoria, { em: agora.toISOString(), quem: SINDICO, acao, detalhe }];
+  return [...estado.financeiro.auditoria, { em: agora.toISOString(), quem: nomeSindico(estado), acao, detalhe }];
 }
 
 function trocarCobranca(cobrancas, id, mudanca) {
@@ -1404,7 +1439,7 @@ function baixaManual(estado, idCobranca, { data, comprovante }, perfil, agora) {
   const dia = data || isoDia(agora);
   const { total } = valorAtualizado(c, fin.parametros, dia);
   const pago = comFinanceiro(estado, {
-    cobrancas: trocarCobranca(fin.cobrancas, idCobranca, { status: 'paga', pagaEm: agora.toISOString(), valorPago: total, forma: 'manual', baixaManual: { por: SINDICO, comprovante, em: dia } }),
+    cobrancas: trocarCobranca(fin.cobrancas, idCobranca, { status: 'paga', pagaEm: agora.toISOString(), valorPago: total, forma: 'manual', baixaManual: { por: nomeSindico(estado), comprovante, em: dia } }),
     saldo: fin.saldo + total,
     auditoria: comAuditoria(estado, agora, 'Baixa manual', `Apto ${c.unidade} · ${nomeCurtoCobranca(c)} · ${fmtReais(total)} · ${comprovante}`),
   });
@@ -1594,10 +1629,10 @@ function proporAcordo(estado, dados, perfil, agora) {
     id, unidade: dados.unidade, originais: [...dados.originais], valorOriginal: s.valorOriginal, multa: s.multa, juros: s.juros,
     perdoaMulta: !!dados.perdoaMulta, jurosPerdoadosPct: dados.jurosPerdoadosPct || 0, desconto: s.desconto, total: s.total,
     entrada, parcelas: dados.parcelas, valorParcela: s.valorParcela, situacao: 'aguardando',
-    criadoEm: agora.toISOString(), criadoPor: SINDICO, aceitoEm: null, aceitoPor: null, termoLidoEm: null,
+    criadoEm: agora.toISOString(), criadoPor: nomeSindico(estado), aceitoEm: null, aceitoPor: null, termoLidoEm: null,
   };
   let auditoria = comAuditoria(estado, agora, 'Proposta de acordo', `${id} · apto ${dados.unidade} · ${fmtReais(s.total)} em ${entrada ? 'entrada + ' : ''}${dados.parcelas}x`);
-  if (s.desconto) auditoria = [...auditoria, { em: agora.toISOString(), quem: SINDICO, acao: 'Desconto em acordo', detalhe: `${id} · ${fmtReais(s.desconto)} perdoados de multa e juros` }];
+  if (s.desconto) auditoria = [...auditoria, { em: agora.toISOString(), quem: nomeSindico(estado), acao: 'Desconto em acordo', detalhe: `${id} · ${fmtReais(s.desconto)} perdoados de multa e juros` }];
   const nome = nomeResponsavel(estado, dados.unidade);
   return {
     estado: comFinanceiro(estado, { acordos: [...fin.acordos, acordo], auditoria }),
@@ -1643,7 +1678,7 @@ function aceitarAcordo(estado, id, { quem, ciente }, agora) {
       acordos: fin.acordos.map((a) => (a.id === id ? { ...a, situacao: 'ativo', aceitoEm: agora.toISOString(), aceitoPor: quem } : a)),
       auditoria: [...fin.auditoria, { em: agora.toISOString(), quem, acao: 'Acordo aceito', detalhe: `${id} · apto ${acordo.unidade} · ${acordo.originais.length} débitos substituídos` }],
     }),
-    notificacao: { canal: 'App', para: SINDICO, texto: `Acordo ${id} aceito. ${primeira.numero ? 'A parcela 1' : 'A entrada'} vence em ${fmtDataCurta(primeira.vencimento)}.` },
+    notificacao: { canal: 'App', para: nomeSindico(estado), texto: `Acordo ${id} aceito. ${primeira.numero ? 'A parcela 1' : 'A entrada'} vence em ${fmtDataCurta(primeira.vencimento)}.` },
   };
 }
 
@@ -1766,11 +1801,238 @@ function enquetesIniciais(hoje, em, nomes = {}) {
   ];
 }
 
+// ---- src/implantacao/regras.js ----
+// Implantação de um condomínio novo: unidades, moradores por planilha, frações e divulgação.
+const CONTATO_COMERCIAL = { email: 'comercial@condofacil.cloud', whatsapp: '+55 11 92591-3118', site: 'condofacil.cloud' };
+const PASSOS_IMPLANTACAO = [['condominio', 'Condomínio'], ['unidades', 'Unidades'], ['moradores', 'Moradores'], ['cobranca', 'Cobrança'], ['asaas', 'Conta Asaas'], ['areas', 'Áreas comuns'], ['divulgacao', 'Divulgação']];
+const NOMES_VINCULO_MORADOR = { titular: 'Titular', inquilino: 'Inquilino', proprietario: 'Proprietário' };
+const UFS = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' ');
+const MODELO_CSV_MORADORES = 'unidade;nome;email;celular;vinculo;responsavel\n101;Maria Silva;maria@email.com;11987654321;titular;sim\n102;João Souza;joao@email.com;11912345678;inquilino;nao';
+const LIMITE_UNIDADES = 1000;
+
+const AREAS_MODELO = {
+  salao: { id: 'salao', nome: 'Salão de festas', tipo: 'periodo', periodos: [{ id: 'tarde', nome: 'Tarde', inicio: 13, fim: 18 }, { id: 'noite', nome: 'Noite', inicio: 18, fim: 23 }], taxa: 150, aprovacao: 'manual', antecedenciaMin: 2, antecedenciaMax: 60, limiteMes: 2, vinculadas: [], capacidade: 80, itens: 'Mesas e cadeiras', regulamento: 'Som até as 22h. Limpeza por conta do morador.' },
+  churrasqueira: { id: 'churrasqueira', nome: 'Churrasqueira', tipo: 'periodo', periodos: [{ id: 'tarde', nome: 'Tarde', inicio: 13, fim: 18 }, { id: 'noite', nome: 'Noite', inicio: 18, fim: 23 }], taxa: 50, aprovacao: 'automatica', antecedenciaMin: 1, antecedenciaMax: 60, limiteMes: 2, vinculadas: [], capacidade: 25, itens: 'Grelha, mesas e pia', regulamento: 'Deixe a grelha limpa.' },
+  quadra: { id: 'quadra', nome: 'Quadra', tipo: 'hora', horaInicio: 8, horaFim: 22, taxa: 0, aprovacao: 'automatica', antecedenciaMin: 0, antecedenciaMax: 15, limiteMes: 4, vinculadas: [], capacidade: 12, itens: 'Rede e traves', regulamento: 'Uma hora por reserva.' },
+  academia: { id: 'academia', nome: 'Academia', tipo: 'hora', horaInicio: 6, horaFim: 23, taxa: 0, aprovacao: 'automatica', antecedenciaMin: 0, antecedenciaMax: 7, limiteMes: null, vinculadas: [], capacidade: 6, itens: 'Aparelhos de musculação', regulamento: 'Uso a partir de 14 anos.' },
+  piscina: { id: 'piscina', nome: 'Piscina', tipo: 'hora', horaInicio: 8, horaFim: 20, taxa: 0, aprovacao: 'automatica', antecedenciaMin: 0, antecedenciaMax: 7, limiteMes: null, vinculadas: [], capacidade: 20, itens: 'Espreguiçadeiras', regulamento: 'Proibido vidro na área da piscina.' },
+};
+
+function identificadorCondominio(nome) {
+  return String(nome || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'condominio';
+}
+
+function linkConvite(identificador) {
+  return `https://${CONTATO_COMERCIAL.site}/c/${identificador}`;
+}
+
+function apenasDigitos(texto) {
+  return String(texto || '').replace(/\D/g, '');
+}
+
+function validarCondominio(dados) {
+  if (!String(dados.nome || '').trim()) return 'Informe o nome do condomínio';
+  const cnpj = apenasDigitos(dados.cnpj);
+  if (cnpj && cnpj.length !== 14) return 'O CNPJ deve ter 14 dígitos';
+  const cep = apenasDigitos(dados.cep);
+  if (cep && cep.length !== 8) return 'O CEP deve ter 8 dígitos';
+  if (dados.uf && !UFS.includes(dados.uf)) return 'Escolha a UF';
+  const s = dados.sindico || {};
+  if (!String(s.nome || '').trim()) return 'Informe o nome do síndico';
+  if (s.email && !emailValido(s.email)) return 'E-mail do síndico inválido';
+  if (s.celular && !celularValido(s.celular)) return 'Celular do síndico inválido';
+  return null;
+}
+
+function emailValido(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+}
+
+function celularValido(celular) {
+  const n = apenasDigitos(celular).length;
+  return n >= 10 && n <= 13;
+}
+
+// Unidades como "101", "102"… e, com blocos, "A101". O último andar pode ser todo de coberturas.
+function gerarUnidades({ blocos = [], andares, porAndar, coberturaUltimo = false }) {
+  const a = Number(andares);
+  const p = Number(porAndar);
+  if (!Number.isInteger(a) || a < 1 || a > 40) return { erro: 'Informe de 1 a 40 andares' };
+  if (!Number.isInteger(p) || p < 1 || p > 20) return { erro: 'Informe de 1 a 20 apartamentos por andar' };
+  const nomes = blocos.map((b) => String(b).trim().toUpperCase()).filter(Boolean);
+  if (new Set(nomes).size !== nomes.length) return { erro: 'Blocos repetidos' };
+  const listaBlocos = nomes.length ? nomes : [''];
+  if (listaBlocos.length * a * p > LIMITE_UNIDADES) return { erro: `No máximo ${LIMITE_UNIDADES} unidades` };
+  const unidades = [];
+  for (const bloco of listaBlocos) {
+    for (let andar = 1; andar <= a; andar++) {
+      for (let n = 1; n <= p; n++) unidades.push({ id: `${bloco}${andar}${String(n).padStart(2, '0')}`, bloco: bloco || null, andar, tipo: coberturaUltimo && andar === a && a > 1 ? 'cobertura' : 'A' });
+    }
+  }
+  return { unidades };
+}
+
+function dividirLinha(linha, sep) {
+  const campos = [];
+  let atual = '';
+  let aspas = false;
+  for (let i = 0; i < linha.length; i++) {
+    const c = linha[i];
+    if (c === '"') {
+      if (aspas && linha[i + 1] === '"') { atual += '"'; i++; } else aspas = !aspas;
+    } else if (c === sep && !aspas) { campos.push(atual.trim()); atual = ''; } else atual += c;
+  }
+  campos.push(atual.trim());
+  return campos;
+}
+
+function separadorDe(texto) {
+  const primeira = texto.split(/\r?\n/).find((l) => l.trim()) || '';
+  if (primeira.includes('\t')) return '\t';
+  return (primeira.match(/;/g) || []).length >= (primeira.match(/,/g) || []).length ? ';' : ',';
+}
+
+function lerCsvUnidades(texto) {
+  const linhas = String(texto || '').split(/\r?\n/).filter((l) => l.trim());
+  if (!linhas.length) return { erro: 'Cole a planilha de unidades' };
+  const sep = separadorDe(texto);
+  const corpo = /unidade/i.test(linhas[0]) ? linhas.slice(1) : linhas;
+  const unidades = [];
+  for (const [n, linha] of corpo.entries()) {
+    const [id, bloco, tipo] = dividirLinha(linha, sep);
+    const limpo = String(id || '').toUpperCase().replace(/\s+/g, '');
+    if (!limpo) return { erro: `Linha ${n + 1}: informe a unidade` };
+    if (unidades.some((u) => u.id === limpo)) return { erro: `Linha ${n + 1}: unidade ${limpo} repetida` };
+    const andar = Number((limpo.match(/(\d+)\d\d$/) || [])[1]) || 1;
+    unidades.push({ id: limpo, bloco: bloco ? bloco.toUpperCase() : null, andar, tipo: /cobertura/i.test(tipo || '') ? 'cobertura' : 'A' });
+  }
+  if (unidades.length > LIMITE_UNIDADES) return { erro: `No máximo ${LIMITE_UNIDADES} unidades` };
+  return { unidades };
+}
+
+const VINCULOS_ACEITOS = { titular: 'titular', proprietario: 'proprietario', 'proprietário': 'proprietario', inquilino: 'inquilino', locatario: 'inquilino', 'locatário': 'inquilino' };
+
+// Devolve todas as linhas com seus erros, para o síndico corrigir antes de importar.
+function lerCsvMoradores(texto, idsUnidades) {
+  const linhasTexto = String(texto || '').split(/\r?\n/).filter((l) => l.trim());
+  if (!linhasTexto.length) return { linhas: [], validas: [], totalErros: 0 };
+  const sep = separadorDe(texto);
+  const comCabecalho = /unidade/i.test(linhasTexto[0]) && /nome/i.test(linhasTexto[0]);
+  const corpo = comCabecalho ? linhasTexto.slice(1) : linhasTexto;
+  const unidades = new Set(idsUnidades);
+  const responsaveis = new Set();
+  const linhas = corpo.map((texto, i) => {
+    const [unidade, nome, email, celular, vinculo, responsavel] = dividirLinha(texto, sep);
+    const u = String(unidade || '').toUpperCase().replace(/\s+/g, '');
+    const erros = [];
+    if (!unidades.has(u)) erros.push(`Unidade ${u || '(vazia)'} não existe`);
+    if (!String(nome || '').trim()) erros.push('Informe o nome');
+    if (email && !emailValido(email)) erros.push('E-mail inválido');
+    if (celular && !celularValido(celular)) erros.push('Celular inválido');
+    const v = vinculo ? VINCULOS_ACEITOS[String(vinculo).toLowerCase()] : 'titular';
+    if (!v) erros.push(`Vínculo "${vinculo}" desconhecido`);
+    const ehResponsavel = /^(s|sim|x|1|true)$/i.test(String(responsavel || '').trim());
+    if (ehResponsavel && unidades.has(u)) {
+      if (responsaveis.has(u)) erros.push(`A unidade ${u} já tem responsável financeiro`);
+      else responsaveis.add(u);
+    }
+    return { numero: i + 1 + (comCabecalho ? 1 : 0), dados: { unidade: u, nome: String(nome || '').trim(), email: String(email || '').trim(), celular: apenasDigitos(celular), vinculo: v || 'titular', responsavel: ehResponsavel }, erros };
+  });
+  return { linhas, validas: linhas.filter((l) => !l.erros.length).map((l) => l.dados), totalErros: linhas.filter((l) => l.erros.length).length };
+}
+
+// Frações proporcionais ao valor de cada tipo, somando exatamente 1 (o resto do arredondamento vai para a primeira unidade).
+function fracoesDasUnidades(unidades, valores) {
+  const peso = (u) => (u.tipo === 'cobertura' ? valores.cobertura || valores.A : valores.A) || 1;
+  const total = unidades.reduce((s, u) => s + peso(u), 0);
+  const fracoes = Object.fromEntries(unidades.map((u) => [u.id, Math.round((peso(u) / total) * 1e6) / 1e6]));
+  const soma = Object.values(fracoes).reduce((s, f) => s + f, 0);
+  if (unidades.length) fracoes[unidades[0].id] = Math.round((fracoes[unidades[0].id] + (1 - soma)) * 1e6) / 1e6;
+  return fracoes;
+}
+
+function mensagemWhatsAppConvite(nome, link) {
+  return `Olá, vizinhos! 🏢\n\nO ${nome} agora usa o CondoFácil: reservas, avisos, encomendas, boletos e ocorrências pelo celular.\n\nEntre pelo link e confirme a sua unidade:\n${link}\n\nDúvidas: ${CONTATO_COMERCIAL.email} ou WhatsApp ${CONTATO_COMERCIAL.whatsapp}.`;
+}
+
+// ---- src/implantacao/novo.js ----
+
+// Estado completo de um condomínio recém-implantado: os dados cadastrados e todo o resto vazio, no mesmo formato da demonstração.
+const VERSAO_CONDOMINIO_NOVO = 11;
+
+function pessoaNova(m, n, agora, situacao = 'ativo') {
+  return { id: `p${m.unidade}-${n}`, nome: m.nome, unidade: m.unidade, email: m.email || '', celular: m.celular || '', vinculo: m.vinculo || 'titular', situacao, criadaEm: agora.toISOString(), recebeOfertas: false, vendedor: 'nao', pedidoVenda: null, motivoVendedor: null, naoResidente: m.vinculo === 'proprietario' };
+}
+
+function condominioNovo(config, agora) {
+  const hoje = isoDia(agora);
+  const mes = hoje.slice(0, 7);
+  const c = config.condominio;
+  const unidades = config.unidades;
+  const ids = unidades.map((u) => u.id);
+  const sindico = { nome: c.sindico.nome.trim(), unidade: c.sindico.unidade || ids[0], email: c.sindico.email || '', celular: apenasDigitos(c.sindico.celular) };
+  const moradores = [...(config.moradores || [])];
+  if (sindico.unidade && !moradores.some((m) => m.nome === sindico.nome)) moradores.unshift({ unidade: sindico.unidade, nome: sindico.nome, email: sindico.email, celular: sindico.celular, vinculo: 'titular', responsavel: !moradores.some((m) => m.unidade === sindico.unidade && m.responsavel) });
+  const pessoas = moradores.map((m, n) => pessoaNova(m, n + 1, agora));
+  const cob = config.cobranca;
+  const valores = { A: Math.round(cob.valores.A), cobertura: Math.round(cob.valores.cobertura || cob.valores.A) };
+  const fracoes = fracoesDasUnidades(unidades, valores);
+  const unidadesFinanceiro = Object.fromEntries(unidades.map((u) => {
+    const r = moradores.find((m) => m.unidade === u.id && m.responsavel);
+    return [u.id, { tipo: u.tipo, fracao: fracoes[u.id], responsavel: r ? { nome: r.nome, relacao: r.vinculo === 'proprietario' ? 'proprietario' : r.vinculo === 'inquilino' ? 'inquilino' : 'titular', documento: 'CPF informado na implantação', canais: ['App', 'E-mail', 'WhatsApp'] } : null }];
+  }));
+  const vigente = somarMes(mes, -1);
+  const versao = cob.modo === 'fracao'
+    ? { id: 'CV-001', vigencia: mes, modo: 'fracao', ordinaria: null, orcamento: Math.round(cob.orcamento), fundoPct: cob.fundoPct, aprovadoEm: 'Implantação do condomínio', criadaEm: agora.toISOString(), criadaPor: 'Síndico' }
+    : { id: 'CV-001', vigencia: mes, modo: 'fixo', ordinaria: valores, orcamento: null, fundoPct: cob.fundoPct, aprovadoEm: 'Implantação do condomínio', criadaEm: agora.toISOString(), criadaPor: 'Síndico' };
+  const identificador = identificadorCondominio(c.nome);
+  const categorias = { pessoal: 0, concessionarias: 0, manutencao: 0, administracao: 0, seguro: 0 };
+  return {
+    versao: VERSAO_CONDOMINIO_NOVO,
+    origem: 'novo',
+    geradoEm: hoje,
+    proximoProtocolo: 1,
+    infracoes: [],
+    proximaInfracao: 1,
+    enquetes: [],
+    proximaEnquete: 1,
+    condominio: {
+      id: config.id || `cond-${identificador}-${agora.getTime().toString(36)}`, nome: c.nome.trim(), identificador, cnpj: apenasDigitos(c.cnpj), cep: apenasDigitos(c.cep), endereco: c.endereco || '', cidade: c.cidade || '', uf: c.uf || '',
+      sindico, unidades: ids, unidadesInfo: Object.fromEntries(unidades.map((u) => [u.id, { bloco: u.bloco, andar: u.andar, tipo: u.tipo }])),
+      asaas: config.asaas || { situacao: 'pendente', ambiente: 'sandbox' }, criadoEm: agora.toISOString(),
+    },
+    pessoas,
+    areas: (config.areas || []).map((id) => AREAS_MODELO[id]).filter(Boolean).map((a) => ({ ...a, vinculadas: [] })),
+    reservas: [], bloqueios: [], comunicados: [], ocorrencias: [], documentos: [], encomendas: [],
+    moradorAtual: pessoas.length ? pessoas[0].unidade : ids[0],
+    sacola: [], anuncios: [], pedidos: [], proximoPedido: 1,
+    manutencao: { os: [], compras: [], caixa: { fundo: 30000, saldo: 30000, gastos: [], reposicoes: [] }, proximaOS: 1, proximaCompra: 1 },
+    plano: c.plano || 'intermediario',
+    financeiro: {
+      parametros: { diaVencimento: cob.diaVencimento, diaFechamento: 20, multaPct: cob.multaPct, jurosPct: cob.jurosPct, descontoPct: 0, descontoAprovadoEm: '', formas: ['boleto', 'pix', 'cartao'], tarifa: 'condominio' },
+      composicao: { versoes: [versao], extras: [], proximaVersao: 2, proximaExtra: 1 },
+      unidades: unidadesFinanceiro,
+      avulsos: [], ajustesPrevia: {},
+      vigente, vencimentoVigente: `${vigente}-${String(cob.diaVencimento).padStart(2, '0')}`, emitidas: [],
+      cobrancas: [], acordos: [], historico: [],
+      despesasMes: { ...categorias }, orcamento: { ...categorias },
+      previsoes: [], proximaPrevisao: 1, saldo: 0,
+      contas: [], proximaConta: 1, balancetes: {}, ajustesMes: [], proximoComentario: 1, auditoria: [],
+    },
+    escala: { atribuicoes: [], ferias: [], trocas: [], meses: {}, proximaTroca: 1, semEquipe: true },
+  };
+}
+
 // ---- src/dados.js ----
 
 const UNIDADES = Array.from({ length: 32 }, (_, i) => `${Math.floor(i / 4) + 1}0${(i % 4) + 1}`);
 const UNIDADE_ANA = '302';
 const SINDICO = 'Síndico Roberto Lima';
+
+// Nome do síndico do condomínio ativo (a demonstração e os condomínios implantados guardam em condominio.sindico).
+function nomeSindico(estado) {
+  return estado && estado.condominio && estado.condominio.sindico ? `Síndico ${estado.condominio.sindico.nome}` : SINDICO;
+}
 const PORTEIRO_DIA = 'Seu José';
 
 const CATEGORIAS = {
@@ -1856,7 +2118,7 @@ function dadosIniciais(agora = new Date()) {
     enquetes: enquetesIniciais(hoje, em, Object.fromEntries(pessoas.map((p) => [p.unidade, p.nome]))),
     proximaEnquete: 4,
     proximaInfracao: 1,
-    condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
+    condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES, sindico: { nome: 'Roberto Lima', unidade: '801' } },
     pessoas,
     areas: [
       { id: 'salao', nome: 'Salão de festas', tipo: 'periodo', periodos, taxa: 150, aprovacao: 'manual', antecedenciaMin: 2, antecedenciaMax: 60, limiteMes: 2, vinculadas: ['churrasqueira'], capacidade: 80, itens: '10 mesas, 60 cadeiras, geladeira e fogão', regulamento: 'Som até as 22h. Limpeza por conta do morador. Vistoria na entrada e na saída.' },
@@ -2067,9 +2329,15 @@ function horariosDaArea(estado, areaId, data, agora) {
   });
 }
 
+// Com blocos ("A401"), o andar vem do cadastro da implantação; na demonstração, é o primeiro dígito.
+function andarDaUnidade(estado, unidade) {
+  const info = estado.condominio.unidadesInfo && estado.condominio.unidadesInfo[unidade];
+  return info ? info.andar : Number(unidade[0]);
+}
+
 function destinatarios(estado, publico) {
   const todas = estado.condominio.unidades;
-  if (publico.tipo === 'andar') return todas.filter((u) => u[0] === String(publico.valor));
+  if (publico.tipo === 'andar') return todas.filter((u) => String(andarDaUnidade(estado, u)) === String(publico.valor));
   if (publico.tipo === 'unidades') return todas.filter((u) => publico.valor.includes(u));
   return [...todas];
 }
@@ -2214,7 +2482,7 @@ function solicitarReserva(estado, pedido, agora) {
   const status = area.aprovacao === 'automatica' ? 'confirmada' : 'pendente';
   const reserva = { id: `r${estado.reservas.length + 1}`, areaId: area.id, unidade: pedido.unidade, data: pedido.data, inicio: pedido.inicio, fim: pedido.fim, status, convidados: pedido.convidados || [], criadaEm: agora.toISOString() };
   const notificacao = status === 'pendente'
-    ? { canal: 'Push', para: SINDICO, texto: `Nova reserva para aprovar: ${area.nome}, apto ${reserva.unidade}, ${quandoReserva(reserva)}` }
+    ? { canal: 'Push', para: nomeSindico(estado), texto: `Nova reserva para aprovar: ${area.nome}, apto ${reserva.unidade}, ${quandoReserva(reserva)}` }
     : { canal: 'Push', para: nomesDaUnidade(estado, reserva.unidade), texto: `Reserva confirmada: ${area.nome}, ${quandoReserva(reserva)}` };
   return { estado: { ...estado, reservas: [...estado.reservas, reserva] }, id: reserva.id, notificacao };
 }
@@ -2249,7 +2517,7 @@ function cancelarReserva(estado, id, agora) {
   return {
     estado: { ...estado, reservas: trocarItem(estado.reservas, id, { status: 'cancelada' }) },
     aviso,
-    notificacao: { canal: 'Push', para: SINDICO, texto: `Reserva cancelada: ${area.nome}, apto ${r.unidade}, ${quandoReserva(r)}${aviso.multa ? ' (fora do prazo de 72 h)' : ''}` },
+    notificacao: { canal: 'Push', para: nomeSindico(estado), texto: `Reserva cancelada: ${area.nome}, apto ${r.unidade}, ${quandoReserva(r)}${aviso.multa ? ' (fora do prazo de 72 h)' : ''}` },
   };
 }
 
@@ -2330,7 +2598,7 @@ function abrirOcorrencia(estado, dados, agora) {
   return {
     estado: { ...estado, ocorrencias: [ocorrencia, ...estado.ocorrencias], proximoProtocolo: estado.proximoProtocolo + 1 },
     id,
-    notificacao: { canal: 'Push', para: SINDICO, texto: `Nova ocorrência ${id}: ${CATEGORIAS[dados.categoria].nome}` },
+    notificacao: { canal: 'Push', para: nomeSindico(estado), texto: `Nova ocorrência ${id}: ${CATEGORIAS[dados.categoria].nome}` },
   };
 }
 
@@ -2374,7 +2642,7 @@ function avaliarOcorrencia(estado, id, nota) {
   if (!Number.isInteger(nota) || nota < 1 || nota > 5) return erroAcao(estado, 'Escolha de 1 a 5 estrelas');
   return {
     estado: { ...estado, ocorrencias: trocarItem(estado.ocorrencias, id, { avaliacao: nota }) },
-    notificacao: { canal: 'Push', para: SINDICO, texto: `${oc.id} avaliada com ${nota} de 5 estrelas` },
+    notificacao: { canal: 'Push', para: nomeSindico(estado), texto: `${oc.id} avaliada com ${nota} de 5 estrelas` },
   };
 }
 
@@ -4436,7 +4704,8 @@ function textoLimpo(texto) {
 }
 
 function trocarMorador(estado, unidade) {
-  if (!MORADORES_DEMO.some(([u]) => u === unidade)) return erroVenda(estado, 'Morador indisponível na demonstração');
+  const disponivel = estado.origem === 'novo' ? estado.pessoas.some((p) => p.unidade === unidade && p.situacao !== 'pendente') : MORADORES_DEMO.some(([u]) => u === unidade);
+  if (!disponivel) return erroVenda(estado, 'Morador indisponível na demonstração');
   return { estado: { ...estado, moradorAtual: unidade, sacola: [] } };
 }
 
@@ -4960,7 +5229,7 @@ function nomeDaUnidade(estado, unidade) {
 
 function saudacaoAbel(estado, perfil) {
   if (perfil === 'morador') return `Oi, ${nomeDaUnidade(estado, estado.moradorAtual)}! Eu sou o **Sr. Abel** 🐝. Posso ajudar com encomendas, boletos, reservas, ocorrências e vendas. O que você precisa?`;
-  if (perfil === 'sindico') return 'Olá, Roberto! **Sr. Abel** na área 🐝. Pergunte sobre inadimplência, encomendas paradas ou como usar qualquer tela.';
+  if (perfil === 'sindico') return `Olá, ${estado.condominio.sindico.nome.split(' ')[0]}! **Sr. Abel** na área 🐝. Pergunte sobre inadimplência, encomendas paradas ou como usar qualquer tela.`;
   if (perfil === 'portaria') return 'Olá! Aqui é o **Sr. Abel** 🐝. Posso ajudar com encomendas, reservas de hoje e a escala.';
   if (perfil === 'zelador') return 'E aí, Seu Antônio! **Sr. Abel** por aqui 🐝. Quer ver suas OS ou tirar dúvida de compra?';
   return 'Olá! Eu sou o **Sr. Abel** 🐝. Posso explicar a prestação de contas e onde achar os documentos.';
@@ -5105,7 +5374,7 @@ function contextoSindico(estado, agora) {
   ].map((a) => (typeof a === 'string' ? a : a.texto));
   const docs = alertasDocumentos(estado.documentos, hoje).map((a) => `${a.documento.titulo}: ${a.dias < 0 ? `vencido há ${-a.dias} dias` : `vence em ${a.dias} dias`}`);
   const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora)).map((e) => `encomenda do apto ${e.unidade} parada desde ${fmtDataCurta(isoDia(new Date(e.chegadaEm)))}`);
-  const linhas = [`Pessoa: Roberto Lima, síndico (apto 801). Plano: ${estado.plano}. Condomínio: ${estado.condominio.nome}, ${estado.condominio.unidades.length} unidades.`];
+  const linhas = [`Pessoa: ${estado.condominio.sindico.nome}, síndico (apto ${estado.condominio.sindico.unidade}). Plano: ${estado.plano}. Condomínio: ${estado.condominio.nome}, ${estado.condominio.unidades.length} unidades.`];
   linhas.push(`Precisa da atenção: ${[...atencao, ...docs, ...paradas].join('; ') || 'nada pendente'}.`);
   linhas.push(`Financeiro: saldo ${fmtReais(ind.saldo.valor)}; arrecadação de ${nomeMes(ind.arrecadado.competencia)}: ${fmtReais(ind.arrecadado.recebido)} de ${fmtReais(ind.arrecadado.previsto)} (${ind.arrecadado.pct}%); despesas do mês ${fmtReais(ind.despesas.valor)} contra orçado ${fmtReais(ind.despesas.orcado)}; próxima competência ${nomeMes(proximaCompetencia(estado.financeiro))}.`);
   const lista = devedores(estado, hoje);
@@ -7374,6 +7643,103 @@ const CASOS_ENQUETES = [
   },
 ];
 
+// ---- src/casos/implantacao.js ----
+
+const AGORA_IMPLANTACAO = new Date(2026, 9, 23, 10, 0);
+const CSV_TESTE = 'unidade;nome;email;celular;vinculo;responsavel\nA101;Maria Silva;maria@email.com;11987654321;titular;sim\nA102;João Souza;joao@email;119;locatário;não\nZ999;Pedro;;;;\nA101;Carlos Lima;carlos@email.com;11955554444;inquilino;sim';
+
+function configTeste() {
+  const { unidades } = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
+  const { validas } = lerCsvMoradores('A101;Maria Silva;maria@email.com;11987654321;titular;sim\nB201;Rui Costa;rui@email.com;11944443333;proprietario;sim', unidades.map((u) => u.id));
+  return {
+    condominio: { nome: 'Residencial Teste', cnpj: '12.345.678/0001-90', cep: '01310-100', endereco: 'Av. Paulista, 1000', cidade: 'São Paulo', uf: 'SP', sindico: { nome: 'Helena Prado', unidade: 'B402', email: 'helena@email.com', celular: '11999998888' }, plano: 'intermediario' },
+    unidades,
+    moradores: validas,
+    cobranca: { diaVencimento: 10, multaPct: 2, jurosPct: 1, fundoPct: 10, modo: 'fixo', valores: { A: 50000, cobertura: 75000 }, orcamento: 0 },
+    asaas: { situacao: 'aprovada', ambiente: 'sandbox' },
+    areas: ['salao', 'academia'],
+  };
+}
+
+const CASOS_IMPLANTACAO = [
+  {
+    nome: 'implantação: gerador e planilha de unidades',
+    rodar() {
+      const g = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
+      igual([g.unidades.length, g.unidades[0].id, g.unidades.at(-1).id, g.unidades.filter((u) => u.tipo === 'cobertura').length], [16, 'A101', 'B402', 4]);
+      igual(gerarUnidades({ andares: 8, porAndar: 4 }).unidades.map((u) => u.id).slice(0, 5), ['101', '102', '103', '104', '201']);
+      igual([gerarUnidades({ andares: 0, porAndar: 2 }).erro, gerarUnidades({ andares: 3, porAndar: 21 }).erro, gerarUnidades({ blocos: ['A', 'a'], andares: 2, porAndar: 2 }).erro, gerarUnidades({ blocos: Array.from({ length: 30 }, (_, i) => `B${i}`), andares: 40, porAndar: 1 }).erro], ['Informe de 1 a 40 andares', 'Informe de 1 a 20 apartamentos por andar', 'Blocos repetidos', 'No máximo 1000 unidades']);
+      const csv = lerCsvUnidades('unidade,bloco,tipo\n101,,\n1201,,cobertura');
+      igual(csv.unidades.map((u) => [u.id, u.andar, u.tipo]), [['101', 1, 'A'], ['1201', 12, 'cobertura']]);
+      igual(lerCsvUnidades('101\n101').erro, 'Linha 2: unidade 101 repetida');
+    },
+  },
+  {
+    nome: 'implantação: planilha de moradores com erros por linha',
+    rodar() {
+      const r = lerCsvMoradores(CSV_TESTE, ['A101', 'A102']);
+      igual(r.linhas.map((l) => l.erros), [[], ['E-mail inválido', 'Celular inválido'], ['Unidade Z999 não existe'], ['A unidade A101 já tem responsável financeiro']]);
+      igual([r.validas.length, r.totalErros, r.linhas[1].dados.vinculo, r.linhas[0].numero], [1, 3, 'inquilino', 2]);
+      igual(lerCsvMoradores('"A101","Silva, Maria","",""', ['A101']).validas[0].nome, 'Silva, Maria');
+      igual(lerCsvMoradores('A101\tAna\t\t\tsocio', ['A101']).linhas[0].erros, ['Vínculo "socio" desconhecido']);
+    },
+  },
+  {
+    nome: 'implantação: frações, identificador, validação e divulgação',
+    rodar() {
+      const { unidades } = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
+      const f = fracoesDasUnidades(unidades, { A: 50000, cobertura: 75000 });
+      const soma = Object.values(f).reduce((s, x) => s + x, 0);
+      igual([Math.abs(soma - 1) < 1e-9, f.A102 < f.A401, Math.round((f.A401 / f.A102) * 10) / 10], [true, true, 1.5]);
+      igual([identificadorCondominio('Residencial Ipê Amarelo'), linkConvite('residencial-teste')], ['residencial-ipe-amarelo', 'https://condofacil.cloud/c/residencial-teste']);
+      const base = configTeste().condominio;
+      igual([validarCondominio({ ...base, nome: ' ' }), validarCondominio({ ...base, cnpj: '123' }), validarCondominio({ ...base, sindico: { nome: '' } }), validarCondominio(base)], ['Informe o nome do condomínio', 'O CNPJ deve ter 14 dígitos', 'Informe o nome do síndico', null]);
+      igual(mensagemWhatsAppConvite('Residencial Teste', linkConvite('residencial-teste')).includes('https://condofacil.cloud/c/residencial-teste'), true);
+    },
+  },
+  {
+    nome: 'implantação: condomínio novo nasce válido e vazio',
+    rodar() {
+      const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
+      igual([e.origem, e.condominio.nome, e.condominio.unidades.length, e.pessoas.map((p) => p.nome), e.moradorAtual], ['novo', 'Residencial Teste', 16, ['Helena Prado', 'Maria Silva', 'Rui Costa'], 'B402']);
+      igual([e.financeiro.unidades.A101.responsavel.nome, e.financeiro.unidades.B402.responsavel.nome, e.financeiro.unidades.A102.responsavel], ['Maria Silva', 'Helena Prado', null]);
+      igual([e.areas.map((a) => a.id), e.financeiro.cobrancas.length, e.financeiro.saldo], [['salao', 'academia'], 0, 0]);
+      igual([primeiraNaoEmitida(e.financeiro), proximaCompetencia(e.financeiro), versaoVigente(e.financeiro).id], ['2026-10', '2026-10', 'CV-001']);
+      const previa = previaCompetencia(e, '2026-10');
+      igual([previa.linhas.length, previa.linhas.find((l) => l.unidade === 'A101').total, previa.linhas.find((l) => l.unidade === 'A401').total, previa.linhas.filter((l) => l.bloqueada).length], [16, 55000, 82500, 13]);
+      const emitido = emitirCompetencia(e, '2026-10', 'sindico', AGORA_IMPLANTACAO);
+      igual([emitido.emitidas, emitido.estado.financeiro.emitidas, primeiraNaoEmitida(emitido.estado.financeiro)], [3, ['2026-10'], '2026-11']);
+    },
+  },
+  {
+    nome: 'implantação: regras principais funcionam com o condomínio vazio',
+    rodar() {
+      const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
+      const agora = AGORA_IMPLANTACAO;
+      const hoje = '2026-10-23';
+      const ind = indicadoresSindico(e, agora);
+      igual([ind.adesao.com, ind.adesao.total], [2, 16]);
+      const fin = indicadoresFinanceiros(e, hoje);
+      igual([fin.saldo.valor, fin.saldo.despesaMedia, fin.inadimplencia.unidades, fin.despesas.desvio, fin.arrecadado.pct], [0, 0, 0, 0, 0]);
+      igual(devedores(e, hoje), []);
+      const serie = serieReceitasDespesas(e, hoje);
+      igual([serie.length, typeof tituloSerie(serie)], [1, 'string']);
+      igual(pendentesDaRegua(e, hoje, e.plano), []);
+      igual([alertasDocumentos(e.documentos, hoje), alertasNotificacoes(e, agora), alertasManutencao(e, agora), alertasInfracoes(e, hoje), alertasEnquetes(e, agora), alertasContas(e, hoje), alertasPrestacao(e, hoje), alertasComposicao(e)], [[], [], [], [], [], [], [], []]);
+      igual(alertasEscala(e, agora).length >= 0, true);
+      igual([caixaDeEntrada(e, agora, { status: 'ativas' }), listaOS(e), indicadorAtendimento(e).abertas], [[], [], 0]);
+      igual(Object.keys(plantaoAgora(e, agora)).length > 0, true);
+      const vivo = balanceteVivo(e, hoje);
+      igual([saldoFinal(vivo), mesesDaPrestacao(e, hoje)], [0, ['2026-10']]);
+      igual(fluxoProjetado(e, hoje, 0).serie.length, 91);
+      igual([destinatarios(e, { tipo: 'andar', valor: '4' }).length, comunicadosDaUnidade(e, 'A101'), enquetesDaUnidade(e, 'A101', agora).pendentes], [4, [], []]);
+      igual(horariosDaArea(e, 'academia', '2026-10-24', agora).length, 17);
+      for (const perfil of ['sindico', 'morador', 'portaria', 'zelador', 'conselho']) igual(typeof contextoAbel(e, perfil, agora), 'string', perfil);
+      igual(responderAbel(e, 'morador', 'Tenho encomenda na portaria?', agora).texto.includes('Nenhuma encomenda'), true);
+    },
+  },
+];
+
 // ---- src/casos/assistente.js ----
 
 function contem(texto, trecho, contexto) {
@@ -7544,6 +7910,28 @@ function limparEstado() {
   }
 }
 
+// Condomínios criados pela implantação: ficam salvos (não se refazem a cada dia como a demonstração).
+const CHAVE_CONDOMINIOS = 'condofacil-condominios-v1';
+const CONDOMINIOS_VAZIO = { ativo: 'demo', lista: {}, rascunho: null };
+
+function carregarCondominios() {
+  try {
+    const texto = localStorage.getItem(CHAVE_CONDOMINIOS);
+    const dados = texto ? JSON.parse(texto) : null;
+    return dados && dados.lista ? { ...CONDOMINIOS_VAZIO, ...dados } : { ...CONDOMINIOS_VAZIO };
+  } catch {
+    return { ...CONDOMINIOS_VAZIO };
+  }
+}
+
+function salvarCondominios(dados) {
+  try {
+    localStorage.setItem(CHAVE_CONDOMINIOS, JSON.stringify(dados));
+  } catch {
+    // Sem armazenamento: os condomínios criados valem só nesta aba.
+  }
+}
+
 // ---- src/ui/comum.js ----
 
 const PERFIS = [
@@ -7557,6 +7945,7 @@ const PERFIS = [
 // Rotas no formato #perfil.tela.id: o link compartilhado de um Artifact só repassa âncoras com letras, dígitos, ".", "_", "~" e "-".
 function lerRota() {
   const [perfil, tela, id] = location.hash.replace(/^#/, '').split('.');
+  if (perfil === 'implantacao') return { perfil, tela: tela || 'condominio', id: id || null };
   const p = PERFIS.find((x) => x.id === perfil);
   if (!p) return { perfil: PERFIS[0].id, tela: PERFIS[0].inicial, id: null };
   return { perfil: p.id, tela: tela || p.inicial, id: id ? decodeURIComponent(id) : null };
@@ -7711,12 +8100,15 @@ function Selo({ canal, para, texto }) {
   </div>`;
 }
 
+// Nome do condomínio ativo para o cabeçalho dos documentos; o App atualiza a cada desenho.
+const CONDOMINIO_ATUAL = { nome: 'Residencial Ipê Amarelo' };
+
 function PrevDoc({ documento, aoFechar }) {
   const atual = documento.versoes[documento.versoes.length - 1];
   return html`<div class="prev-doc" role="dialog" aria-label=${documento.titulo}>
     <div class="prev-topo"><strong>${documento.titulo}</strong><button type="button" class="btn secundario" onClick=${aoFechar}>Fechar</button></div>
     <div class="prev-pagina">
-      <p class="prev-cabecalho">Residencial Ipê Amarelo · ${documento.pasta} · versão ${atual.versao} de ${fmtDataCurta(atual.data)}</p>
+      <p class="prev-cabecalho">${CONDOMINIO_ATUAL.nome} · ${documento.pasta} · versão ${atual.versao} de ${fmtDataCurta(atual.data)}</p>
       <h3>${documento.titulo}</h3>
       ${[1, 2, 3, 4, 5, 6, 7].map((i) => html`<span key=${i} class="prev-linha" style=${`width:${70 + ((i * 37) % 30)}%`}></span>`)}
       <p class="prev-aviso">Prévia simulada do PDF para o protótipo.</p>
@@ -7832,6 +8224,7 @@ function PEscala({ estado, executar, agora }) {
   const [erro, setErro] = useState(null);
   const [mensagem, setMensagem] = useState(null);
   if (!liberado(estado.plano, 'escala')) return html`<section><h1>Escala</h1><${Bloqueado} estado=${estado} recurso="escala" titulo="Escala, trocas e faltas dos porteiros" /></section>`;
+  if (estado.escala.semEquipe) return html`<section><h1>Escala</h1><${Vazio} texto="A equipe da portaria ainda não foi cadastrada. Fale com o síndico." /></section>`;
   const plantao = plantaoAgora(estado, agora);
   const comCheckin = liberado(estado.plano, 'checkin');
   const meus = turnosDoPorteiro(estado, porteiro, agora).slice(0, 8);
@@ -10154,6 +10547,7 @@ function SEscala(props) {
   if (!liberado(estado.plano, 'escala')) {
     return html`<section><h1>Escala</h1><${Bloqueado} estado=${estado} recurso="escala" titulo="Escala de porteiros com trocas, faltas e cobertura" /></section>`;
   }
+  if (estado.escala.semEquipe) return html`<section><h1>Escala</h1><${Vazio} texto="Cadastre a equipe da portaria para montar a escala (em breve na implantação)." /></section>`;
   const aba = ABAS_ESCALA.some(([id]) => id === rota.id) ? rota.id : 'semana';
   const Conteudo = { semana: ESemana, calendario: ECalendario, pendencias: EPendencias, equipe: EEquipe, horas: EHoras }[aba];
   return html`<section>
@@ -10927,6 +11321,13 @@ function tipoEtiquetaAviso(c) {
   return c.tipo === 'urgente' ? 'perigo' : 'info';
 }
 
+// Na demonstração, as três pessoas de sempre; num condomínio implantado, os moradores ativos (até seis).
+function personasMorador(estado) {
+  if (estado.origem !== 'novo') return MORADORES_DEMO;
+  const vistos = new Set();
+  return estado.pessoas.filter((p) => p.situacao !== 'pendente' && !vistos.has(p.unidade) && vistos.add(p.unidade)).slice(0, 6).map((p) => [p.unidade, p.nome.split(' ')[0]]);
+}
+
 function TelaMorador(props) {
   const eu = props.estado.moradorAtual;
   const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao, enquetes: MEnquetes };
@@ -10935,7 +11336,7 @@ function TelaMorador(props) {
   return html`<div class="celular">
     <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
     <div class="cel-pessoa" role="group" aria-label="Morador da demonstração">
-      ${MORADORES_DEMO.map(([unidade, nome]) => html`<button type="button" key=${unidade} aria-pressed=${unidade === eu} onClick=${() => props.executar((e) => trocarMorador(e, unidade))}>${nome} · ${unidade}</button>`)}
+      ${personasMorador(props.estado).map(([unidade, nome]) => html`<button type="button" key=${unidade} aria-pressed=${unidade === eu} onClick=${() => props.executar((e) => trocarMorador(e, unidade))}>${nome} · ${unidade}</button>`)}
     </div>
     <div class="cel-conteudo"><${Conteudo} ...${props} eu=${eu} /></div>
     <nav class="cel-abas" aria-label="Navegação do morador">
@@ -10968,7 +11369,7 @@ function MInicio({ estado, agora, eu }) {
     .sort((a, b) => a.data.localeCompare(b.data) || a.inicio - b.inicio)[0];
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Olá, ${pessoaDaUnidade(estado, eu).nome.split(' ')[0]}</h1>
-    <p class="m-sub">Apto ${eu} · Residencial Ipê Amarelo</p>
+    <p class="m-sub">Apto ${eu} · ${estado.condominio.nome}</p>
     <${CartaoInfracaoInicio} estado=${estado} eu=${eu} agora=${agora} />
     <${CartaoCobrancaInicio} estado=${estado} eu=${eu} agora=${agora} />
     <${CartaoEnqueteInicio} estado=${estado} eu=${eu} agora=${agora} />
@@ -11126,7 +11527,7 @@ function MAvisos({ estado, rota, executar, eu }) {
       <a class="voltar" href="#morador.avisos">‹ Avisos</a>
       <div><${Etiqueta} tipo=${tipoEtiquetaAviso(c)}>${TIPOS_COMUNICADO[c.tipo]}<//></div>
       <h1 class="m-titulo">${c.titulo}</h1>
-      <p class="m-sub">${fmtDataHora(c.publicadoEm)} · Roberto Lima, síndico</p>
+      <p class="m-sub">${fmtDataHora(c.publicadoEm)} · ${estado.condominio.sindico.nome}, síndico</p>
       <p class="m-texto">${c.texto}</p>
       ${c.anexo && html`<p class="anexo"><${Icone} nome="clipe" tamanho=${18} />${c.anexo}</p>`}
       ${lido
@@ -11398,7 +11799,7 @@ function TelaSindico(props) {
   const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, enquetes: SEnquetes, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, financeiro: SFinanceiro, manutencao: SManutencao, escala: SEscala }[tela];
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
-      <p class="painel-usuario"><strong>Roberto Lima</strong><small>Síndico · apto 801</small></p>
+      <p class="painel-usuario"><strong>${props.estado.condominio.sindico.nome}</strong><small>Síndico · apto ${props.estado.condominio.sindico.unidade}</small></p>
       ${MENU_SINDICO.map(([id, nome, icone]) => html`<a key=${id} href=${`#sindico.${id}`} class=${id === tela ? 'ativa' : ''} aria-current=${id === tela ? 'page' : undefined}><${Icone} nome=${icone} tamanho=${20} />${nome}</a>`)}
       ${EM_BREVE.map(([nome, plano]) => html`<span key=${nome} class="em-breve" aria-disabled="true">${nome}<small>Em breve · ${plano}</small></span>`)}
     </nav>
@@ -11430,7 +11831,7 @@ function SInicio({ estado, agora }) {
   }
   const semPendencias = !pendentes.length && !pendOperacao.length && !paradas.length && !alertas.length && !vendedoresPendentes.length && !pendCobranca.length;
   return html`<section>
-    <h1>Olá, Roberto</h1>
+    <h1>Olá, ${estado.condominio.sindico.nome.split(' ')[0]}</h1>
     <${PainelFinanceiro} estado=${estado} agora=${agora} />
     <h2>Precisa da sua atenção</h2>
     ${semPendencias
@@ -11541,7 +11942,7 @@ function BarraLeitura({ lidas, total }) {
 
 function SComunicados(props) {
   const { estado, rota } = props;
-  if (rota.id === 'novo') return html`<${SNovoComunicado} executar=${props.executar} />`;
+  if (rota.id === 'novo') return html`<${SNovoComunicado} estado=${estado} executar=${props.executar} />`;
   const c = rota.id ? estado.comunicados.find((x) => x.id === rota.id) : null;
   if (c) return html`<${SDetalheComunicado} estado=${estado} c=${c} />`;
   const lista = [...estado.comunicados].sort((a, b) => b.publicadoEm.localeCompare(a.publicadoEm));
@@ -11575,7 +11976,7 @@ function SDetalheComunicado({ estado, c }) {
   </section>`;
 }
 
-function SNovoComunicado({ executar }) {
+function SNovoComunicado({ estado, executar }) {
   const [tipo, setTipo] = useState('geral');
   const [titulo, setTitulo] = useState(MODELOS_COMUNICADO.geral.titulo);
   const [texto, setTexto] = useState(MODELOS_COMUNICADO.geral.texto);
@@ -11591,7 +11992,7 @@ function SNovoComunicado({ executar }) {
   function trocarTipo(novo) {
     setTipo(novo);
     setTitulo(MODELOS_COMUNICADO[novo].titulo);
-    setTexto(MODELOS_COMUNICADO[novo].texto);
+    setTexto(MODELOS_COMUNICADO[novo].texto.replace(/Roberto Lima/g, estado.condominio.sindico.nome));
   }
 
   function alternarCanal(k) {
@@ -12339,6 +12740,318 @@ function SrAbel({ estado, rota, agora, executar, obterEstado }) {
   `;
 }
 
+// ---- src/ui/implantacao.js ----
+
+// Assistente de implantação: do cadastro do condomínio ao QR Code de divulgação e à ativação.
+const URL_QRCODE = 'https://unpkg.com/qrcode-generator@1.4.4/qrcode.js';
+let promessaQr = null;
+
+function carregarQrcode() {
+  if (window.qrcode) return Promise.resolve(window.qrcode);
+  if (!promessaQr) {
+    promessaQr = new Promise((ok, falha) => {
+      const s = document.createElement('script');
+      s.src = URL_QRCODE;
+      s.onload = () => (window.qrcode ? ok(window.qrcode) : falha(new Error('QR indisponível')));
+      s.onerror = () => { promessaQr = null; falha(new Error('QR indisponível')); };
+      document.head.appendChild(s);
+    });
+  }
+  return promessaQr;
+}
+
+function QrCodeReal({ texto, tamanho = 220 }) {
+  const [svg, setSvg] = useState(null);
+  const [falhou, setFalhou] = useState(false);
+  useEffect(() => {
+    let ativo = true;
+    carregarQrcode().then((qrcode) => {
+      const qr = qrcode(0, 'M');
+      qr.addData(texto);
+      qr.make();
+      if (ativo) setSvg(qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true, alt: `QR Code para ${texto}` }));
+    }).catch(() => ativo && setFalhou(true));
+    return () => { ativo = false; };
+  }, [texto]);
+  if (falhou) return html`<div class="qr-real qr-falhou" style=${`width:${tamanho}px;height:${tamanho}px`}><small>QR Code indisponível sem internet. Use o link:</small><strong>${texto}</strong></div>`;
+  if (!svg) return html`<div class="qr-real" style=${`width:${tamanho}px;height:${tamanho}px`}><small class="sub">Gerando QR Code…</small></div>`;
+  return html`<div class="qr-real" style=${`width:${tamanho}px;height:${tamanho}px`} dangerouslySetInnerHTML=${{ __html: svg }}></div>`;
+}
+
+function rascunhoPadrao() {
+  return {
+    condominio: { nome: '', cnpj: '', cep: '', endereco: '', cidade: '', uf: 'SP', sindico: { nome: '', unidade: '', email: '', celular: '' }, plano: 'intermediario' },
+    geracao: { modo: 'gerador', blocos: '', andares: '4', porAndar: '4', coberturaUltimo: false, csv: '' },
+    unidades: [],
+    csvMoradores: '',
+    moradores: [],
+    cobranca: { diaVencimento: '10', multaPct: '2', jurosPct: '1', fundoPct: '10', modo: 'fixo', A: '', cobertura: '', orcamento: '' },
+    asaas: { ambiente: 'sandbox', cnpj: '', banco: '', agencia: '', conta: '', situacao: 'pendente' },
+    areas: ['salao', 'churrasqueira'],
+    concluidos: [],
+  };
+}
+
+function numeroImplantacao(texto) {
+  const n = Number(String(texto ?? '').replace(',', '.'));
+  return Number.isFinite(n) ? n : NaN;
+}
+
+// Converte o rascunho (textos do formulário) na configuração que o condominioNovo espera.
+function configDoRascunho(r) {
+  return {
+    condominio: { ...r.condominio, sindico: { ...r.condominio.sindico, unidade: String(r.condominio.sindico.unidade || '').toUpperCase().replace(/\s+/g, '') } },
+    unidades: r.unidades,
+    moradores: r.moradores,
+    cobranca: { diaVencimento: Number(r.cobranca.diaVencimento), multaPct: numeroImplantacao(r.cobranca.multaPct), jurosPct: numeroImplantacao(r.cobranca.jurosPct), fundoPct: numeroImplantacao(r.cobranca.fundoPct), modo: r.cobranca.modo, valores: { A: lerPreco(r.cobranca.A), cobertura: lerPreco(r.cobranca.cobertura) || lerPreco(r.cobranca.A) }, orcamento: lerPreco(r.cobranca.orcamento) },
+    asaas: r.asaas,
+    areas: r.areas,
+  };
+}
+
+function validarPasso(passo, r) {
+  if (passo === 'condominio') return validarCondominio(r.condominio);
+  if (passo === 'unidades') return r.unidades.length ? null : 'Gere ou importe as unidades';
+  if (passo === 'moradores') return lerCsvMoradores(r.csvMoradores, r.unidades.map((u) => u.id)).totalErros ? 'Corrija as linhas com erro (ou apague-as) antes de continuar' : null;
+  if (passo === 'cobranca') {
+    const c = configDoRascunho(r).cobranca;
+    if (!Number.isInteger(c.diaVencimento) || c.diaVencimento < 1 || c.diaVencimento > 28) return 'O vencimento deve ser entre o dia 1 e o dia 28';
+    if (!(c.multaPct >= 0 && c.multaPct <= 2)) return 'A multa por atraso é limitada a 2%';
+    if (!(c.jurosPct >= 0 && c.jurosPct <= 10)) return 'Informe os juros ao mês (0% a 10%)';
+    if (!(c.fundoPct >= 0 && c.fundoPct <= 30)) return 'O fundo de reserva deve ser de 0% a 30%';
+    if (c.modo === 'fixo' && !(c.valores.A > 0)) return 'Informe o valor da taxa do apartamento padrão';
+    if (c.modo === 'fracao' && !(c.orcamento > 0)) return 'Informe o orçamento mensal';
+    return null;
+  }
+  if (passo === 'divulgacao') {
+    const u = configDoRascunho(r).condominio.sindico.unidade;
+    if (u && !r.unidades.some((x) => x.id === u)) return `A unidade do síndico (${u}) não existe. Corrija no passo Condomínio`;
+    return null;
+  }
+  return null;
+}
+
+function PassoCondominio({ r, mudar }) {
+  const c = r.condominio;
+  const campo = (chave) => (ev) => mudar({ condominio: { ...c, [chave]: ev.target.value } });
+  const sindico = (chave) => (ev) => mudar({ condominio: { ...c, sindico: { ...c.sindico, [chave]: ev.target.value } } });
+  return html`<div class="pilha formulario">
+    <${Campo} rotulo="Nome do condomínio"><input id="impl-nome" value=${c.nome} onInput=${campo('nome')} placeholder="Ex.: Residencial Jardim das Flores" /><//>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="CNPJ" dica="Opcional nesta etapa"><input id="impl-cnpj" inputmode="numeric" value=${c.cnpj} onInput=${campo('cnpj')} placeholder="00.000.000/0000-00" /><//>
+      <${Campo} rotulo="CEP"><input id="impl-cep" inputmode="numeric" value=${c.cep} onInput=${campo('cep')} placeholder="00000-000" /><//>
+      <${Campo} rotulo="Endereço"><input id="impl-endereco" value=${c.endereco} onInput=${campo('endereco')} placeholder="Rua e número" /><//>
+      <${Campo} rotulo="Cidade"><input id="impl-cidade" value=${c.cidade} onInput=${campo('cidade')} /><//>
+      <${Campo} rotulo="UF"><select id="impl-uf" value=${c.uf} onChange=${campo('uf')}>${UFS.map((u) => html`<option key=${u} value=${u}>${u}</option>`)}</select><//>
+      <${Campo} rotulo="Plano"><select id="impl-plano" value=${c.plano} onChange=${campo('plano')}>${PLANOS.map((p) => html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}</select><//>
+    </div>
+    <h2>Síndico</h2>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Nome do síndico"><input id="impl-sindico" value=${c.sindico.nome} onInput=${sindico('nome')} /><//>
+      <${Campo} rotulo="Apto do síndico" dica="Deve existir entre as unidades"><input id="impl-sindico-apto" value=${c.sindico.unidade} onInput=${sindico('unidade')} placeholder="Ex.: 101 ou A101" /><//>
+      <${Campo} rotulo="E-mail do síndico"><input id="impl-sindico-email" type="email" value=${c.sindico.email} onInput=${sindico('email')} /><//>
+      <${Campo} rotulo="Celular do síndico"><input id="impl-sindico-celular" inputmode="tel" value=${c.sindico.celular} onInput=${sindico('celular')} placeholder="(11) 90000-0000" /><//>
+    </div>
+  </div>`;
+}
+
+function PassoUnidades({ r, mudar }) {
+  const g = r.geracao;
+  const [erro, setErro] = useState(null);
+  const campo = (chave) => (ev) => mudar({ geracao: { ...g, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value } });
+  function gerar() {
+    const res = g.modo === 'gerador'
+      ? gerarUnidades({ blocos: g.blocos.split(/[\s,;]+/).filter(Boolean), andares: Number(g.andares), porAndar: Number(g.porAndar), coberturaUltimo: g.coberturaUltimo })
+      : lerCsvUnidades(g.csv);
+    setErro(res.erro || null);
+    if (!res.erro) mudar({ unidades: res.unidades });
+  }
+  const coberturas = r.unidades.filter((u) => u.tipo === 'cobertura').length;
+  return html`<div class="pilha formulario">
+    <${Campo} rotulo="Como cadastrar"><select id="impl-modo-unidades" value=${g.modo} onChange=${campo('modo')}><option value="gerador">Gerar por blocos, andares e apartamentos</option><option value="csv">Colar planilha de unidades</option></select><//>
+    ${g.modo === 'gerador'
+      ? html`<div class="edicao-anuncio">
+          <${Campo} rotulo="Blocos" dica="Ex.: A, B. Deixe vazio se não houver"><input id="impl-blocos" value=${g.blocos} onInput=${campo('blocos')} /><//>
+          <${Campo} rotulo="Andares"><input id="impl-andares" type="number" min="1" max="40" value=${g.andares} onInput=${campo('andares')} /><//>
+          <${Campo} rotulo="Apartamentos por andar"><input id="impl-por-andar" type="number" min="1" max="20" value=${g.porAndar} onInput=${campo('porAndar')} /><//>
+        </div>
+        <label class="check"><input id="impl-cobertura" type="checkbox" checked=${g.coberturaUltimo} onChange=${campo('coberturaUltimo')} /><span>O último andar é de coberturas</span></label>`
+      : html`<${Campo} rotulo="Planilha de unidades" dica="Colunas: unidade;bloco;tipo (padrão ou cobertura)"><textarea id="impl-csv-unidades" rows="6" value=${g.csv} onInput=${campo('csv')} placeholder="unidade;bloco;tipo\n101;;padrão\n801;;cobertura"></textarea><//>`}
+    <button type="button" class="btn secundario" data-acao="gerar-unidades" onClick=${gerar}>${g.modo === 'gerador' ? 'Gerar unidades' : 'Ler planilha'}</button>
+    <${Erro} texto=${erro} />
+    ${r.unidades.length > 0 && html`<div class="cartao pilha">
+      <strong>${r.unidades.length} unidades${coberturas ? ` · ${coberturas} coberturas` : ''}</strong>
+      <div class="lista-unidades">${r.unidades.slice(0, 60).map((u) => html`<span key=${u.id} class=${`etq-turno ${u.tipo === 'cobertura' ? 't-tarde' : 't-folga'}`}>${u.id}</span>`)}${r.unidades.length > 60 ? html`<small class="sub">e mais ${r.unidades.length - 60}</small>` : ''}</div>
+    </div>`}
+  </div>`;
+}
+
+function PassoMoradores({ r, mudar }) {
+  const ids = r.unidades.map((u) => u.id);
+  const leitura = lerCsvMoradores(r.csvMoradores, ids);
+  useEffect(() => {
+    const iguais = JSON.stringify(leitura.validas) === JSON.stringify(r.moradores);
+    if (!iguais && !leitura.totalErros) mudar({ moradores: leitura.validas });
+  }, [r.csvMoradores, r.unidades.length]);
+  return html`<div class="pilha formulario">
+    <p class="sub">Cole a planilha dos moradores (pode ser exportada do Excel ou do Google Planilhas). Este passo é opcional: quem não estiver na lista pode entrar pelo QR Code do convite.</p>
+    <details class="composicao"><summary>Modelo da planilha</summary><pre class="modelo-csv">${MODELO_CSV_MORADORES}</pre><small class="sub">vinculo: titular, inquilino ou proprietario · responsavel: sim ou não (quem recebe a cobrança).</small></details>
+    <${Campo} rotulo="Planilha de moradores"><textarea id="impl-csv-moradores" rows="8" value=${r.csvMoradores} onInput=${(ev) => mudar({ csvMoradores: ev.target.value })} placeholder=${MODELO_CSV_MORADORES}></textarea><//>
+    ${leitura.linhas.length > 0 && html`<div class="cartao pilha">
+      <strong>${leitura.validas.length} de ${leitura.linhas.length} linhas prontas${leitura.totalErros ? ` · ${leitura.totalErros} com erro` : ''}</strong>
+      <div class="tabela-rolagem"><table class="tabela">
+        <thead><tr><th>Linha</th><th>Unidade</th><th>Nome</th><th>Vínculo</th><th>Responsável</th><th>Situação</th></tr></thead>
+        <tbody>${leitura.linhas.map((l) => html`<tr key=${l.numero}>
+          <td>${l.numero}</td><td>${l.dados.unidade}</td><td>${l.dados.nome}</td><td>${NOMES_VINCULO_MORADOR[l.dados.vinculo]}</td><td>${l.dados.responsavel ? 'Sim' : '—'}</td>
+          <td>${l.erros.length ? html`<span class="erro-linha">${l.erros.join(' · ')}</span>` : html`<${Etiqueta} tipo="ok">OK<//>`}</td>
+        </tr>`)}</tbody>
+      </table></div>
+    </div>`}
+  </div>`;
+}
+
+function PassoCobranca({ r, mudar }) {
+  const c = r.cobranca;
+  const campo = (chave) => (ev) => mudar({ cobranca: { ...c, [chave]: ev.target.value } });
+  const temCobertura = r.unidades.some((u) => u.tipo === 'cobertura');
+  const cfg = configDoRascunho(r).cobranca;
+  const fracoes = cfg.valores.A > 0 ? fracoesDasUnidades(r.unidades, cfg.valores) : null;
+  const exemplo = (tipo) => r.unidades.find((u) => u.tipo === tipo);
+  const mensal = cfg.modo === 'fracao' && fracoes && cfg.orcamento > 0 ? (u) => Math.round(cfg.orcamento * fracoes[u.id]) : (u) => (u.tipo === 'cobertura' ? cfg.valores.cobertura : cfg.valores.A);
+  return html`<div class="pilha formulario">
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Dia do vencimento"><input id="impl-vencimento" type="number" min="1" max="28" value=${c.diaVencimento} onInput=${campo('diaVencimento')} /><//>
+      <${Campo} rotulo="Multa por atraso (%)" dica="Máximo de 2% (Código Civil)"><input id="impl-multa" inputmode="decimal" value=${c.multaPct} onInput=${campo('multaPct')} /><//>
+      <${Campo} rotulo="Juros ao mês (%)"><input id="impl-juros" inputmode="decimal" value=${c.jurosPct} onInput=${campo('jurosPct')} /><//>
+      <${Campo} rotulo="Fundo de reserva (%)"><input id="impl-fundo" inputmode="decimal" value=${c.fundoPct} onInput=${campo('fundoPct')} /><//>
+      <${Campo} rotulo="Como calcular a taxa"><select id="impl-modo-taxa" value=${c.modo} onChange=${campo('modo')}><option value="fixo">Valor fixo por tipo</option><option value="fracao">Orçamento rateado por fração ideal</option></select><//>
+    </div>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo=${c.modo === 'fracao' ? 'Peso do apto padrão (R$)' : 'Taxa do apto padrão (R$)'} dica=${c.modo === 'fracao' ? 'Usado para calcular as frações' : 'Sem o fundo de reserva'}><input id="impl-taxa-a" inputmode="decimal" value=${c.A} onInput=${campo('A')} placeholder="Ex.: 650,00" /><//>
+      ${temCobertura && html`<${Campo} rotulo=${c.modo === 'fracao' ? 'Peso da cobertura (R$)' : 'Taxa da cobertura (R$)'}><input id="impl-taxa-cobertura" inputmode="decimal" value=${c.cobertura} onInput=${campo('cobertura')} placeholder="Ex.: 980,00" /><//>`}
+      ${c.modo === 'fracao' && html`<${Campo} rotulo="Orçamento mensal (R$)"><input id="impl-orcamento" inputmode="decimal" value=${c.orcamento} onInput=${campo('orcamento')} placeholder="Ex.: 22.120,00" /><//>`}
+    </div>
+    ${cfg.valores.A > 0 && html`<div class="cartao simulacao"><strong>Prévia da taxa</strong><dl class="resumo">
+      ${['A', 'cobertura'].map((tipo) => exemplo(tipo) && html`<dt key=${`t${tipo}`}>${tipo === 'A' ? 'Apto padrão' : 'Cobertura'}${fracoes ? ` · fração ${(fracoes[exemplo(tipo).id] * 100).toFixed(4).replace('.', ',')}%` : ''}</dt><dd key=${`v${tipo}`}>${fmtReais(Math.round(mensal(exemplo(tipo)) * (1 + (cfg.fundoPct || 0) / 100)))} por mês com fundo</dd>`)}
+      <dt>Arrecadação mensal</dt><dd>${fmtReais(r.unidades.reduce((s, u) => s + Math.round(mensal(u) * (1 + (cfg.fundoPct || 0) / 100)), 0))}</dd>
+    </dl></div>`}
+  </div>`;
+}
+
+function PassoAsaas({ r, mudar }) {
+  const a = r.asaas;
+  const campo = (chave) => (ev) => mudar({ asaas: { ...a, [chave]: ev.target.value } });
+  const etiqueta = { pendente: ['neutro', 'Não criada'], analise: ['alerta', 'Em análise'], aprovada: ['ok', 'Aprovada'] }[a.situacao];
+  return html`<div class="pilha formulario">
+    <p class="sub">Cada condomínio tem a própria subconta no Asaas: o dinheiro cai direto na conta do condomínio. No protótipo, a criação e a aprovação são simuladas.</p>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Ambiente"><select id="impl-ambiente" value=${a.ambiente} onChange=${campo('ambiente')}><option value="sandbox">Sandbox (testes, dinheiro de mentira)</option><option value="producao">Produção</option></select><//>
+      <${Campo} rotulo="CNPJ do condomínio"><input id="impl-asaas-cnpj" value=${a.cnpj || r.condominio.cnpj} onInput=${campo('cnpj')} /><//>
+      <${Campo} rotulo="Banco"><input id="impl-banco" value=${a.banco} onInput=${campo('banco')} placeholder="Ex.: 341 Itaú" /><//>
+      <${Campo} rotulo="Agência"><input id="impl-agencia" value=${a.agencia} onInput=${campo('agencia')} /><//>
+      <${Campo} rotulo="Conta"><input id="impl-conta" value=${a.conta} onInput=${campo('conta')} /><//>
+    </div>
+    <div class="linha-entre"><span>Subconta: <${Etiqueta} tipo=${etiqueta[0]}>${etiqueta[1]}<//></span>
+      <span class="acoes">
+        ${a.situacao === 'pendente' && html`<button type="button" class="btn secundario" data-acao="criar-subconta" onClick=${() => mudar({ asaas: { ...a, situacao: 'analise' } })}>Criar subconta</button>`}
+        ${a.situacao === 'analise' && html`<button type="button" class="btn secundario" data-acao="aprovar-subconta" onClick=${() => mudar({ asaas: { ...a, situacao: 'aprovada', walletId: `wal_${identificadorCondominio(r.condominio.nome).slice(0, 12)}` } })}>Simular aprovação do Asaas</button>`}
+      </span>
+    </div>
+    ${a.situacao === 'aprovada' && html`<p class="sucesso">Subconta aprovada (${a.ambiente === 'sandbox' ? 'sandbox' : 'produção'}). As cobranças vão sair por ela.</p>`}
+    ${a.situacao !== 'aprovada' && html`<small class="sub">Dá para seguir e terminar depois: até a aprovação, a emissão fica em modo de teste.</small>`}
+  </div>`;
+}
+
+function PassoAreas({ r, mudar }) {
+  const alternar = (id) => mudar({ areas: r.areas.includes(id) ? r.areas.filter((x) => x !== id) : [...r.areas, id] });
+  return html`<div class="pilha formulario">
+    <p class="sub">Escolha as áreas que os moradores podem reservar. Regras, taxas e horários podem ser ajustados depois.</p>
+    ${Object.values(AREAS_MODELO).map((a) => html`<label key=${a.id} class="check area-modelo"><input id=${`impl-area-${a.id}`} type="checkbox" checked=${r.areas.includes(a.id)} onChange=${() => alternar(a.id)} /><span><strong>${a.nome}</strong> · ${a.taxa ? `taxa R$ ${a.taxa},00` : 'sem taxa'} · ${a.aprovacao === 'manual' ? 'síndico aprova' : 'aprovação automática'} · ${a.tipo === 'periodo' ? 'por período' : `por hora, ${a.horaInicio}h–${a.horaFim}h`}</span></label>`)}
+  </div>`;
+}
+
+function PassoDivulgacao({ r }) {
+  const nome = r.condominio.nome || 'Seu condomínio';
+  const link = linkConvite(identificadorCondominio(nome));
+  const mensagem = mensagemWhatsAppConvite(nome, link);
+  const [copiado, setCopiado] = useState(null);
+  function copiar(texto, rotulo) {
+    const feito = () => setCopiado(rotulo);
+    if (navigator.clipboard) navigator.clipboard.writeText(texto).then(feito).catch(feito);
+    else feito();
+  }
+  return html`<div class="pilha">
+    <div class="grade-divulgacao">
+      <div class="cartaz-implantacao" id="cartaz-implantacao">
+        <p class="cartaz-marca"><${Icone} nome="predio" tamanho=${22} /> CondoFácil</p>
+        <h2 class="cartaz-titulo">${nome} agora tem app!</h2>
+        <p class="cartaz-sub">Reservas, avisos, encomendas, boletos e ocorrências pelo celular.</p>
+        <${QrCodeReal} texto=${link} />
+        <p class="cartaz-passos">1. Aponte a câmera para o QR Code<br />2. Escolha a sua unidade<br />3. Confirme com o código que chega no celular</p>
+        <p class="cartaz-link">${link}</p>
+        <p class="cartaz-contato">Dúvidas: ${CONTATO_COMERCIAL.email} · WhatsApp ${CONTATO_COMERCIAL.whatsapp}</p>
+      </div>
+      <div class="pilha">
+        <strong>Link do convite</strong>
+        <code class="link-convite">${link}</code>
+        <div class="acoes">
+          <button type="button" class="btn secundario" onClick=${() => copiar(link, 'Link copiado.')}>Copiar link</button>
+          <button type="button" class="btn secundario" data-acao="imprimir-cartaz" onClick=${() => window.print()}>Imprimir cartaz</button>
+        </div>
+        <strong>Mensagem para o grupo do WhatsApp</strong>
+        <pre class="modelo-csv">${mensagem}</pre>
+        <button type="button" class="btn secundario" onClick=${() => copiar(mensagem, 'Mensagem copiada.')}>Copiar mensagem</button>
+        <${Sucesso} texto=${copiado} />
+        <small class="sub">O endereço ${CONTATO_COMERCIAL.site} ainda não está publicado: o QR mostra o link certo, que passa a abrir quando o site estiver no ar.</small>
+      </div>
+    </div>
+  </div>`;
+}
+
+const PASSOS_UI = { condominio: PassoCondominio, unidades: PassoUnidades, moradores: PassoMoradores, cobranca: PassoCobranca, asaas: PassoAsaas, areas: PassoAreas, divulgacao: PassoDivulgacao };
+
+function TelaImplantacao({ rota, rascunho, aoSalvarRascunho, aoAtivar }) {
+  const [r, setR] = useState(() => rascunho || rascunhoPadrao());
+  const [erro, setErro] = useState(null);
+  const passo = PASSOS_UI[rota.tela] ? rota.tela : 'condominio';
+  const indice = PASSOS_IMPLANTACAO.findIndex(([id]) => id === passo);
+  const Passo = PASSOS_UI[passo];
+  const mudar = (mudanca) => setR((atual) => ({ ...atual, ...mudanca }));
+
+  function avancar() {
+    const falha = validarPasso(passo, r);
+    setErro(falha);
+    if (falha) return;
+    const salvo = { ...r, concluidos: [...new Set([...r.concluidos, passo])] };
+    setR(salvo);
+    aoSalvarRascunho(salvo);
+    if (passo === 'divulgacao') { aoAtivar(condominioNovo(configDoRascunho(salvo), new Date())); return; }
+    ir('implantacao', PASSOS_IMPLANTACAO[indice + 1][0]);
+  }
+
+  function voltar() {
+    setErro(null);
+    aoSalvarRascunho(r);
+    if (indice > 0) ir('implantacao', PASSOS_IMPLANTACAO[indice - 1][0]);
+    else ir('sindico', 'inicio');
+  }
+
+  const total = configDoRascunho(r).cobranca.valores.A > 0 ? mensalidade(r.condominio.plano, Math.max(1, r.unidades.length)) : null;
+  return html`<section class="implantacao">
+    <header class="linha-entre">
+      <div><p class="protocolo">Implantação · passo ${indice + 1} de ${PASSOS_IMPLANTACAO.length}</p><h1>${PASSOS_IMPLANTACAO[indice][1]}</h1></div>
+      ${r.unidades.length > 0 && total !== null && html`<small class="sub">${r.unidades.length} unidades · plano ${PLANOS.find((p) => p.id === r.condominio.plano).nome}: ${fmtReais(total)}/mês</small>`}
+    </header>
+    <ol class="passos-implantacao">${PASSOS_IMPLANTACAO.map(([id, nome], i) => html`<li key=${id} class=${`${i === indice ? 'atual' : ''} ${r.concluidos.includes(id) ? 'feito' : ''}`}><a href=${`#implantacao.${id}`} aria-current=${i === indice ? 'step' : undefined}>${i + 1}. ${nome}</a></li>`)}</ol>
+    <div class="cartao implantacao-corpo"><${Passo} r=${r} mudar=${mudar} /></div>
+    <${Erro} texto=${erro} />
+    <div class="acoes implantacao-rodape">
+      <button type="button" class="btn secundario" onClick=${voltar}>${indice > 0 ? 'Voltar' : 'Cancelar'}</button>
+      <button type="button" class="btn primario" data-acao="avancar-implantacao" onClick=${avancar}>${passo === 'divulgacao' ? 'Ativar condomínio' : 'Salvar e continuar'}</button>
+    </div>
+  </section>`;
+}
+
 // ---- src/ui/app.js ----
 
 const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
@@ -12349,8 +13062,15 @@ function estadoDeHoje() {
   return salvo && salvo.geradoEm === isoDia(new Date()) ? salvo : dadosIniciais(new Date());
 }
 
+// O condomínio ativo pode ser a demonstração (refeita a cada dia) ou um condomínio criado pela implantação (guardado).
+function estadoDoAtivo(condominios) {
+  const salvo = condominios.ativo !== 'demo' && condominios.lista[condominios.ativo];
+  return salvo || estadoDeHoje();
+}
+
 function App() {
-  const [estado, setEstado] = useState(estadoDeHoje);
+  const [condominios, setCondominios] = useState(carregarCondominios);
+  const [estado, setEstado] = useState(() => estadoDoAtivo(condominios));
   const estadoAtual = useRef(estado);
   estadoAtual.current = estado;
   const [rota, setRota] = useState(lerRota);
@@ -12365,8 +13085,39 @@ function App() {
   }, []);
 
   useEffect(() => {
-    salvarEstado(estado);
+    if (estado.origem !== 'novo') { salvarEstado(estado); return; }
+    setCondominios((c) => {
+      const novo = { ...c, ativo: estado.condominio.id, lista: { ...c.lista, [estado.condominio.id]: estado } };
+      salvarCondominios(novo);
+      return novo;
+    });
   }, [estado]);
+
+  CONDOMINIO_ATUAL.nome = estado.condominio.nome;
+
+  function guardarCondominios(mudanca) {
+    setCondominios((c) => {
+      const novo = { ...c, ...mudanca };
+      salvarCondominios(novo);
+      return novo;
+    });
+  }
+
+  function trocarCondominio(id) {
+    if (id === 'novo') { ir('implantacao', 'condominio'); return; }
+    guardarCondominios({ ativo: id });
+    setEstado(id === 'demo' ? estadoDeHoje() : condominios.lista[id]);
+    setSelo(null);
+    setGeracao(geracao + 1);
+    ir('sindico', 'inicio');
+  }
+
+  function ativarCondominio(novoEstado) {
+    guardarCondominios({ ativo: novoEstado.condominio.id, lista: { ...condominios.lista, [novoEstado.condominio.id]: novoEstado }, rascunho: null });
+    setEstado(novoEstado);
+    setGeracao(geracao + 1);
+    ir('sindico', 'inicio');
+  }
 
   useEffect(() => {
     if (!selo) return undefined;
@@ -12403,7 +13154,12 @@ function App() {
   const Tela = TELAS_PERFIL[rota.perfil];
   return html`
     <header class="barra-demo">
-      <div class="marca"><span class="logo"><${Icone} nome="predio" tamanho=${20} /></span><strong class="marca-nome">CondoFácil</strong><span class="sub">Residencial Ipê Amarelo · 32 unidades</span></div>
+      <div class="marca"><span class="logo"><${Icone} nome="predio" tamanho=${20} /></span><strong class="marca-nome">CondoFácil</strong><span class="sub">${estado.condominio.nome} · ${estado.condominio.unidades.length} unidades</span></div>
+      <label class="seletor-condominio"><span class="so-leitor">Condomínio</span><select id="seletor-condominio" value=${estado.origem === 'novo' ? estado.condominio.id : 'demo'} onChange=${(ev) => trocarCondominio(ev.target.value)}>
+        <option value="demo">Residencial Ipê Amarelo (demonstração)</option>
+        ${Object.values(condominios.lista).map((c) => html`<option key=${c.condominio.id} value=${c.condominio.id}>${c.condominio.nome}</option>`)}
+        <option value="novo">+ Novo condomínio</option>
+      </select></label>
       <div class="ver-como" role="group" aria-label="Ver como">
         <span>Ver como</span>
         ${PERFIS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${rota.perfil === p.id} onClick=${() => trocarPerfil(p.id)}>${p.nome}</button>`)}
@@ -12413,13 +13169,15 @@ function App() {
         ${PLANOS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${estado.plano === p.id} onClick=${() => executar((e) => trocarPlano(e, p.id))}>${p.nome}</button>`)}
         <button type="button" class="precos" aria-expanded=${mostrarPrecos} onClick=${() => setMostrarPrecos(!mostrarPrecos)}>Preços</button>
       </div>
-      <button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>
+      ${estado.origem !== 'novo' && html`<button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>`}
     </header>
     ${mostrarPrecos && html`<${PainelPrecos} plano=${estado.plano} unidades=${estado.condominio.unidades.length} aoFechar=${() => setMostrarPrecos(false)} />`}
     <main class=${`palco palco-${rota.perfil}`}>
-      <${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />
+      ${rota.perfil === 'implantacao'
+        ? html`<${TelaImplantacao} rota=${rota} rascunho=${condominios.rascunho} aoSalvarRascunho=${(r) => guardarCondominios({ rascunho: r })} aoAtivar=${ativarCondominio} />`
+        : html`<${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />`}
     </main>
-    <${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} executar=${executar} obterEstado=${() => estadoAtual.current} />
+    ${rota.perfil !== 'implantacao' && html`<${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} executar=${executar} obterEstado=${() => estadoAtual.current} />`}
     ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
   `;
 }
@@ -12433,7 +13191,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE, ...CASOS_IMPLANTACAO].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

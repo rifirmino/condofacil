@@ -41,6 +41,13 @@ function tipoEtiquetaAviso(c) {
   return c.tipo === 'urgente' ? 'perigo' : 'info';
 }
 
+// Na demonstração, as três pessoas de sempre; num condomínio implantado, os moradores ativos (até seis).
+function personasMorador(estado) {
+  if (estado.origem !== 'novo') return MORADORES_DEMO;
+  const vistos = new Set();
+  return estado.pessoas.filter((p) => p.situacao !== 'pendente' && !vistos.has(p.unidade) && vistos.add(p.unidade)).slice(0, 6).map((p) => [p.unidade, p.nome.split(' ')[0]]);
+}
+
 export function TelaMorador(props) {
   const eu = props.estado.moradorAtual;
   const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao, enquetes: MEnquetes };
@@ -49,7 +56,7 @@ export function TelaMorador(props) {
   return html`<div class="celular">
     <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
     <div class="cel-pessoa" role="group" aria-label="Morador da demonstração">
-      ${MORADORES_DEMO.map(([unidade, nome]) => html`<button type="button" key=${unidade} aria-pressed=${unidade === eu} onClick=${() => props.executar((e) => trocarMorador(e, unidade))}>${nome} · ${unidade}</button>`)}
+      ${personasMorador(props.estado).map(([unidade, nome]) => html`<button type="button" key=${unidade} aria-pressed=${unidade === eu} onClick=${() => props.executar((e) => trocarMorador(e, unidade))}>${nome} · ${unidade}</button>`)}
     </div>
     <div class="cel-conteudo"><${Conteudo} ...${props} eu=${eu} /></div>
     <nav class="cel-abas" aria-label="Navegação do morador">
@@ -82,7 +89,7 @@ function MInicio({ estado, agora, eu }) {
     .sort((a, b) => a.data.localeCompare(b.data) || a.inicio - b.inicio)[0];
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Olá, ${pessoaDaUnidade(estado, eu).nome.split(' ')[0]}</h1>
-    <p class="m-sub">Apto ${eu} · Residencial Ipê Amarelo</p>
+    <p class="m-sub">Apto ${eu} · ${estado.condominio.nome}</p>
     <${CartaoInfracaoInicio} estado=${estado} eu=${eu} agora=${agora} />
     <${CartaoCobrancaInicio} estado=${estado} eu=${eu} agora=${agora} />
     <${CartaoEnqueteInicio} estado=${estado} eu=${eu} agora=${agora} />
@@ -240,7 +247,7 @@ function MAvisos({ estado, rota, executar, eu }) {
       <a class="voltar" href="#morador.avisos">‹ Avisos</a>
       <div><${Etiqueta} tipo=${tipoEtiquetaAviso(c)}>${TIPOS_COMUNICADO[c.tipo]}<//></div>
       <h1 class="m-titulo">${c.titulo}</h1>
-      <p class="m-sub">${fmtDataHora(c.publicadoEm)} · Roberto Lima, síndico</p>
+      <p class="m-sub">${fmtDataHora(c.publicadoEm)} · ${estado.condominio.sindico.nome}, síndico</p>
       <p class="m-texto">${c.texto}</p>
       ${c.anexo && html`<p class="anexo"><${Icone} nome="clipe" tamanho=${18} />${c.anexo}</p>`}
       ${lido

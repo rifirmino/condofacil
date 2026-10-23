@@ -61,7 +61,7 @@ function contextoSindico(estado, agora) {
   ].map((a) => (typeof a === 'string' ? a : a.texto));
   const docs = alertasDocumentos(estado.documentos, hoje).map((a) => `${a.documento.titulo}: ${a.dias < 0 ? `vencido há ${-a.dias} dias` : `vence em ${a.dias} dias`}`);
   const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora)).map((e) => `encomenda do apto ${e.unidade} parada desde ${fmtDataCurta(isoDia(new Date(e.chegadaEm)))}`);
-  const linhas = [`Pessoa: Roberto Lima, síndico (apto 801). Plano: ${estado.plano}. Condomínio: ${estado.condominio.nome}, ${estado.condominio.unidades.length} unidades.`];
+  const linhas = [`Pessoa: ${estado.condominio.sindico.nome}, síndico (apto ${estado.condominio.sindico.unidade}). Plano: ${estado.plano}. Condomínio: ${estado.condominio.nome}, ${estado.condominio.unidades.length} unidades.`];
   linhas.push(`Precisa da atenção: ${[...atencao, ...docs, ...paradas].join('; ') || 'nada pendente'}.`);
   linhas.push(`Financeiro: saldo ${fmtReais(ind.saldo.valor)}; arrecadação de ${nomeMes(ind.arrecadado.competencia)}: ${fmtReais(ind.arrecadado.recebido)} de ${fmtReais(ind.arrecadado.previsto)} (${ind.arrecadado.pct}%); despesas do mês ${fmtReais(ind.despesas.valor)} contra orçado ${fmtReais(ind.despesas.orcado)}; próxima competência ${nomeMes(proximaCompetencia(estado.financeiro))}.`);
   const lista = devedores(estado, hoje);
