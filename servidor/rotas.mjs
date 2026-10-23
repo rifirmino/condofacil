@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { cifrar, decifrar } from './cifra.mjs';
 import { ErroAsaas, MSG_ASAAS_FORA } from './asaas.mjs';
 
@@ -14,6 +15,13 @@ const reais = (centavos) => Math.round(centavos) / 100;
 
 function faltando(corpo, campos) {
   return campos.find((c) => corpo == null || corpo[c] === undefined || corpo[c] === null || corpo[c] === '');
+}
+
+// Compara segredos em tempo constante (o hash iguala os tamanhos).
+function mesmoSegredo(recebido, esperado) {
+  if (!esperado) return false;
+  const h = (v) => createHash('sha256').update(String(v || '')).digest();
+  return timingSafeEqual(h(recebido), h(esperado));
 }
 
 function semImagem({ pixImagem, ...resto }) {
@@ -127,7 +135,7 @@ export function criarRotas({ banco, asaas, config }) {
   }
 
   async function webhook({ cabecalhos, corpo, agora }) {
-    if (!config.tokenWebhook || cabecalhos['asaas-access-token'] !== config.tokenWebhook) return falha(401, 'Token do webhook inválido');
+    if (!mesmoSegredo(cabecalhos['asaas-access-token'], config.tokenWebhook)) return falha(401, 'Token do webhook inválido');
     if (!corpo || !corpo.id || !corpo.payment) return falha(400, 'Evento inválido');
     const novo = await banco.registrarEvento({ id: corpo.id, tipo: corpo.event, asaasPagamento: corpo.payment.id });
     if (!novo) return ok({ ignorado: true });
@@ -151,7 +159,7 @@ export function criarRotas({ banco, asaas, config }) {
     if (excedeuLimite(pedido.ip, pedido.agora)) return falha(429, 'Muitas chamadas; aguarde um minuto');
     const rota = ROTAS[chave];
     if (!rota) return falha(404, 'Rota desconhecida');
-    if (!ABERTAS.has(chave) && pedido.cabecalhos['x-codigo-piloto'] !== config.codigoPiloto) return falha(401, 'Código do piloto inválido');
+    if (!ABERTAS.has(chave) && !mesmoSegredo(pedido.cabecalhos['x-codigo-piloto'], config.codigoPiloto)) return falha(401, 'Código do piloto inválido');
     try {
       return await rota(pedido);
     } catch (e) {
