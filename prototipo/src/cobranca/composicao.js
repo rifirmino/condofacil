@@ -11,7 +11,8 @@ const MSG_VALORES = 'Informe um percentual ou valores válidos';
 const DIAS_AVISO_ENCERRADA = 60;
 
 export function primeiraNaoEmitida(fin) {
-  return somarMes([...fin.emitidas].sort().at(-1), 1);
+  // Sem nenhuma emissão (condomínio recém-implantado), a primeira competência é a seguinte à vigente.
+  return somarMes([...fin.emitidas].sort().at(-1) || fin.vigente, 1);
 }
 
 export function versaoAnterior(fin, vigencia) {
@@ -87,11 +88,13 @@ export function valorPorTipoExtra(fin, extra) {
 
 export function versoesAgendadas(fin) {
   const p = primeiraNaoEmitida(fin);
-  return fin.composicao.versoes.filter((v) => v.vigencia >= p).sort((a, b) => a.vigencia.localeCompare(b.vigencia));
+  // A primeira versão (implantação) não é reajuste: só conta a que tem uma versão anterior.
+  return fin.composicao.versoes.filter((v) => v.vigencia >= p && versaoAnterior(fin, v.vigencia)).sort((a, b) => a.vigencia.localeCompare(b.vigencia));
 }
 
 export function versaoVigente(fin) {
-  return versaoEm(fin, somarMes(primeiraNaoEmitida(fin), -1));
+  // Antes da primeira emissão vale a primeira versão cadastrada (condomínio recém-implantado).
+  return versaoEm(fin, somarMes(primeiraNaoEmitida(fin), -1)) || [...fin.composicao.versoes].sort((x, y) => x.vigencia.localeCompare(y.vigencia))[0];
 }
 
 export function mudancasDaUnidade(estado, unidade, hoje) {

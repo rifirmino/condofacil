@@ -133,10 +133,10 @@ export function indicadoresFinanceiros(estado, hoje) {
   const daProxima = daCompetencia(proxima);
   const lista = devedores(estado, hoje);
   const totalUnidades = estado.condominio.unidades.length;
-  const despesaMedia = Math.round(fin.historico.reduce((soma, m) => soma + m.despesas, 0) / fin.historico.length);
+  const despesaMedia = fin.historico.length ? Math.round(fin.historico.reduce((soma, m) => soma + m.despesas, 0) / fin.historico.length) : 0;
   const despesas = Object.values(fin.despesasMes).reduce((soma, v) => soma + v, 0);
   const orcado = Object.values(fin.orcamento).reduce((soma, v) => soma + v, 0);
-  const desvio = Math.round(((despesas - orcado) / orcado) * 1000) / 10;
+  const desvio = orcado ? Math.round(((despesas - orcado) / orcado) * 1000) / 10 : 0;
   const pct = previsto ? Math.round((recebido / previsto) * 100) : 0;
   const inadimplenciaPct = Math.round((lista.length / totalUnidades) * 1000) / 10;
   return {
