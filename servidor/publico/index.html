@@ -642,6 +642,11 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
   #cartaz-implantacao { position: absolute; inset: 0; margin: auto; width: 170mm; border: 0; }
 }
 .convite-link { white-space: nowrap; padding: 0 8px; font-size: 13px; }
+.selo-conexao { align-self: center; background: #e3f4e8; color: #1f6b3a; border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 600; }
+.conectar-piloto { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.conectar-piloto input { max-width: 160px; padding: 6px 8px; }
+.erro-conexao { color: #fff; background: #b4443a; border-radius: 6px; padding: 2px 8px; font-size: 13px; }
+.pix-real { display: block; width: 160px; height: 160px; image-rendering: pixelated; margin: 0 auto; }
 
 </style>
 <div id="app"></div>
@@ -8990,14 +8995,34 @@ function EditorComposicao({ linha, competencia, executar }) {
 function CPrevia({ estado, executar }) {
   const fin = estado.financeiro;
   const competencia = proximaCompetencia(fin);
-  const previa = previaCompetencia(estado, competencia);
+  const real = usaAsaasReal(estado);
+  const previa = real ? previaConectada(estado, competencia) : previaCompetencia(estado, competencia);
   const emitida = fin.emitidas.includes(competencia);
+  const falhas = real ? (fin.falhasAsaas || {})[competencia] || [] : [];
   const [aberta, setAberta] = useState(null);
   const [erro, setErro] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [mensagem, setMensagem] = useState(null);
   const emitiveis = previa.linhas.filter((l) => !l.bloqueada);
   const total = emitiveis.reduce((soma, l) => soma + l.total, 0);
 
+  // Modo conectado: o servidor cria as cobranças no Asaas sandbox e o app guarda só as que deram certo.
+  async function emitirNoAsaas(apenas) {
+    setEnviando(true);
+    setErro(null);
+    try {
+      const resp = await chamarApi('POST', '/api/emissoes', { condominio: estado.condominio.id, competencia, linhas: linhasParaAsaas(estado, competencia, apenas) });
+      const r = executar((e) => aplicarEmissao(e, competencia, resp.resultados, 'sindico', new Date()));
+      setErro(r.erro || null);
+      if (!r.erro) setMensagem(`${resp.resultados.filter((x) => x.ok).length} cobranças emitidas no Asaas sandbox${r.falhas.length ? ` · ${r.falhas.length} com falha` : ''}.`);
+    } catch (e) {
+      setErro(e.message);
+    }
+    setEnviando(false);
+  }
+
   function emitir() {
+    if (real) { emitirNoAsaas(null); return; }
     const r = executar((e) => emitirCompetencia(e, competencia, 'sindico', new Date()));
     setErro(r.erro || null);
   }
@@ -9012,7 +9037,7 @@ function CPrevia({ estado, executar }) {
       <tbody>${previa.linhas.map((l) => [
         html`<tr key=${l.unidade} class=${l.bloqueada ? 'linha-bloqueada' : ''}>
           <td>${l.unidade}</td>
-          <td>${l.bloqueada ? html`<strong class="texto-perigo">Sem responsável financeiro: não será emitida</strong>` : `${l.responsavel.nome} (${NOMES_RELACAO[l.responsavel.relacao]})`}</td>
+          <td>${l.bloqueada ? html`<strong class="texto-perigo">${l.motivo === 'Sem responsável financeiro' ? 'Sem responsável financeiro: não será emitida' : l.motivo}</strong>` : `${l.responsavel.nome} (${NOMES_RELACAO[l.responsavel.relacao]})`}</td>
           <td>${fmtReais(l.total)}</td>
           <td><button type="button" class="btn-link" onClick=${() => setAberta(aberta === l.unidade ? null : l.unidade)}>${aberta === l.unidade ? 'Fechar' : 'Ver composição'}</button></td>
         </tr>`,
@@ -9022,8 +9047,14 @@ function CPrevia({ estado, executar }) {
       ])}</tbody>
     </table></div>
     <div class="linha-entre total"><span>${emitiveis.length} cobranças · ${previa.linhas.length - emitiveis.length} não emitida(s)</span><strong>${fmtReais(total)}</strong></div>
+    <${Sucesso} texto=${mensagem} />
+    ${falhas.length > 0 && html`<div class="cartao pilha">
+      <strong>Não emitidas no Asaas</strong>
+      <ul class="itens-sacola">${falhas.map((x) => html`<li key=${x.unidade}><span>Apto ${x.unidade}</span><span>${x.erro}</span></li>`)}</ul>
+      <button type="button" class="btn secundario" data-acao="reenviar-falhas" disabled=${enviando} onClick=${() => emitirNoAsaas(falhas.map((x) => x.unidade))}>Reenviar as que falharam</button>
+    </div>`}
     <${Erro} texto=${erro} />
-    ${!emitida && html`<button type="button" class="btn primario" data-acao="emitir" onClick=${emitir}>Emitir ${emitiveis.length} cobranças</button>`}
+    ${!emitida && html`<button type="button" class="btn primario" data-acao="emitir" disabled=${enviando} onClick=${emitir}>${enviando ? 'Emitindo no Asaas…' : `Emitir ${emitiveis.length} cobranças`}</button>`}
   </div>`;
 }
 
@@ -11106,7 +11137,10 @@ function CartaoCobranca({ estado, cobranca, executar, hoje }) {
   const [mensagem, setMensagem] = useState(null);
   const situacao = situacaoCobranca(cobranca, hoje);
   const v = valorAtualizado(cobranca, fin.parametros, hoje);
-  const copiaECola = `00020126580014BR.GOV.BCB.PIX0136${cobranca.id}5204000053039865406${(v.total / 100).toFixed(2)}5802BR`;
+  // Emitida no Asaas sandbox: Pix, boleto e fatura são os reais; senão, simulados como no resto do protótipo.
+  const asaas = cobranca.asaas || null;
+  const [enviando, setEnviando] = useState(false);
+  const copiaECola = asaas && asaas.pixCopiaCola ? asaas.pixCopiaCola : `00020126580014BR.GOV.BCB.PIX0136${cobranca.id}5204000053039865406${(v.total / 100).toFixed(2)}5802BR`;
   const formas = [['pix', 'Pagar com Pix'], ['boleto', 'Boleto'], ['cartao', 'Cartão']].filter(([k]) => fin.parametros.formas.includes(k));
 
   function copiar() {
@@ -11120,6 +11154,17 @@ function CartaoCobranca({ estado, cobranca, executar, hoje }) {
       return;
     }
     navigator.clipboard.writeText(copiaECola).then(() => setMensagem('Código Pix copiado.')).catch(selecionar);
+  }
+
+  async function simularNoSandbox() {
+    setEnviando(true);
+    try {
+      await chamarApi('POST', '/api/simular-pagamento', { referencia: asaas.referencia });
+      setMensagem('Pagamento enviado ao sandbox. A baixa chega pelo webhook em alguns segundos.');
+    } catch (e) {
+      setMensagem(e.message);
+    }
+    setEnviando(false);
   }
 
   function confirmar() {
@@ -11140,16 +11185,21 @@ function CartaoCobranca({ estado, cobranca, executar, hoje }) {
       ${formas.map(([k, nome]) => html`<button type="button" key=${k} class=${forma === k ? 'btn primario' : 'btn secundario'} aria-pressed=${forma === k} onClick=${() => { setForma(k); setMensagem(null); }}>${nome}</button>`)}
     </div>
     ${forma === 'pix' && html`<div class="pagamento">
-      <${QrFalso} texto=${cobranca.id} tamanho=${120} />
+      ${asaas && asaas.pixImagem ? html`<img class="pix-real" alt="QR Code Pix" width="160" height="160" src=${`data:image/png;base64,${asaas.pixImagem}`} />` : html`<${QrFalso} texto=${cobranca.id} tamanho=${120} />`}
       <label class="campo"><span>Pix copia e cola</span><input id=${`pix-${cobranca.id}`} readonly value=${copiaECola} /></label>
       <button type="button" class="btn secundario" onClick=${copiar}>Copiar código</button>
     </div>`}
-    ${forma === 'boleto' && html`<div class="pagamento">
+    ${forma === 'boleto' && asaas && html`<div class="pagamento">
+      <a class="btn secundario" href=${asaas.boletoUrl} target="_blank" rel="noopener">Abrir boleto</a>
+    </div>`}
+    ${forma === 'boleto' && !asaas && html`<div class="pagamento">
       <label class="campo"><span>Linha digitável</span><input id=${`boleto-${cobranca.id}`} readonly value=${linhaDigitavel(cobranca, v.total)} /></label>
       <small class="sub">O PDF do boleto chega por e-mail e WhatsApp.</small>
     </div>`}
     ${forma === 'cartao' && html`<div class="pagamento"><small class="sub">O cartão é pago na página segura do Asaas (simulada no protótipo).</small></div>`}
-    ${forma && html`<button type="button" class="btn primario bloco" onClick=${confirmar}>Simular confirmação do Asaas</button>`}
+    ${asaas && html`<a class="btn-link" href=${asaas.faturaUrl} target="_blank" rel="noopener">Abrir fatura do Asaas</a>`}
+    ${forma && asaas && html`<button type="button" class="btn primario bloco" data-acao="simular-sandbox" disabled=${enviando} onClick=${simularNoSandbox}>Simular pagamento no sandbox</button>`}
+    ${forma && !asaas && html`<button type="button" class="btn primario bloco" onClick=${confirmar}>Simular confirmação do Asaas</button>`}
     <${Sucesso} texto=${mensagem} />
     <button type="button" class="btn-link" onClick=${() => setMensagem(`2ª via gerada com valor atualizado: ${fmtReais(v.total)}.`)}>Gerar 2ª via</button>
   </article>`;
@@ -13136,6 +13186,7 @@ function numeroImplantacao(texto) {
 // Converte o rascunho (textos do formulário) na configuração que o condominioNovo espera.
 function configDoRascunho(r) {
   return {
+    id: r.idCondominio,
     condominio: { ...r.condominio, sindico: { ...r.condominio.sindico, unidade: String(r.condominio.sindico.unidade || '').toUpperCase().replace(/\s+/g, '') } },
     unidades: r.unidades,
     moradores: r.moradores,
@@ -13269,12 +13320,60 @@ function PassoCobranca({ r, mudar }) {
     </div>
     ${cfg.valores.A > 0 && html`<div class="cartao simulacao"><strong>Prévia da taxa</strong><dl class="resumo">
       ${['A', 'cobertura'].map((tipo) => exemplo(tipo) && html`<dt key=${`t${tipo}`}>${tipo === 'A' ? 'Apto padrão' : 'Cobertura'}${fracoes ? ` · fração ${(fracoes[exemplo(tipo).id] * 100).toFixed(4).replace('.', ',')}%` : ''}</dt><dd key=${`v${tipo}`}>${fmtReais(Math.round(mensal(exemplo(tipo)) * (1 + (cfg.fundoPct || 0) / 100)))} por mês com fundo</dd>`)}
-      <dt>Arrecadação mensal</dt><dd>${fmtReais(r.unidades.reduce((s, u) => s + Math.round(mensal(u) * (1 + (cfg.fundoPct || 0) / 100)), 0))}</dd>
+      <dt>Arrecadação mensal</dt><dd>${fmtReais(arrecadacaoPrevista(r))}</dd>
     </dl></div>`}
   </div>`;
 }
 
+// Soma das taxas do mês com o fundo de reserva; vai como faturamento estimado na subconta do Asaas.
+function arrecadacaoPrevista(r) {
+  const cfg = configDoRascunho(r).cobranca;
+  if (!(cfg.valores.A > 0)) return 0;
+  const fracoes = fracoesDasUnidades(r.unidades, cfg.valores);
+  const mensal = cfg.modo === 'fracao' && cfg.orcamento > 0 ? (u) => Math.round(cfg.orcamento * fracoes[u.id]) : (u) => (u.tipo === 'cobertura' ? cfg.valores.cobertura : cfg.valores.A);
+  return r.unidades.reduce((s, u) => s + Math.round(mensal(u) * (1 + (cfg.fundoPct || 0) / 100)), 0);
+}
+
+function SubcontaReal({ r, mudar }) {
+  const a = r.asaas;
+  const c = r.condominio;
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState(null);
+  const campo = (chave) => (ev) => mudar({ asaas: { ...a, [chave]: ev.target.value } });
+
+  async function criar() {
+    const cnpj = apenasDigitos(a.cnpj || c.cnpj);
+    if (cnpj.length !== 14) { setErro('Informe o CNPJ do condomínio (14 dígitos)'); return; }
+    if (!c.cep || !c.endereco || !a.numero || !a.bairro) { setErro('Preencha CEP e endereço (passo Condomínio), número e bairro'); return; }
+    if (!c.sindico.email || !c.sindico.celular) { setErro('Informe o e-mail e o celular do síndico no passo Condomínio'); return; }
+    const id = r.idCondominio || `cond-${identificadorCondominio(c.nome)}-${Date.now().toString(36)}`;
+    setEnviando(true);
+    setErro(null);
+    try {
+      const resp = await chamarApi('POST', '/api/condominios', { id, nome: c.nome, cnpj, email: c.sindico.email, celular: apenasDigitos(c.sindico.celular), cep: apenasDigitos(c.cep), endereco: c.endereco, numero: a.numero, bairro: a.bairro, rendaMensal: arrecadacaoPrevista(r) || 100000 });
+      mudar({ idCondominio: id, asaas: { ...a, cnpj, situacao: 'aprovada', ambiente: 'sandbox', real: true, walletId: resp.walletId } });
+    } catch (e) {
+      setErro(e.message);
+    }
+    setEnviando(false);
+  }
+
+  return html`<div class="pilha formulario">
+    <p class="sub">Asaas sandbox conectado: a subconta é criada de verdade no ambiente de testes (dinheiro de mentira).</p>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="CNPJ do condomínio"><input id="impl-asaas-cnpj" inputmode="numeric" value=${a.cnpj || c.cnpj} onInput=${campo('cnpj')} /><//>
+      <${Campo} rotulo="Número"><input id="impl-numero" value=${a.numero || ''} onInput=${campo('numero')} /><//>
+      <${Campo} rotulo="Bairro"><input id="impl-bairro" value=${a.bairro || ''} onInput=${campo('bairro')} /><//>
+    </div>
+    ${a.real
+      ? html`<p class="sucesso">Subconta aprovada no Asaas sandbox (carteira ${a.walletId}). As cobranças vão sair por ela.</p>`
+      : html`<button type="button" class="btn primario" data-acao="criar-subconta" disabled=${enviando} onClick=${criar}>${enviando ? 'Criando no Asaas…' : 'Criar subconta no Asaas sandbox'}</button>`}
+    <${Erro} texto=${erro} />
+  </div>`;
+}
+
 function PassoAsaas({ r, mudar }) {
+  if (CONEXAO.ativa && CONEXAO.codigo) return html`<${SubcontaReal} r=${r} mudar=${mudar} />`;
   const a = r.asaas;
   const campo = (chave) => (ev) => mudar({ asaas: { ...a, [chave]: ev.target.value } });
   const etiqueta = { pendente: ['neutro', 'Não criada'], analise: ['alerta', 'Em análise'], aprovada: ['ok', 'Aprovada'] }[a.situacao];
@@ -13550,6 +13649,41 @@ function App() {
     setGeracao(geracao + 1);
   }
 
+  // Modo conectado: só em app.condofacil.cloud (ou na máquina local) com o servidor respondendo.
+  const [conexao, setConexao] = useState({ servidor: false, codigo: null, erro: null });
+  useEffect(() => {
+    detectarServidor().then((achou) => {
+      if (!achou) return;
+      CONEXAO.ativa = true;
+      CONEXAO.codigo = lerCodigoPiloto();
+      setConexao({ servidor: true, codigo: CONEXAO.codigo, erro: null });
+    });
+  }, []);
+
+  async function conectar(codigo) {
+    try {
+      await chamarApi('GET', '/api/cobrancas?condominio=teste', undefined, codigo);
+      CONEXAO.codigo = codigo;
+      guardarCodigoPiloto(codigo);
+      setConexao({ servidor: true, codigo, erro: null });
+    } catch (e) {
+      setConexao({ servidor: true, codigo: null, erro: e.message });
+    }
+  }
+
+  const real = conexao.codigo && usaAsaasReal(estado);
+  const telaFinanceira = (rota.perfil === 'sindico' && rota.tela === 'cobranca') || (rota.perfil === 'morador' && rota.tela === 'financeiro');
+  useEffect(() => {
+    if (!real) return undefined;
+    const id = estado.condominio.id;
+    const sincronizar = () => chamarApi('GET', `/api/cobrancas?condominio=${encodeURIComponent(id)}`)
+      .then((r) => { if (estadoAtual.current.condominio.id === id) executar((e) => aplicarSituacoes(e, r.cobrancas, new Date())); })
+      .catch(() => {});
+    sincronizar();
+    const t = setInterval(sincronizar, 15000);
+    return () => clearInterval(t);
+  }, [real, estado.condominio.id, telaFinanceira]);
+
   const Tela = TELAS_PERFIL[rota.perfil];
   return html`
     <header class="barra-demo">
@@ -13569,6 +13703,9 @@ function App() {
         <button type="button" class="precos" aria-expanded=${mostrarPrecos} onClick=${() => setMostrarPrecos(!mostrarPrecos)}>Preços</button>
       </div>
       ${estado.origem !== 'novo' && html`<button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>`}
+      ${conexao.servidor && (conexao.codigo
+        ? html`<span class="selo-conexao">Asaas sandbox conectado</span>`
+        : html`<${ConectarPiloto} erro=${conexao.erro} aoConectar=${conectar} />`)}
     </header>
     ${mostrarPrecos && html`<${PainelPrecos} plano=${estado.plano} unidades=${estado.condominio.unidades.length} aoFechar=${() => setMostrarPrecos(false)} />`}
     <main class=${`palco palco-${rota.perfil}`}>
@@ -13579,6 +13716,15 @@ function App() {
     ${rota.perfil !== 'implantacao' && rota.tela !== 'convite' && html`<${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} executar=${executar} obterEstado=${() => estadoAtual.current} />`}
     ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
   `;
+}
+
+function ConectarPiloto({ erro, aoConectar }) {
+  const [codigo, setCodigo] = useState('');
+  return html`<form class="conectar-piloto" onSubmit=${(ev) => { ev.preventDefault(); if (codigo.trim()) aoConectar(codigo.trim()); }}>
+    <label><span class="so-leitor">Código do piloto</span><input id="codigo-piloto" type="password" autocomplete="off" placeholder="Código do piloto" value=${codigo} onInput=${(ev) => setCodigo(ev.target.value)} /></label>
+    <button type="submit" data-acao="conectar-piloto">Conectar ao Asaas</button>
+    ${erro && html`<span class="erro-conexao" role="alert">${erro}</span>`}
+  </form>`;
 }
 
 function PainelPrecos({ plano, unidades, aoFechar }) {

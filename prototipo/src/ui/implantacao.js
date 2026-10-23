@@ -1,5 +1,6 @@
 import { html, useState, useEffect } from '../vendor.js';
-import { PASSOS_IMPLANTACAO, CONTATO_COMERCIAL, MODELO_CSV_MORADORES, AREAS_MODELO, NOMES_VINCULO_MORADOR, UFS, validarCondominio, gerarUnidades, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, mensagemWhatsAppConvite, fmtCpf } from '../implantacao/regras.js';
+import { PASSOS_IMPLANTACAO, CONTATO_COMERCIAL, MODELO_CSV_MORADORES, AREAS_MODELO, NOMES_VINCULO_MORADOR, UFS, validarCondominio, gerarUnidades, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, mensagemWhatsAppConvite, fmtCpf, apenasDigitos } from '../implantacao/regras.js';
+import { CONEXAO, chamarApi } from '../conectado/cliente.js';
 import { condominioNovo } from '../implantacao/novo.js';
 import { PLANOS, mensalidade } from '../planos.js';
 import { fmtReais } from '../cobranca/regras.js';
@@ -64,6 +65,7 @@ function numeroImplantacao(texto) {
 // Converte o rascunho (textos do formulário) na configuração que o condominioNovo espera.
 export function configDoRascunho(r) {
   return {
+    id: r.idCondominio,
     condominio: { ...r.condominio, sindico: { ...r.condominio.sindico, unidade: String(r.condominio.sindico.unidade || '').toUpperCase().replace(/\s+/g, '') } },
     unidades: r.unidades,
     moradores: r.moradores,
@@ -197,12 +199,60 @@ function PassoCobranca({ r, mudar }) {
     </div>
     ${cfg.valores.A > 0 && html`<div class="cartao simulacao"><strong>Prévia da taxa</strong><dl class="resumo">
       ${['A', 'cobertura'].map((tipo) => exemplo(tipo) && html`<dt key=${`t${tipo}`}>${tipo === 'A' ? 'Apto padrão' : 'Cobertura'}${fracoes ? ` · fração ${(fracoes[exemplo(tipo).id] * 100).toFixed(4).replace('.', ',')}%` : ''}</dt><dd key=${`v${tipo}`}>${fmtReais(Math.round(mensal(exemplo(tipo)) * (1 + (cfg.fundoPct || 0) / 100)))} por mês com fundo</dd>`)}
-      <dt>Arrecadação mensal</dt><dd>${fmtReais(r.unidades.reduce((s, u) => s + Math.round(mensal(u) * (1 + (cfg.fundoPct || 0) / 100)), 0))}</dd>
+      <dt>Arrecadação mensal</dt><dd>${fmtReais(arrecadacaoPrevista(r))}</dd>
     </dl></div>`}
   </div>`;
 }
 
+// Soma das taxas do mês com o fundo de reserva; vai como faturamento estimado na subconta do Asaas.
+function arrecadacaoPrevista(r) {
+  const cfg = configDoRascunho(r).cobranca;
+  if (!(cfg.valores.A > 0)) return 0;
+  const fracoes = fracoesDasUnidades(r.unidades, cfg.valores);
+  const mensal = cfg.modo === 'fracao' && cfg.orcamento > 0 ? (u) => Math.round(cfg.orcamento * fracoes[u.id]) : (u) => (u.tipo === 'cobertura' ? cfg.valores.cobertura : cfg.valores.A);
+  return r.unidades.reduce((s, u) => s + Math.round(mensal(u) * (1 + (cfg.fundoPct || 0) / 100)), 0);
+}
+
+function SubcontaReal({ r, mudar }) {
+  const a = r.asaas;
+  const c = r.condominio;
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState(null);
+  const campo = (chave) => (ev) => mudar({ asaas: { ...a, [chave]: ev.target.value } });
+
+  async function criar() {
+    const cnpj = apenasDigitos(a.cnpj || c.cnpj);
+    if (cnpj.length !== 14) { setErro('Informe o CNPJ do condomínio (14 dígitos)'); return; }
+    if (!c.cep || !c.endereco || !a.numero || !a.bairro) { setErro('Preencha CEP e endereço (passo Condomínio), número e bairro'); return; }
+    if (!c.sindico.email || !c.sindico.celular) { setErro('Informe o e-mail e o celular do síndico no passo Condomínio'); return; }
+    const id = r.idCondominio || `cond-${identificadorCondominio(c.nome)}-${Date.now().toString(36)}`;
+    setEnviando(true);
+    setErro(null);
+    try {
+      const resp = await chamarApi('POST', '/api/condominios', { id, nome: c.nome, cnpj, email: c.sindico.email, celular: apenasDigitos(c.sindico.celular), cep: apenasDigitos(c.cep), endereco: c.endereco, numero: a.numero, bairro: a.bairro, rendaMensal: arrecadacaoPrevista(r) || 100000 });
+      mudar({ idCondominio: id, asaas: { ...a, cnpj, situacao: 'aprovada', ambiente: 'sandbox', real: true, walletId: resp.walletId } });
+    } catch (e) {
+      setErro(e.message);
+    }
+    setEnviando(false);
+  }
+
+  return html`<div class="pilha formulario">
+    <p class="sub">Asaas sandbox conectado: a subconta é criada de verdade no ambiente de testes (dinheiro de mentira).</p>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="CNPJ do condomínio"><input id="impl-asaas-cnpj" inputmode="numeric" value=${a.cnpj || c.cnpj} onInput=${campo('cnpj')} /><//>
+      <${Campo} rotulo="Número"><input id="impl-numero" value=${a.numero || ''} onInput=${campo('numero')} /><//>
+      <${Campo} rotulo="Bairro"><input id="impl-bairro" value=${a.bairro || ''} onInput=${campo('bairro')} /><//>
+    </div>
+    ${a.real
+      ? html`<p class="sucesso">Subconta aprovada no Asaas sandbox (carteira ${a.walletId}). As cobranças vão sair por ela.</p>`
+      : html`<button type="button" class="btn primario" data-acao="criar-subconta" disabled=${enviando} onClick=${criar}>${enviando ? 'Criando no Asaas…' : 'Criar subconta no Asaas sandbox'}</button>`}
+    <${Erro} texto=${erro} />
+  </div>`;
+}
+
 function PassoAsaas({ r, mudar }) {
+  if (CONEXAO.ativa && CONEXAO.codigo) return html`<${SubcontaReal} r=${r} mudar=${mudar} />`;
   const a = r.asaas;
   const campo = (chave) => (ev) => mudar({ asaas: { ...a, [chave]: ev.target.value } });
   const etiqueta = { pendente: ['neutro', 'Não criada'], analise: ['alerta', 'Em análise'], aprovada: ['ok', 'Aprovada'] }[a.situacao];

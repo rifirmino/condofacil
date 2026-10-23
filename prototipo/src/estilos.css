@@ -630,3 +630,8 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
   #cartaz-implantacao { position: absolute; inset: 0; margin: auto; width: 170mm; border: 0; }
 }
 .convite-link { white-space: nowrap; padding: 0 8px; font-size: 13px; }
+.selo-conexao { align-self: center; background: #e3f4e8; color: #1f6b3a; border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 600; }
+.conectar-piloto { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.conectar-piloto input { max-width: 160px; padding: 6px 8px; }
+.erro-conexao { color: #fff; background: #b4443a; border-radius: 6px; padding: 2px 8px; font-size: 13px; }
+.pix-real { display: block; width: 160px; height: 160px; image-rendering: pixelated; margin: 0 auto; }

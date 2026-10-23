@@ -32,6 +32,8 @@ import { TelaSindico } from './sindico.js';
 import { TelaZelador } from './zelador.js';
 import { TelaConselho } from './conselho.js';
 import { SrAbel } from './assistente.js';
+import { CONEXAO, detectarServidor, lerCodigoPiloto, guardarCodigoPiloto, chamarApi, usaAsaasReal } from '../conectado/cliente.js';
+import { aplicarSituacoes } from '../conectado/acoes.js';
 
 const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
 const ultimaRota = {};
@@ -130,6 +132,41 @@ function App() {
     setGeracao(geracao + 1);
   }
 
+  // Modo conectado: só em app.condofacil.cloud (ou na máquina local) com o servidor respondendo.
+  const [conexao, setConexao] = useState({ servidor: false, codigo: null, erro: null });
+  useEffect(() => {
+    detectarServidor().then((achou) => {
+      if (!achou) return;
+      CONEXAO.ativa = true;
+      CONEXAO.codigo = lerCodigoPiloto();
+      setConexao({ servidor: true, codigo: CONEXAO.codigo, erro: null });
+    });
+  }, []);
+
+  async function conectar(codigo) {
+    try {
+      await chamarApi('GET', '/api/cobrancas?condominio=teste', undefined, codigo);
+      CONEXAO.codigo = codigo;
+      guardarCodigoPiloto(codigo);
+      setConexao({ servidor: true, codigo, erro: null });
+    } catch (e) {
+      setConexao({ servidor: true, codigo: null, erro: e.message });
+    }
+  }
+
+  const real = conexao.codigo && usaAsaasReal(estado);
+  const telaFinanceira = (rota.perfil === 'sindico' && rota.tela === 'cobranca') || (rota.perfil === 'morador' && rota.tela === 'financeiro');
+  useEffect(() => {
+    if (!real) return undefined;
+    const id = estado.condominio.id;
+    const sincronizar = () => chamarApi('GET', `/api/cobrancas?condominio=${encodeURIComponent(id)}`)
+      .then((r) => { if (estadoAtual.current.condominio.id === id) executar((e) => aplicarSituacoes(e, r.cobrancas, new Date())); })
+      .catch(() => {});
+    sincronizar();
+    const t = setInterval(sincronizar, 15000);
+    return () => clearInterval(t);
+  }, [real, estado.condominio.id, telaFinanceira]);
+
   const Tela = TELAS_PERFIL[rota.perfil];
   return html`
     <header class="barra-demo">
@@ -149,6 +186,9 @@ function App() {
         <button type="button" class="precos" aria-expanded=${mostrarPrecos} onClick=${() => setMostrarPrecos(!mostrarPrecos)}>Preços</button>
       </div>
       ${estado.origem !== 'novo' && html`<button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>`}
+      ${conexao.servidor && (conexao.codigo
+        ? html`<span class="selo-conexao">Asaas sandbox conectado</span>`
+        : html`<${ConectarPiloto} erro=${conexao.erro} aoConectar=${conectar} />`)}
     </header>
     ${mostrarPrecos && html`<${PainelPrecos} plano=${estado.plano} unidades=${estado.condominio.unidades.length} aoFechar=${() => setMostrarPrecos(false)} />`}
     <main class=${`palco palco-${rota.perfil}`}>
@@ -159,6 +199,15 @@ function App() {
     ${rota.perfil !== 'implantacao' && rota.tela !== 'convite' && html`<${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} executar=${executar} obterEstado=${() => estadoAtual.current} />`}
     ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
   `;
+}
+
+function ConectarPiloto({ erro, aoConectar }) {
+  const [codigo, setCodigo] = useState('');
+  return html`<form class="conectar-piloto" onSubmit=${(ev) => { ev.preventDefault(); if (codigo.trim()) aoConectar(codigo.trim()); }}>
+    <label><span class="so-leitor">Código do piloto</span><input id="codigo-piloto" type="password" autocomplete="off" placeholder="Código do piloto" value=${codigo} onInput=${(ev) => setCodigo(ev.target.value)} /></label>
+    <button type="submit" data-acao="conectar-piloto">Conectar ao Asaas</button>
+    ${erro && html`<span class="erro-conexao" role="alert">${erro}</span>`}
+  </form>`;
 }
 
 function PainelPrecos({ plano, unidades, aoFechar }) {
