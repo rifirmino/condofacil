@@ -1,4 +1,4 @@
-import { SINDICO } from '../dados.js';
+import { nomeSindico } from '../dados.js';
 import { liberado, planoMinimo } from '../planos.js';
 import { isoDia, somarDias, somarMes, momento, fmtDataCurta } from '../datas.js';
 import { situacaoCobranca, valorAtualizado, fmtReais, podeOperar, rotuloCobranca } from './regras.js';
@@ -135,10 +135,10 @@ export function proporAcordo(estado, dados, perfil, agora) {
     id, unidade: dados.unidade, originais: [...dados.originais], valorOriginal: s.valorOriginal, multa: s.multa, juros: s.juros,
     perdoaMulta: !!dados.perdoaMulta, jurosPerdoadosPct: dados.jurosPerdoadosPct || 0, desconto: s.desconto, total: s.total,
     entrada, parcelas: dados.parcelas, valorParcela: s.valorParcela, situacao: 'aguardando',
-    criadoEm: agora.toISOString(), criadoPor: SINDICO, aceitoEm: null, aceitoPor: null, termoLidoEm: null,
+    criadoEm: agora.toISOString(), criadoPor: nomeSindico(estado), aceitoEm: null, aceitoPor: null, termoLidoEm: null,
   };
   let auditoria = comAuditoria(estado, agora, 'Proposta de acordo', `${id} · apto ${dados.unidade} · ${fmtReais(s.total)} em ${entrada ? 'entrada + ' : ''}${dados.parcelas}x`);
-  if (s.desconto) auditoria = [...auditoria, { em: agora.toISOString(), quem: SINDICO, acao: 'Desconto em acordo', detalhe: `${id} · ${fmtReais(s.desconto)} perdoados de multa e juros` }];
+  if (s.desconto) auditoria = [...auditoria, { em: agora.toISOString(), quem: nomeSindico(estado), acao: 'Desconto em acordo', detalhe: `${id} · ${fmtReais(s.desconto)} perdoados de multa e juros` }];
   const nome = nomeResponsavel(estado, dados.unidade);
   return {
     estado: comFinanceiro(estado, { acordos: [...fin.acordos, acordo], auditoria }),
@@ -184,7 +184,7 @@ export function aceitarAcordo(estado, id, { quem, ciente }, agora) {
       acordos: fin.acordos.map((a) => (a.id === id ? { ...a, situacao: 'ativo', aceitoEm: agora.toISOString(), aceitoPor: quem } : a)),
       auditoria: [...fin.auditoria, { em: agora.toISOString(), quem, acao: 'Acordo aceito', detalhe: `${id} · apto ${acordo.unidade} · ${acordo.originais.length} débitos substituídos` }],
     }),
-    notificacao: { canal: 'App', para: SINDICO, texto: `Acordo ${id} aceito. ${primeira.numero ? 'A parcela 1' : 'A entrada'} vence em ${fmtDataCurta(primeira.vencimento)}.` },
+    notificacao: { canal: 'App', para: nomeSindico(estado), texto: `Acordo ${id} aceito. ${primeira.numero ? 'A parcela 1' : 'A entrada'} vence em ${fmtDataCurta(primeira.vencimento)}.` },
   };
 }
 

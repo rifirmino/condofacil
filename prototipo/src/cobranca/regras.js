@@ -133,15 +133,15 @@ export function indicadoresFinanceiros(estado, hoje) {
   const daProxima = daCompetencia(proxima);
   const lista = devedores(estado, hoje);
   const totalUnidades = estado.condominio.unidades.length;
-  const despesaMedia = Math.round(fin.historico.reduce((soma, m) => soma + m.despesas, 0) / fin.historico.length);
+  const despesaMedia = fin.historico.length ? Math.round(fin.historico.reduce((soma, m) => soma + m.despesas, 0) / fin.historico.length) : 0;
   const despesas = Object.values(fin.despesasMes).reduce((soma, v) => soma + v, 0);
   const orcado = Object.values(fin.orcamento).reduce((soma, v) => soma + v, 0);
-  const desvio = Math.round(((despesas - orcado) / orcado) * 1000) / 10;
+  const desvio = orcado ? Math.round(((despesas - orcado) / orcado) * 1000) / 10 : 0;
   const pct = previsto ? Math.round((recebido / previsto) * 100) : 0;
   const inadimplenciaPct = Math.round((lista.length / totalUnidades) * 1000) / 10;
   return {
     saldo: { valor: fin.saldo, despesaMedia, alerta: fin.saldo < despesaMedia },
-    arrecadado: { competencia: fin.vigente, recebido, previsto, pct, alerta: pct < 85, proxima: fin.emitidas.includes(proxima) ? { competencia: proxima, pagas: daProxima.filter((c) => c.status === 'paga').length, total: daProxima.length } : null },
+    arrecadado: { competencia: fin.vigente, recebido, previsto, pct, alerta: previsto > 0 && pct < 85, proxima: fin.emitidas.includes(proxima) ? { competencia: proxima, pagas: daProxima.filter((c) => c.status === 'paga').length, total: daProxima.length } : null },
     inadimplencia: { unidades: lista.length, total: totalUnidades, pct: inadimplenciaPct, valor: lista.reduce((soma, d) => soma + d.valor, 0), alerta: inadimplenciaPct > 10 },
     despesas: { valor: despesas, orcado, desvio, alerta: desvio > 10 },
   };
@@ -153,6 +153,7 @@ export function serieReceitasDespesas(estado, hoje) {
 }
 
 export function tituloSerie(serie) {
+  if (serie.every((m) => !m.receitas && !m.despesas)) return 'Ainda sem receitas e despesas registradas';
   const acima = serie.filter((m) => m.despesas > m.receitas);
   if (!acima.length) return 'Receita cobriu a despesa em todos os meses';
   if (acima.length === 1) return `Despesa superou a receita só em ${mesExtenso(acima[0].mes)}`;

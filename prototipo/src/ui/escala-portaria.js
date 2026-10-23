@@ -26,6 +26,7 @@ export function PEscala({ estado, executar, agora }) {
   const [erro, setErro] = useState(null);
   const [mensagem, setMensagem] = useState(null);
   if (!liberado(estado.plano, 'escala')) return html`<section><h1>Escala</h1><${Bloqueado} estado=${estado} recurso="escala" titulo="Escala, trocas e faltas dos porteiros" /></section>`;
+  if (estado.escala.semEquipe) return html`<section><h1>Escala</h1><${Vazio} texto="A equipe da portaria ainda não foi cadastrada. Fale com o síndico." /></section>`;
   const plantao = plantaoAgora(estado, agora);
   const comCheckin = liberado(estado.plano, 'checkin');
   const meus = turnosDoPorteiro(estado, porteiro, agora).slice(0, 8);

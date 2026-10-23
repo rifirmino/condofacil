@@ -17,6 +17,7 @@ import { alertasEscala } from '../escala/regras.js';
 import { infracaoPorId, alertasInfracoes } from '../infracoes/regras.js';
 import { CartaoProcessoOcorrencia, BlocoProcessos, SDetalheInfracao } from './infracoes.js';
 import { SFinanceiro } from './financeiro.js';
+import { AprovacaoMoradores } from './convite.js';
 import { SEnquetes } from './enquetes.js';
 import { alertasEnquetes } from '../enquetes/regras.js';
 import { alertasContas } from '../financeiro/contas.js';
@@ -52,7 +53,7 @@ export function TelaSindico(props) {
   const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, enquetes: SEnquetes, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, financeiro: SFinanceiro, manutencao: SManutencao, escala: SEscala }[tela];
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
-      <p class="painel-usuario"><strong>Roberto Lima</strong><small>Síndico · apto 801</small></p>
+      <p class="painel-usuario"><strong>${props.estado.condominio.sindico.nome}</strong><small>Síndico · apto ${props.estado.condominio.sindico.unidade}</small></p>
       ${MENU_SINDICO.map(([id, nome, icone]) => html`<a key=${id} href=${`#sindico.${id}`} class=${id === tela ? 'ativa' : ''} aria-current=${id === tela ? 'page' : undefined}><${Icone} nome=${icone} tamanho=${20} />${nome}</a>`)}
       ${EM_BREVE.map(([nome, plano]) => html`<span key=${nome} class="em-breve" aria-disabled="true">${nome}<small>Em breve · ${plano}</small></span>`)}
     </nav>
@@ -60,7 +61,7 @@ export function TelaSindico(props) {
   </div>`;
 }
 
-function SInicio({ estado, agora }) {
+function SInicio({ estado, agora, executar }) {
   const ind = indicadoresSindico(estado, agora);
   const pendentes = estado.reservas.filter((r) => r.status === 'pendente');
   const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora));
@@ -84,7 +85,8 @@ function SInicio({ estado, agora }) {
   }
   const semPendencias = !pendentes.length && !pendOperacao.length && !paradas.length && !alertas.length && !vendedoresPendentes.length && !pendCobranca.length;
   return html`<section>
-    <h1>Olá, Roberto</h1>
+    <h1>Olá, ${estado.condominio.sindico.nome.split(' ')[0]}</h1>
+    <${AprovacaoMoradores} estado=${estado} executar=${executar} />
     <${PainelFinanceiro} estado=${estado} agora=${agora} />
     <h2>Precisa da sua atenção</h2>
     ${semPendencias
@@ -195,7 +197,7 @@ function BarraLeitura({ lidas, total }) {
 
 function SComunicados(props) {
   const { estado, rota } = props;
-  if (rota.id === 'novo') return html`<${SNovoComunicado} executar=${props.executar} />`;
+  if (rota.id === 'novo') return html`<${SNovoComunicado} estado=${estado} executar=${props.executar} />`;
   const c = rota.id ? estado.comunicados.find((x) => x.id === rota.id) : null;
   if (c) return html`<${SDetalheComunicado} estado=${estado} c=${c} />`;
   const lista = [...estado.comunicados].sort((a, b) => b.publicadoEm.localeCompare(a.publicadoEm));
@@ -229,7 +231,7 @@ function SDetalheComunicado({ estado, c }) {
   </section>`;
 }
 
-function SNovoComunicado({ executar }) {
+function SNovoComunicado({ estado, executar }) {
   const [tipo, setTipo] = useState('geral');
   const [titulo, setTitulo] = useState(MODELOS_COMUNICADO.geral.titulo);
   const [texto, setTexto] = useState(MODELOS_COMUNICADO.geral.texto);
@@ -245,7 +247,7 @@ function SNovoComunicado({ executar }) {
   function trocarTipo(novo) {
     setTipo(novo);
     setTitulo(MODELOS_COMUNICADO[novo].titulo);
-    setTexto(MODELOS_COMUNICADO[novo].texto);
+    setTexto(MODELOS_COMUNICADO[novo].texto.replace(/Roberto Lima/g, estado.condominio.sindico.nome));
   }
 
   function alternarCanal(k) {

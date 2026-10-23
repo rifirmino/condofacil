@@ -23,6 +23,7 @@ export function SEscala(props) {
   if (!liberado(estado.plano, 'escala')) {
     return html`<section><h1>Escala</h1><${Bloqueado} estado=${estado} recurso="escala" titulo="Escala de porteiros com trocas, faltas e cobertura" /></section>`;
   }
+  if (estado.escala.semEquipe) return html`<section><h1>Escala</h1><${Vazio} texto="Cadastre a equipe da portaria para montar a escala (em breve na implantação)." /></section>`;
   const aba = ABAS_ESCALA.some(([id]) => id === rota.id) ? rota.id : 'semana';
   const Conteudo = { semana: ESemana, calendario: ECalendario, pendencias: EPendencias, equipe: EEquipe, horas: EHoras }[aba];
   return html`<section>

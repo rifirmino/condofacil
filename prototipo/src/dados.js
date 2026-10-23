@@ -11,6 +11,11 @@ import { enquetesIniciais, DOC_RESULTADO_FACHADA } from './enquetes/dados.js';
 export const UNIDADES = Array.from({ length: 32 }, (_, i) => `${Math.floor(i / 4) + 1}0${(i % 4) + 1}`);
 export const UNIDADE_ANA = '302';
 export const SINDICO = 'Síndico Roberto Lima';
+
+// Nome do síndico do condomínio ativo (a demonstração e os condomínios implantados guardam em condominio.sindico).
+export function nomeSindico(estado) {
+  return estado && estado.condominio && estado.condominio.sindico ? `Síndico ${estado.condominio.sindico.nome}` : SINDICO;
+}
 export const PORTEIRO_DIA = 'Seu José';
 
 export const CATEGORIAS = {
@@ -96,7 +101,7 @@ export function dadosIniciais(agora = new Date()) {
     enquetes: enquetesIniciais(hoje, em, Object.fromEntries(pessoas.map((p) => [p.unidade, p.nome]))),
     proximaEnquete: 4,
     proximaInfracao: 1,
-    condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES },
+    condominio: { nome: 'Residencial Ipê Amarelo', unidades: UNIDADES, sindico: { nome: 'Roberto Lima', unidade: '801' } },
     pessoas,
     areas: [
       { id: 'salao', nome: 'Salão de festas', tipo: 'periodo', periodos, taxa: 150, aprovacao: 'manual', antecedenciaMin: 2, antecedenciaMax: 60, limiteMes: 2, vinculadas: ['churrasqueira'], capacidade: 80, itens: '10 mesas, 60 cadeiras, geladeira e fogão', regulamento: 'Som até as 22h. Limpeza por conta do morador. Vistoria na entrada e na saída.' },

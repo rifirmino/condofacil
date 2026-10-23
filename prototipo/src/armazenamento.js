@@ -26,3 +26,25 @@ export function limparEstado() {
     // Idem.
   }
 }
+
+// Condomínios criados pela implantação: ficam salvos (não se refazem a cada dia como a demonstração).
+const CHAVE_CONDOMINIOS = 'condofacil-condominios-v1';
+const CONDOMINIOS_VAZIO = { ativo: 'demo', lista: {}, rascunho: null };
+
+export function carregarCondominios() {
+  try {
+    const texto = localStorage.getItem(CHAVE_CONDOMINIOS);
+    const dados = texto ? JSON.parse(texto) : null;
+    return dados && dados.lista ? { ...CONDOMINIOS_VAZIO, ...dados } : { ...CONDOMINIOS_VAZIO };
+  } catch {
+    return { ...CONDOMINIOS_VAZIO };
+  }
+}
+
+export function salvarCondominios(dados) {
+  try {
+    localStorage.setItem(CHAVE_CONDOMINIOS, JSON.stringify(dados));
+  } catch {
+    // Sem armazenamento: os condomínios criados valem só nesta aba.
+  }
+}

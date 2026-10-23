@@ -1,7 +1,8 @@
 import { html, render, useState, useEffect, useRef } from '../vendor.js';
 import { dadosIniciais } from '../dados.js';
 import { isoDia } from '../datas.js';
-import { carregarEstado, salvarEstado, limparEstado } from '../armazenamento.js';
+import { carregarEstado, salvarEstado, limparEstado, carregarCondominios, salvarCondominios } from '../armazenamento.js';
+import { TelaImplantacao } from './implantacao.js';
 import { trocarPlano } from '../cobranca/acoes.js';
 import { fmtReais } from '../cobranca/regras.js';
 import { PLANOS, PRECO_BASE, mensalidade } from '../planos.js';
@@ -21,8 +22,9 @@ import { CASOS_INFRACOES } from '../casos/infracoes.js';
 import { CASOS_ORCAMENTO } from '../casos/orcamento.js';
 import { CASOS_FINANCEIRO } from '../casos/financeiro.js';
 import { CASOS_ENQUETES } from '../casos/enquetes.js';
+import { CASOS_IMPLANTACAO } from '../casos/implantacao.js';
 import { CASOS_ASSISTENTE } from '../casos/assistente.js';
-import { PERFIS, lerRota, ir, Selo, Icone } from './comum.js';
+import { PERFIS, lerRota, ir, Selo, Icone, CONDOMINIO_ATUAL } from './comum.js';
 import { TelaPortaria } from './portaria.js';
 import { TelaMorador } from './morador.js';
 import { TelaSindico } from './sindico.js';
@@ -38,8 +40,15 @@ function estadoDeHoje() {
   return salvo && salvo.geradoEm === isoDia(new Date()) ? salvo : dadosIniciais(new Date());
 }
 
+// O condomínio ativo pode ser a demonstração (refeita a cada dia) ou um condomínio criado pela implantação (guardado).
+function estadoDoAtivo(condominios) {
+  const salvo = condominios.ativo !== 'demo' && condominios.lista[condominios.ativo];
+  return salvo || estadoDeHoje();
+}
+
 function App() {
-  const [estado, setEstado] = useState(estadoDeHoje);
+  const [condominios, setCondominios] = useState(carregarCondominios);
+  const [estado, setEstado] = useState(() => estadoDoAtivo(condominios));
   const estadoAtual = useRef(estado);
   estadoAtual.current = estado;
   const [rota, setRota] = useState(lerRota);
@@ -54,8 +63,39 @@ function App() {
   }, []);
 
   useEffect(() => {
-    salvarEstado(estado);
+    if (estado.origem !== 'novo') { salvarEstado(estado); return; }
+    setCondominios((c) => {
+      const novo = { ...c, ativo: estado.condominio.id, lista: { ...c.lista, [estado.condominio.id]: estado } };
+      salvarCondominios(novo);
+      return novo;
+    });
   }, [estado]);
+
+  CONDOMINIO_ATUAL.nome = estado.condominio.nome;
+
+  function guardarCondominios(mudanca) {
+    setCondominios((c) => {
+      const novo = { ...c, ...mudanca };
+      salvarCondominios(novo);
+      return novo;
+    });
+  }
+
+  function trocarCondominio(id) {
+    if (id === 'novo') { ir('implantacao', 'condominio'); return; }
+    guardarCondominios({ ativo: id });
+    setEstado(id === 'demo' ? estadoDeHoje() : condominios.lista[id]);
+    setSelo(null);
+    setGeracao(geracao + 1);
+    ir('sindico', 'inicio');
+  }
+
+  function ativarCondominio(novoEstado) {
+    guardarCondominios({ ativo: novoEstado.condominio.id, lista: { ...condominios.lista, [novoEstado.condominio.id]: novoEstado }, rascunho: null });
+    setEstado(novoEstado);
+    setGeracao(geracao + 1);
+    ir('sindico', 'inicio');
+  }
 
   useEffect(() => {
     if (!selo) return undefined;
@@ -92,7 +132,12 @@ function App() {
   const Tela = TELAS_PERFIL[rota.perfil];
   return html`
     <header class="barra-demo">
-      <div class="marca"><span class="logo"><${Icone} nome="predio" tamanho=${20} /></span><strong class="marca-nome">CondoFácil</strong><span class="sub">Residencial Ipê Amarelo · 32 unidades</span></div>
+      <div class="marca"><span class="logo"><${Icone} nome="predio" tamanho=${20} /></span><strong class="marca-nome">CondoFácil</strong><span class="sub">${estado.condominio.nome} · ${estado.condominio.unidades.length} unidades</span></div>
+      <label class="seletor-condominio"><span class="so-leitor">Condomínio</span><select id="seletor-condominio" value=${rota.perfil === 'implantacao' ? 'novo' : estado.origem === 'novo' ? estado.condominio.id : 'demo'} onChange=${(ev) => trocarCondominio(ev.target.value)}>
+        <option value="demo">Residencial Ipê Amarelo (demonstração)</option>
+        ${Object.values(condominios.lista).map((c) => html`<option key=${c.condominio.id} value=${c.condominio.id}>${c.condominio.nome}</option>`)}
+        <option value="novo">+ Novo condomínio</option>
+      </select></label>
       <div class="ver-como" role="group" aria-label="Ver como">
         <span>Ver como</span>
         ${PERFIS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${rota.perfil === p.id} onClick=${() => trocarPerfil(p.id)}>${p.nome}</button>`)}
@@ -102,13 +147,15 @@ function App() {
         ${PLANOS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${estado.plano === p.id} onClick=${() => executar((e) => trocarPlano(e, p.id))}>${p.nome}</button>`)}
         <button type="button" class="precos" aria-expanded=${mostrarPrecos} onClick=${() => setMostrarPrecos(!mostrarPrecos)}>Preços</button>
       </div>
-      <button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>
+      ${estado.origem !== 'novo' && html`<button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>`}
     </header>
     ${mostrarPrecos && html`<${PainelPrecos} plano=${estado.plano} unidades=${estado.condominio.unidades.length} aoFechar=${() => setMostrarPrecos(false)} />`}
     <main class=${`palco palco-${rota.perfil}`}>
-      <${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />
+      ${rota.perfil === 'implantacao'
+        ? html`<${TelaImplantacao} rota=${rota} rascunho=${condominios.rascunho} aoSalvarRascunho=${(r) => guardarCondominios({ rascunho: r })} aoAtivar=${ativarCondominio} />`
+        : html`<${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />`}
     </main>
-    <${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} executar=${executar} obterEstado=${() => estadoAtual.current} />
+    ${rota.perfil !== 'implantacao' && rota.tela !== 'convite' && html`<${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} executar=${executar} obterEstado=${() => estadoAtual.current} />`}
     ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
   `;
 }
@@ -122,7 +169,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE, ...CASOS_IMPLANTACAO].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

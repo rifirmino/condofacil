@@ -73,7 +73,7 @@ function nomeDaUnidade(estado, unidade) {
 
 export function saudacaoAbel(estado, perfil) {
   if (perfil === 'morador') return `Oi, ${nomeDaUnidade(estado, estado.moradorAtual)}! Eu sou o **Sr. Abel** 🐝. Posso ajudar com encomendas, boletos, reservas, ocorrências e vendas. O que você precisa?`;
-  if (perfil === 'sindico') return 'Olá, Roberto! **Sr. Abel** na área 🐝. Pergunte sobre inadimplência, encomendas paradas ou como usar qualquer tela.';
+  if (perfil === 'sindico') return `Olá, ${estado.condominio.sindico.nome.split(' ')[0]}! **Sr. Abel** na área 🐝. Pergunte sobre inadimplência, encomendas paradas ou como usar qualquer tela.`;
   if (perfil === 'portaria') return 'Olá! Aqui é o **Sr. Abel** 🐝. Posso ajudar com encomendas, reservas de hoje e a escala.';
   if (perfil === 'zelador') return 'E aí, Seu Antônio! **Sr. Abel** por aqui 🐝. Quer ver suas OS ou tirar dúvida de compra?';
   return 'Olá! Eu sou o **Sr. Abel** 🐝. Posso explicar a prestação de contas e onde achar os documentos.';

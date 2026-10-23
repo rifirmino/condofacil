@@ -128,9 +128,15 @@ export function horariosDaArea(estado, areaId, data, agora) {
   });
 }
 
+// Com blocos ("A401"), o andar vem do cadastro da implantação; na demonstração, é o primeiro dígito.
+export function andarDaUnidade(estado, unidade) {
+  const info = estado.condominio.unidadesInfo && estado.condominio.unidadesInfo[unidade];
+  return info ? info.andar : Number(unidade[0]);
+}
+
 export function destinatarios(estado, publico) {
   const todas = estado.condominio.unidades;
-  if (publico.tipo === 'andar') return todas.filter((u) => u[0] === String(publico.valor));
+  if (publico.tipo === 'andar') return todas.filter((u) => String(andarDaUnidade(estado, u)) === String(publico.valor));
   if (publico.tipo === 'unidades') return todas.filter((u) => publico.valor.includes(u));
   return [...todas];
 }
@@ -156,6 +162,6 @@ export function indicadoresSindico(estado, agora) {
     slaVencidas: estado.ocorrencias.filter((o) => slaVencido(o, agora)).length,
     paradas: estado.encomendas.filter((e) => encomendaParada(e, agora)).length,
     vencendo: alertasDocumentos(estado.documentos, isoDia(agora)).length,
-    adesao: { com: new Set(estado.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, total: estado.condominio.unidades.length },
+    adesao: { com: new Set(estado.pessoas.filter((p) => !p.naoResidente && (!p.situacao || p.situacao === 'ativo')).map((p) => p.unidade)).size, total: estado.condominio.unidades.length },
   };
 }

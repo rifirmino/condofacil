@@ -5,7 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { acharChrome, urlPagina } from './navegador.mjs';
 
-const AJUDANTES = `window.__e2e = {
+const AJUDANTES = `window.__erros = [];
+window.addEventListener('error', (e) => window.__erros.push(String(e.message)));
+window.addEventListener('unhandledrejection', (e) => window.__erros.push(String(e.reason && e.reason.message || e.reason)));
+window.__e2e = {
   visivel(el) { return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length); },
   clicar(texto) {
     for (const seletor of ['button', 'a']) {
@@ -29,6 +32,14 @@ const AJUDANTES = `window.__e2e = {
   },
   preencher(rotulo, valor) {
     const el = this.campo(rotulo);
+    el.value = valor;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  },
+  porId(id, valor) {
+    const el = document.getElementById(id);
+    if (!el) throw new Error('Campo não encontrado: #' + id);
     el.value = valor;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -101,6 +112,7 @@ const clicar = async (texto) => { await js(`__e2e.clicar(${JSON.stringify(texto)
 const clicarSeletor = async (seletor) => { await js(`__e2e.clicarSeletor(${JSON.stringify(seletor)})`); await pausa(120); };
 const preencher = async (rotulo, valor) => { await js(`__e2e.preencher(${JSON.stringify(rotulo)}, ${JSON.stringify(valor)})`); await pausa(80); };
 const marcar = async (rotulo) => { await js(`__e2e.marcar(${JSON.stringify(rotulo)})`); await pausa(80); };
+const porId = async (id, valor) => { await js(`__e2e.porId(${JSON.stringify(id)}, ${JSON.stringify(valor)})`); await pausa(80); };
 const irPara = async (hash) => { await js(`location.hash = ${JSON.stringify(hash)}`); await pausa(200); };
 
 const ROTEIROS = {
@@ -754,6 +766,108 @@ const ROTEIROS = {
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);
     }
     await cdp('Emulation.clearDeviceMetricsOverride');
+  },
+
+  // Do zero: assistente de implantação, condomínio novo vazio em todas as telas, convite pelo QR e volta à demonstração.
+  async implantacao() {
+    await js(`document.getElementById('seletor-condominio').value = 'novo'; document.getElementById('seletor-condominio').dispatchEvent(new Event('change', { bubbles: true })); true`);
+    await esperarTexto('passo 1 de 7');
+    await clicarSeletor('[data-acao="avancar-implantacao"]');
+    await esperarTexto('Informe o nome do condomínio');
+    await porId('impl-nome', 'Residencial Teste E2E');
+    await porId('impl-cnpj', '12.345.678/0001-90');
+    await porId('impl-sindico', 'Helena Prado');
+    await porId('impl-sindico-apto', 'B402');
+    await porId('impl-sindico-celular', '11999998888');
+    await clicarSeletor('[data-acao="avancar-implantacao"]');
+    await esperarTexto('passo 2 de 7');
+    await clicarSeletor('[data-acao="avancar-implantacao"]');
+    await esperarTexto('Gere ou importe as unidades');
+    await porId('impl-blocos', 'A, B');
+    await porId('impl-andares', '4');
+    await porId('impl-por-andar', '2');
+    await clicarSeletor('#impl-cobertura');
+    await clicarSeletor('[data-acao="gerar-unidades"]');
+    await esperarTexto('16 unidades · 4 coberturas');
+    await clicarSeletor('[data-acao="avancar-implantacao"]');
+    await esperarTexto('passo 3 de 7');
+    await porId('impl-csv-moradores', 'A101;Maria Silva;maria@email.com;11987654321;titular;sim\nZ999;Ninguém;;;titular;sim');
+    await esperarTexto('1 com erro');
+    await clicarSeletor('[data-acao="avancar-implantacao"]');
+    await esperarTexto('Corrija as linhas com erro');
+    await porId('impl-csv-moradores', 'A101;Maria Silva;maria@email.com;11987654321;titular;sim\nB201;Rui Costa;rui@email.com;11944443333;proprietario;sim');
+    await esperarTexto('2 de 2 linhas prontas');
+    await clicarSeletor('[data-acao="avancar-implantacao"]');
+    await esperarTexto('passo 4 de 7');
+    await porId('impl-taxa-a', '500,00');
+    await porId('impl-taxa-cobertura', '750,00');
+    await esperarTexto('Prévia da taxa');
+    await clicarSeletor('[data-acao="avancar-implantacao"]');
+    await esperarTexto('passo 5 de 7');
+    await clicarSeletor('[data-acao="criar-subconta"]');
+    await clicarSeletor('[data-acao="aprovar-subconta"]');
+    await esperarTexto('Subconta aprovada');
+    await clicarSeletor('[data-acao="avancar-implantacao"]');
+    await esperarTexto('passo 6 de 7');
+    await clicarSeletor('[data-acao="avancar-implantacao"]');
+    await esperarTexto('passo 7 de 7');
+    await esperarTexto('https://condofacil.cloud/c/residencial-teste-e2e');
+    await esperar(`!!document.querySelector('#cartaz-implantacao svg')`, 'o QR Code do cartaz', 10000);
+    await clicarSeletor('[data-acao="avancar-implantacao"]');
+    await esperarTexto('Olá, Helena');
+    await esperarTexto('Residencial Teste E2E · 16 unidades');
+
+    // Todas as telas de todos os perfis abrem sem erro no condomínio vazio.
+    for (const perfil of ['sindico', 'morador', 'portaria', 'zelador', 'conselho']) {
+      const fila = [`#${perfil}.inicio`];
+      const vistos = new Set();
+      while (fila.length && vistos.size < 80) {
+        const hash = fila.shift();
+        if (vistos.has(hash)) continue;
+        vistos.add(hash);
+        await irPara(hash);
+        const erros = await js('window.__erros.splice(0)');
+        if (erros.length) throw new Error(`${hash}: ${erros.join(' | ')}`);
+        if (!(await js(`!!document.querySelector('.barra-demo') && document.body.innerText.length > 150`))) throw new Error(`${hash} ficou em branco`);
+        const links = await js(`[...document.querySelectorAll('a[href^="#${perfil}."]')].map((a) => a.getAttribute('href'))`);
+        for (const l of links) if (!vistos.has(l) && l.split('.').length <= 3) fila.push(l);
+      }
+    }
+
+    await irPara('#sindico.cobranca.previa');
+    await clicarSeletor('[data-acao="emitir"]');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('3 responsáveis')`, 'o aviso da primeira emissão');
+
+    // Convite: quem está na planilha entra direto; quem não está espera o síndico.
+    await irPara('#morador.convite');
+    await porId('convite-unidade', 'A101');
+    await porId('convite-nome', 'Maria Silva');
+    await porId('convite-celular', '(11) 98765-4321');
+    await clicarSeletor('[data-acao="pedir-codigo"]');
+    await porId('convite-codigo', await js(`document.querySelector('[data-codigo]').dataset.codigo`));
+    await clicarSeletor('[data-acao="confirmar-convite"]');
+    await esperarTexto('Tudo certo!');
+    await irPara('#morador.inicio');
+    await irPara('#morador.convite');
+    await porId('convite-unidade', 'A202');
+    await porId('convite-nome', 'Carlos Lima');
+    await porId('convite-celular', '11955554444');
+    await clicarSeletor('[data-acao="pedir-codigo"]');
+    await porId('convite-codigo', '000000');
+    await clicarSeletor('[data-acao="confirmar-convite"]');
+    await esperarTexto('Código inválido');
+    await porId('convite-codigo', await js(`document.querySelector('[data-codigo]').dataset.codigo`));
+    await clicarSeletor('[data-acao="confirmar-convite"]');
+    await esperarTexto('Cadastro enviado');
+    await irPara('#sindico.inicio');
+    await esperarTexto('Carlos Lima · apto A202');
+    await clicarSeletor('[data-aprovar-morador]');
+    await esperarTexto('Carlos Lima aprovado.');
+
+    // A demonstração continua intacta e o condomínio criado fica guardado no seletor.
+    await js(`document.getElementById('seletor-condominio').value = 'demo'; document.getElementById('seletor-condominio').dispatchEvent(new Event('change', { bubbles: true })); true`);
+    await esperarTexto('Residencial Ipê Amarelo · 32 unidades');
+    await esperar(`[...document.getElementById('seletor-condominio').options].some((o) => o.textContent === 'Residencial Teste E2E')`, 'o condomínio criado no seletor');
   },
 };
 

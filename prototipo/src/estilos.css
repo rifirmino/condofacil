@@ -597,3 +597,36 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .abel-acao strong { color: var(--laranja-forte); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; }
 .abel-sugestoes button:disabled, .abel-nova:disabled { opacity: .5; cursor: default; }
 .abel-msgs .bloqueado { margin: auto 0; }
+
+/* Implantação: passos, cartaz para imprimir e QR Code real. */
+.seletor-condominio select { min-height: 36px; max-width: 260px; padding: 6px 10px; border: 1px solid var(--ardosia-suave); border-radius: var(--raio); background: var(--ardosia-escura); color: var(--ardosia-texto); font-weight: 600; }
+.implantacao { max-width: 1080px; margin: 0 auto; padding: 24px 16px 40px; display: flex; flex-direction: column; gap: 16px; }
+.passos-implantacao { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.passos-implantacao a { display: inline-block; padding: 6px 12px; border: 1px solid var(--borda); border-radius: 999px; background: var(--sup); color: var(--suave); font-size: 13px; font-weight: 600; text-decoration: none; }
+.passos-implantacao .feito a { border-color: var(--ok); color: var(--ok); }
+.passos-implantacao .atual a { border-color: var(--laranja-forte); background: var(--laranja-tinta); color: var(--laranja-forte); }
+.implantacao-corpo { padding: 20px; }
+.implantacao-rodape { justify-content: flex-end; }
+.lista-unidades { display: flex; flex-wrap: wrap; gap: 4px; }
+.modelo-csv { margin: 0; padding: 10px 12px; background: var(--sup-2); border: 1px solid var(--borda); border-radius: var(--raio); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.erro-linha { color: var(--perigo); font-weight: 600; font-size: 13px; }
+.area-modelo { align-items: flex-start; }
+.grade-divulgacao { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 760px) { .grade-divulgacao { grid-template-columns: 1fr; } }
+.cartaz-implantacao { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px 20px; border: 2px solid var(--laranja); border-radius: 8px; background: #fff; color: #222; text-align: center; }
+.cartaz-marca { display: flex; align-items: center; gap: 6px; margin: 0; color: #bd5417; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.cartaz-titulo { margin: 0; font-size: 22px; color: #222; text-transform: none; letter-spacing: 0; }
+.cartaz-sub, .cartaz-passos, .cartaz-contato { margin: 0; font-size: 14px; color: #444; }
+.cartaz-passos { text-align: left; line-height: 1.7; }
+.cartaz-link { margin: 0; font-weight: 700; color: #222; overflow-wrap: anywhere; }
+.cartaz-contato { font-size: 12px; }
+.qr-real { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: #fff; }
+.qr-real svg { width: 100%; height: 100%; }
+.qr-falhou { border: 1px dashed #999; padding: 10px; font-size: 12px; overflow-wrap: anywhere; }
+.link-convite { display: block; padding: 8px 10px; background: var(--sup-2); border: 1px solid var(--borda); border-radius: var(--raio); overflow-wrap: anywhere; }
+@media print {
+  body * { visibility: hidden; }
+  #cartaz-implantacao, #cartaz-implantacao * { visibility: visible; }
+  #cartaz-implantacao { position: absolute; inset: 0; margin: auto; width: 170mm; border: 0; }
+}
+.convite-link { white-space: nowrap; padding: 0 8px; font-size: 13px; }
