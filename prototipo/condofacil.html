@@ -1820,7 +1820,7 @@ const CONTATO_COMERCIAL = { email: 'comercial@condofacil.cloud', whatsapp: '+55 
 const PASSOS_IMPLANTACAO = [['condominio', 'Condomínio'], ['unidades', 'Unidades'], ['moradores', 'Moradores'], ['cobranca', 'Cobrança'], ['asaas', 'Conta Asaas'], ['areas', 'Áreas comuns'], ['divulgacao', 'Divulgação']];
 const NOMES_VINCULO_MORADOR = { titular: 'Titular', inquilino: 'Inquilino', proprietario: 'Proprietário' };
 const UFS = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' ');
-const MODELO_CSV_MORADORES = 'unidade;nome;email;celular;vinculo;responsavel\n101;Maria Silva;maria@email.com;11987654321;titular;sim\n102;João Souza;joao@email.com;11912345678;inquilino;nao';
+const MODELO_CSV_MORADORES = 'unidade;nome;email;celular;vinculo;responsavel;cpf\n101;Maria Silva;maria@email.com;11987654321;titular;sim;529.982.247-25\n102;João Souza;joao@email.com;11912345678;inquilino;nao;';
 const LIMITE_UNIDADES = 1000;
 
 const AREAS_MODELO = {
@@ -1855,6 +1855,22 @@ function validarCondominio(dados) {
   if (s.email && !emailValido(s.email)) return 'E-mail do síndico inválido';
   if (s.celular && !celularValido(s.celular)) return 'Celular do síndico inválido';
   return null;
+}
+
+// CPF com os dois dígitos verificadores; 11 dígitos iguais não valem.
+function cpfValido(cpf) {
+  const d = apenasDigitos(cpf);
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  const digito = (n) => {
+    const soma = [...d.slice(0, n)].reduce((s, c, i) => s + Number(c) * (n + 1 - i), 0);
+    const resto = (soma * 10) % 11;
+    return resto === 10 ? 0 : resto;
+  };
+  return digito(9) === Number(d[9]) && digito(10) === Number(d[10]);
+}
+
+function fmtCpf(cpf) {
+  return apenasDigitos(cpf).replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
 }
 
 function emailValido(email) {
@@ -1935,13 +1951,14 @@ function lerCsvMoradores(texto, idsUnidades) {
   const unidades = new Set(idsUnidades);
   const responsaveis = new Set();
   const linhas = corpo.map((texto, i) => {
-    const [unidade, nome, email, celular, vinculo, responsavel] = dividirLinha(texto, sep);
+    const [unidade, nome, email, celular, vinculo, responsavel, cpf] = dividirLinha(texto, sep);
     const u = String(unidade || '').toUpperCase().replace(/\s+/g, '');
     const erros = [];
     if (!unidades.has(u)) erros.push(`Unidade ${u || '(vazia)'} não existe`);
     if (!String(nome || '').trim()) erros.push('Informe o nome');
     if (email && !emailValido(email)) erros.push('E-mail inválido');
     if (celular && !celularValido(celular)) erros.push('Celular inválido');
+    if (String(cpf || '').trim() && !cpfValido(cpf)) erros.push('CPF inválido');
     const v = vinculo ? VINCULOS_ACEITOS[String(vinculo).toLowerCase()] : 'titular';
     if (!v) erros.push(`Vínculo "${vinculo}" desconhecido`);
     const ehResponsavel = /^(s|sim|x|1|true)$/i.test(String(responsavel || '').trim());
@@ -1949,7 +1966,7 @@ function lerCsvMoradores(texto, idsUnidades) {
       if (responsaveis.has(u)) erros.push(`A unidade ${u} já tem responsável financeiro`);
       else responsaveis.add(u);
     }
-    return { numero: i + 1 + (comCabecalho ? 1 : 0), dados: { unidade: u, nome: String(nome || '').trim(), email: String(email || '').trim(), celular: apenasDigitos(celular), vinculo: v || 'titular', responsavel: ehResponsavel }, erros };
+    return { numero: i + 1 + (comCabecalho ? 1 : 0), dados: { unidade: u, nome: String(nome || '').trim(), email: String(email || '').trim(), celular: apenasDigitos(celular), vinculo: v || 'titular', responsavel: ehResponsavel, cpf: apenasDigitos(cpf) }, erros };
   });
   return { linhas, validas: linhas.filter((l) => !l.erros.length).map((l) => l.dados), totalErros: linhas.filter((l) => l.erros.length).length };
 }
@@ -1993,7 +2010,7 @@ function condominioNovo(config, agora) {
   const fracoes = fracoesDasUnidades(unidades, valores);
   const unidadesFinanceiro = Object.fromEntries(unidades.map((u) => {
     const r = moradores.find((m) => m.unidade === u.id && m.responsavel);
-    return [u.id, { tipo: u.tipo, fracao: fracoes[u.id], responsavel: r ? { nome: r.nome, relacao: r.vinculo === 'proprietario' ? 'proprietario' : r.vinculo === 'inquilino' ? 'inquilino' : 'titular', documento: 'CPF informado na implantação', canais: ['App', 'E-mail', 'WhatsApp'] } : null }];
+    return [u.id, { tipo: u.tipo, fracao: fracoes[u.id], responsavel: r ? { nome: r.nome, relacao: r.vinculo === 'proprietario' ? 'proprietario' : r.vinculo === 'inquilino' ? 'inquilino' : 'titular', documento: 'CPF informado na implantação', cpf: r.cpf || null, canais: ['App', 'E-mail', 'WhatsApp'] } : null }];
   }));
   const vigente = somarMes(mes, -1);
   const versao = cob.modo === 'fracao'
@@ -7747,6 +7764,17 @@ function configTeste() {
 
 const CASOS_IMPLANTACAO = [
   {
+    nome: 'implantação: CPF do responsável na planilha',
+    rodar() {
+      igual([cpfValido('529.982.247-25'), cpfValido('52998224724'), cpfValido('11111111111'), cpfValido('123'), fmtCpf('52998224725')], [true, false, false, false, '529.982.247-25']);
+      const l = lerCsvMoradores('A101;Maria;;;titular;sim;529.982.247-25\nA102;João;;;titular;sim;123\nA201;Ana;;;titular;sim', ['A101', 'A102', 'A201']);
+      igual([l.linhas[0].dados.cpf, l.linhas[1].erros, l.linhas[2].dados.cpf, l.linhas[2].erros], ['52998224725', ['CPF inválido'], '', []]);
+      const cfg = configTeste();
+      const e = condominioNovo({ ...cfg, moradores: [{ ...cfg.moradores[0], cpf: '52998224725' }, cfg.moradores[1]] }, AGORA_IMPLANTACAO);
+      igual([e.financeiro.unidades.A101.responsavel.cpf, e.financeiro.unidades.B201.responsavel.cpf], ['52998224725', null]);
+    },
+  },
+  {
     nome: 'implantação: gerador e planilha de unidades',
     rodar() {
       const g = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
@@ -13012,14 +13040,14 @@ function PassoMoradores({ r, mudar }) {
   }, [r.csvMoradores, r.unidades.length]);
   return html`<div class="pilha formulario">
     <p class="sub">Cole a planilha dos moradores (pode ser exportada do Excel ou do Google Planilhas). Este passo é opcional: quem não estiver na lista pode entrar pelo QR Code do convite.</p>
-    <details class="composicao"><summary>Modelo da planilha</summary><pre class="modelo-csv">${MODELO_CSV_MORADORES}</pre><small class="sub">vinculo: titular, inquilino ou proprietario · responsavel: sim ou não (quem recebe a cobrança).</small></details>
+    <details class="composicao"><summary>Modelo da planilha</summary><pre class="modelo-csv">${MODELO_CSV_MORADORES}</pre><small class="sub">vinculo: titular, inquilino ou proprietario · responsavel: sim ou não (quem recebe a cobrança) · cpf: do responsável, exigido pelo Asaas para emitir a cobrança real.</small></details>
     <${Campo} rotulo="Planilha de moradores"><textarea id="impl-csv-moradores" rows="8" value=${r.csvMoradores} onInput=${(ev) => mudar({ csvMoradores: ev.target.value })} placeholder=${MODELO_CSV_MORADORES}></textarea><//>
     ${leitura.linhas.length > 0 && html`<div class="cartao pilha">
       <strong>${leitura.validas.length} de ${leitura.linhas.length} linhas prontas${leitura.totalErros ? ` · ${leitura.totalErros} com erro` : ''}</strong>
       <div class="tabela-rolagem"><table class="tabela">
-        <thead><tr><th>Linha</th><th>Unidade</th><th>Nome</th><th>Vínculo</th><th>Responsável</th><th>Situação</th></tr></thead>
+        <thead><tr><th>Linha</th><th>Unidade</th><th>Nome</th><th>Vínculo</th><th>Responsável</th><th>CPF</th><th>Situação</th></tr></thead>
         <tbody>${leitura.linhas.map((l) => html`<tr key=${l.numero}>
-          <td>${l.numero}</td><td>${l.dados.unidade}</td><td>${l.dados.nome}</td><td>${NOMES_VINCULO_MORADOR[l.dados.vinculo]}</td><td>${l.dados.responsavel ? 'Sim' : '—'}</td>
+          <td>${l.numero}</td><td>${l.dados.unidade}</td><td>${l.dados.nome}</td><td>${NOMES_VINCULO_MORADOR[l.dados.vinculo]}</td><td>${l.dados.responsavel ? 'Sim' : '—'}</td><td>${l.dados.cpf ? fmtCpf(l.dados.cpf) : '—'}</td>
           <td>${l.erros.length ? html`<span class="erro-linha">${l.erros.join(' · ')}</span>` : html`<${Etiqueta} tipo="ok">OK<//>`}</td>
         </tr>`)}</tbody>
       </table></div>

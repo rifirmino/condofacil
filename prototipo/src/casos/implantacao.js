@@ -1,4 +1,4 @@
-import { gerarUnidades, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, validarCondominio, mensagemWhatsAppConvite } from '../implantacao/regras.js';
+import { cpfValido, fmtCpf, gerarUnidades, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, validarCondominio, mensagemWhatsAppConvite } from '../implantacao/regras.js';
 import { condominioNovo } from '../implantacao/novo.js';
 import { indicadoresSindico, alertasDocumentos, destinatarios, comunicadosDaUnidade, horariosDaArea } from '../regras.js';
 import { indicadoresFinanceiros, devedores, previaCompetencia, proximaCompetencia, serieReceitasDespesas, tituloSerie, pendentesDaRegua } from '../cobranca/regras.js';
@@ -35,6 +35,17 @@ export function configTeste() {
 }
 
 export const CASOS_IMPLANTACAO = [
+  {
+    nome: 'implantação: CPF do responsável na planilha',
+    rodar() {
+      igual([cpfValido('529.982.247-25'), cpfValido('52998224724'), cpfValido('11111111111'), cpfValido('123'), fmtCpf('52998224725')], [true, false, false, false, '529.982.247-25']);
+      const l = lerCsvMoradores('A101;Maria;;;titular;sim;529.982.247-25\nA102;João;;;titular;sim;123\nA201;Ana;;;titular;sim', ['A101', 'A102', 'A201']);
+      igual([l.linhas[0].dados.cpf, l.linhas[1].erros, l.linhas[2].dados.cpf, l.linhas[2].erros], ['52998224725', ['CPF inválido'], '', []]);
+      const cfg = configTeste();
+      const e = condominioNovo({ ...cfg, moradores: [{ ...cfg.moradores[0], cpf: '52998224725' }, cfg.moradores[1]] }, AGORA_IMPLANTACAO);
+      igual([e.financeiro.unidades.A101.responsavel.cpf, e.financeiro.unidades.B201.responsavel.cpf], ['52998224725', null]);
+    },
+  },
   {
     nome: 'implantação: gerador e planilha de unidades',
     rodar() {

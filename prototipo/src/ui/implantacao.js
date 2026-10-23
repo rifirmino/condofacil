@@ -1,5 +1,5 @@
 import { html, useState, useEffect } from '../vendor.js';
-import { PASSOS_IMPLANTACAO, CONTATO_COMERCIAL, MODELO_CSV_MORADORES, AREAS_MODELO, NOMES_VINCULO_MORADOR, UFS, validarCondominio, gerarUnidades, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, mensagemWhatsAppConvite } from '../implantacao/regras.js';
+import { PASSOS_IMPLANTACAO, CONTATO_COMERCIAL, MODELO_CSV_MORADORES, AREAS_MODELO, NOMES_VINCULO_MORADOR, UFS, validarCondominio, gerarUnidades, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, mensagemWhatsAppConvite, fmtCpf } from '../implantacao/regras.js';
 import { condominioNovo } from '../implantacao/novo.js';
 import { PLANOS, mensalidade } from '../planos.js';
 import { fmtReais } from '../cobranca/regras.js';
@@ -159,14 +159,14 @@ function PassoMoradores({ r, mudar }) {
   }, [r.csvMoradores, r.unidades.length]);
   return html`<div class="pilha formulario">
     <p class="sub">Cole a planilha dos moradores (pode ser exportada do Excel ou do Google Planilhas). Este passo é opcional: quem não estiver na lista pode entrar pelo QR Code do convite.</p>
-    <details class="composicao"><summary>Modelo da planilha</summary><pre class="modelo-csv">${MODELO_CSV_MORADORES}</pre><small class="sub">vinculo: titular, inquilino ou proprietario · responsavel: sim ou não (quem recebe a cobrança).</small></details>
+    <details class="composicao"><summary>Modelo da planilha</summary><pre class="modelo-csv">${MODELO_CSV_MORADORES}</pre><small class="sub">vinculo: titular, inquilino ou proprietario · responsavel: sim ou não (quem recebe a cobrança) · cpf: do responsável, exigido pelo Asaas para emitir a cobrança real.</small></details>
     <${Campo} rotulo="Planilha de moradores"><textarea id="impl-csv-moradores" rows="8" value=${r.csvMoradores} onInput=${(ev) => mudar({ csvMoradores: ev.target.value })} placeholder=${MODELO_CSV_MORADORES}></textarea><//>
     ${leitura.linhas.length > 0 && html`<div class="cartao pilha">
       <strong>${leitura.validas.length} de ${leitura.linhas.length} linhas prontas${leitura.totalErros ? ` · ${leitura.totalErros} com erro` : ''}</strong>
       <div class="tabela-rolagem"><table class="tabela">
-        <thead><tr><th>Linha</th><th>Unidade</th><th>Nome</th><th>Vínculo</th><th>Responsável</th><th>Situação</th></tr></thead>
+        <thead><tr><th>Linha</th><th>Unidade</th><th>Nome</th><th>Vínculo</th><th>Responsável</th><th>CPF</th><th>Situação</th></tr></thead>
         <tbody>${leitura.linhas.map((l) => html`<tr key=${l.numero}>
-          <td>${l.numero}</td><td>${l.dados.unidade}</td><td>${l.dados.nome}</td><td>${NOMES_VINCULO_MORADOR[l.dados.vinculo]}</td><td>${l.dados.responsavel ? 'Sim' : '—'}</td>
+          <td>${l.numero}</td><td>${l.dados.unidade}</td><td>${l.dados.nome}</td><td>${NOMES_VINCULO_MORADOR[l.dados.vinculo]}</td><td>${l.dados.responsavel ? 'Sim' : '—'}</td><td>${l.dados.cpf ? fmtCpf(l.dados.cpf) : '—'}</td>
           <td>${l.erros.length ? html`<span class="erro-linha">${l.erros.join(' · ')}</span>` : html`<${Etiqueta} tipo="ok">OK<//>`}</td>
         </tr>`)}</tbody>
       </table></div>
