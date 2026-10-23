@@ -45,7 +45,7 @@ export const CASOS_CONECTADO = [
   {
     nome: 'conectado: só fala com o servidor no domínio do app ou na máquina local',
     rodar() {
-      igual(['app.condofacil.cloud', 'localhost', '127.0.0.1', 'claude.ai', 'condofacil.cloud'].map(hostPermitido), [true, true, true, false, false]);
+      igual(['condofacil.cloud', 'www.condofacil.cloud', 'localhost', '127.0.0.1', 'claude.ai', 'app.condofacil.cloud'].map(hostPermitido), [true, true, true, true, false, false]);
     },
   },
 ];

@@ -14,7 +14,7 @@ const CODIGO = 'piloto-e2e';
 const falso = await asaasFalso();
 const banco = bancoEmMemoria();
 let rotas = null;
-const servidor = criarServidor({ rotas: { tratar: (p) => rotas.tratar(p) }, pagina: () => readFileSync(join(raiz, '../servidor/publico/index.html')) });
+const servidor = criarServidor({ rotas: { tratar: (p) => rotas.tratar(p) }, paginas: { site: () => readFileSync(join(raiz, '../servidor/publico/site.html')), app: () => readFileSync(join(raiz, '../servidor/publico/index.html')) } });
 await new Promise((ok) => servidor.listen(0, '127.0.0.1', ok));
 const base = `http://127.0.0.1:${servidor.address().port}`;
 rotas = criarRotas({ banco, asaas: (chave) => clienteAsaas({ url: falso.url, chave }), config: { chaveRaiz: CHAVE_RAIZ_FALSA, tokenWebhook: 'token-do-webhook-e2e', chaveCripto: Buffer.alloc(32, 5).toString('base64'), codigoPiloto: CODIGO, urlPublica: base } });
@@ -104,7 +104,7 @@ let falhou = false;
 try {
   await cdp('Page.enable');
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: AJUDANTES });
-  await cdp('Page.navigate', { url: `${base}/#sindico.inicio` });
+  await cdp('Page.navigate', { url: `${base}/app#sindico.inicio` });
   await paginaPronta();
   try {
     await asaasConectado();

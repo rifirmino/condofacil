@@ -8016,7 +8016,7 @@ const CASOS_CONECTADO = [
   {
     nome: 'conectado: só fala com o servidor no domínio do app ou na máquina local',
     rodar() {
-      igual(['app.condofacil.cloud', 'localhost', '127.0.0.1', 'claude.ai', 'condofacil.cloud'].map(hostPermitido), [true, true, true, false, false]);
+      igual(['condofacil.cloud', 'www.condofacil.cloud', 'localhost', '127.0.0.1', 'claude.ai', 'app.condofacil.cloud'].map(hostPermitido), [true, true, true, true, false, false]);
     },
   },
 ];
@@ -8214,10 +8214,10 @@ function salvarCondominios(dados) {
 }
 
 // ---- src/conectado/cliente.js ----
-// Conversa com o servidor do CondoFácil (app.condofacil.cloud). No claude.ai e em arquivo local nada disso roda: tudo fica simulado.
+// Conversa com o servidor do CondoFácil (condofacil.cloud/app). No claude.ai e em arquivo local nada disso roda: tudo fica simulado.
 const CONEXAO = { ativa: false, codigo: null };
 const CHAVE_PILOTO = 'condofacil-piloto-v1';
-const HOSTS_CONECTADOS = ['app.condofacil.cloud', 'localhost', '127.0.0.1'];
+const HOSTS_CONECTADOS = ['condofacil.cloud', 'www.condofacil.cloud', 'localhost', '127.0.0.1'];
 
 function hostPermitido(hostname) {
   return HOSTS_CONECTADOS.includes(hostname);

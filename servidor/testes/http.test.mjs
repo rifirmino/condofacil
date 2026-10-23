@@ -12,7 +12,7 @@ test('ciclo completo por HTTP: página, subconta, emissão, pagamento simulado e
   const falso = await asaasFalso();
   // As rotas precisam da URL do próprio servidor (para o webhook), que só existe depois do listen.
   let rotas = null;
-  const servidor = criarServidor({ rotas: { tratar: (p) => rotas.tratar(p) }, pagina: () => '<!doctype html><html><body>CondoFácil</body></html>' });
+  const servidor = criarServidor({ rotas: { tratar: (p) => rotas.tratar(p) }, paginas: { site: () => '<!doctype html><html><body>Página de vendas</body></html>', app: () => '<!doctype html><html><body>App CondoFácil</body></html>' } });
   await new Promise((ok) => servidor.listen(0, '127.0.0.1', ok));
   const base = `http://127.0.0.1:${servidor.address().port}`;
   rotas = criarRotas({ banco: bancoEmMemoria(), asaas: (chave) => clienteAsaas({ url: falso.url, chave }), config: { chaveRaiz: CHAVE_RAIZ_FALSA, tokenWebhook: 'token-do-webhook', chaveCripto: Buffer.alloc(32, 3).toString('base64'), codigoPiloto: 'piloto', urlPublica: base } });
@@ -22,7 +22,11 @@ test('ciclo completo por HTTP: página, subconta, emissão, pagamento simulado e
   };
   try {
     const pagina = await fetch(base + '/');
-    assert.match(await pagina.text(), /<html/);
+    assert.match(await pagina.text(), /Página de vendas/);
+    assert.match(await (await fetch(base + '/app')).text(), /App CondoFácil/);
+    const convite = await fetch(base + '/c/residencial-teste', { redirect: 'manual' });
+    assert.deepEqual([convite.status, convite.headers.get('location')], [302, '/app#morador.convite']);
+    assert.equal((await fetch(base + '/nada')).status, 404);
     assert.equal(pagina.headers.get('x-content-type-options'), 'nosniff');
     assert.deepEqual((await api('GET', '/api/saude')).corpo, { ok: true, ambiente: 'sandbox' });
     assert.equal((await api('POST', '/api/emissoes', '{nao e json')).status, 400);

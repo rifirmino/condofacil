@@ -33,9 +33,9 @@ const banco = env.MYSQL_HOST
 if (!env.MYSQL_HOST) console.warn('MYSQL_HOST não definido: dados só em memória (somem ao reiniciar)');
 await banco.preparar();
 
-const caminhoPagina = join(raiz, 'publico', 'index.html');
+const publico = (arquivo) => () => readFileSync(join(raiz, 'publico', arquivo));
 const rotas = criarRotas({ banco, asaas: (chave) => clienteAsaas({ url: urlAsaas, chave }), config });
 const porta = Number(env.PORT) || 3000;
-criarServidor({ rotas, pagina: () => readFileSync(caminhoPagina) }).listen(porta, () => {
+criarServidor({ rotas, paginas: { site: publico('site.html'), app: publico('index.html') } }).listen(porta, () => {
   console.log(`CondoFácil no ar na porta ${porta} (Asaas sandbox)`);
 });

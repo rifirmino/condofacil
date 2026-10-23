@@ -1,7 +1,7 @@
-// Conversa com o servidor do CondoFácil (app.condofacil.cloud). No claude.ai e em arquivo local nada disso roda: tudo fica simulado.
+// Conversa com o servidor do CondoFácil (condofacil.cloud/app). No claude.ai e em arquivo local nada disso roda: tudo fica simulado.
 export const CONEXAO = { ativa: false, codigo: null };
 const CHAVE_PILOTO = 'condofacil-piloto-v1';
-const HOSTS_CONECTADOS = ['app.condofacil.cloud', 'localhost', '127.0.0.1'];
+const HOSTS_CONECTADOS = ['condofacil.cloud', 'www.condofacil.cloud', 'localhost', '127.0.0.1'];
 
 export function hostPermitido(hostname) {
   return HOSTS_CONECTADOS.includes(hostname);
