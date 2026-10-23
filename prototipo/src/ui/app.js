@@ -23,6 +23,7 @@ import { CASOS_ORCAMENTO } from '../casos/orcamento.js';
 import { CASOS_FINANCEIRO } from '../casos/financeiro.js';
 import { CASOS_ENQUETES } from '../casos/enquetes.js';
 import { CASOS_IMPLANTACAO } from '../casos/implantacao.js';
+import { CASOS_CONECTADO } from '../casos/conectado.js';
 import { CASOS_ASSISTENTE } from '../casos/assistente.js';
 import { PERFIS, lerRota, ir, Selo, Icone, CONDOMINIO_ATUAL } from './comum.js';
 import { TelaPortaria } from './portaria.js';
@@ -31,6 +32,8 @@ import { TelaSindico } from './sindico.js';
 import { TelaZelador } from './zelador.js';
 import { TelaConselho } from './conselho.js';
 import { SrAbel } from './assistente.js';
+import { CONEXAO, detectarServidor, lerCodigoPiloto, guardarCodigoPiloto, chamarApi, usaAsaasReal } from '../conectado/cliente.js';
+import { aplicarSituacoes } from '../conectado/acoes.js';
 
 const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
 const ultimaRota = {};
@@ -129,6 +132,41 @@ function App() {
     setGeracao(geracao + 1);
   }
 
+  // Modo conectado: só em app.condofacil.cloud (ou na máquina local) com o servidor respondendo.
+  const [conexao, setConexao] = useState({ servidor: false, codigo: null, erro: null });
+  useEffect(() => {
+    detectarServidor().then((achou) => {
+      if (!achou) return;
+      CONEXAO.ativa = true;
+      CONEXAO.codigo = lerCodigoPiloto();
+      setConexao({ servidor: true, codigo: CONEXAO.codigo, erro: null });
+    });
+  }, []);
+
+  async function conectar(codigo) {
+    try {
+      await chamarApi('GET', '/api/cobrancas?condominio=teste', undefined, codigo);
+      CONEXAO.codigo = codigo;
+      guardarCodigoPiloto(codigo);
+      setConexao({ servidor: true, codigo, erro: null });
+    } catch (e) {
+      setConexao({ servidor: true, codigo: null, erro: e.message });
+    }
+  }
+
+  const real = conexao.codigo && usaAsaasReal(estado);
+  const telaFinanceira = (rota.perfil === 'sindico' && rota.tela === 'cobranca') || (rota.perfil === 'morador' && rota.tela === 'financeiro');
+  useEffect(() => {
+    if (!real) return undefined;
+    const id = estado.condominio.id;
+    const sincronizar = () => chamarApi('GET', `/api/cobrancas?condominio=${encodeURIComponent(id)}`)
+      .then((r) => { if (estadoAtual.current.condominio.id === id) executar((e) => aplicarSituacoes(e, r.cobrancas, new Date())); })
+      .catch(() => {});
+    sincronizar();
+    const t = setInterval(sincronizar, 15000);
+    return () => clearInterval(t);
+  }, [real, estado.condominio.id, telaFinanceira]);
+
   const Tela = TELAS_PERFIL[rota.perfil];
   return html`
     <header class="barra-demo">
@@ -148,6 +186,9 @@ function App() {
         <button type="button" class="precos" aria-expanded=${mostrarPrecos} onClick=${() => setMostrarPrecos(!mostrarPrecos)}>Preços</button>
       </div>
       ${estado.origem !== 'novo' && html`<button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>`}
+      ${conexao.servidor && (conexao.codigo
+        ? html`<span class="selo-conexao">Asaas sandbox conectado</span>`
+        : html`<${ConectarPiloto} erro=${conexao.erro} aoConectar=${conectar} />`)}
     </header>
     ${mostrarPrecos && html`<${PainelPrecos} plano=${estado.plano} unidades=${estado.condominio.unidades.length} aoFechar=${() => setMostrarPrecos(false)} />`}
     <main class=${`palco palco-${rota.perfil}`}>
@@ -160,6 +201,15 @@ function App() {
   `;
 }
 
+function ConectarPiloto({ erro, aoConectar }) {
+  const [codigo, setCodigo] = useState('');
+  return html`<form class="conectar-piloto" onSubmit=${(ev) => { ev.preventDefault(); if (codigo.trim()) aoConectar(codigo.trim()); }}>
+    <label><span class="so-leitor">Código do piloto</span><input id="codigo-piloto" type="password" autocomplete="off" placeholder="Código do piloto" value=${codigo} onInput=${(ev) => setCodigo(ev.target.value)} /></label>
+    <button type="submit" data-acao="conectar-piloto">Conectar ao Asaas</button>
+    ${erro && html`<span class="erro-conexao" role="alert">${erro}</span>`}
+  </form>`;
+}
+
 function PainelPrecos({ plano, unidades, aoFechar }) {
   return html`<div class="painel-precos" role="dialog" aria-label="Preços por plano">
     <div class="linha-entre"><strong>Preços para ${unidades} unidades · faixa de ${PRECO_BASE.faixa}</strong><button type="button" class="btn-link" onClick=${aoFechar}>Fechar</button></div>
@@ -169,7 +219,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE, ...CASOS_IMPLANTACAO].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE, ...CASOS_IMPLANTACAO, ...CASOS_CONECTADO].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

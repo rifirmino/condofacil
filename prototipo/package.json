@@ -7,6 +7,7 @@
     "montar": "node montar.mjs",
     "verificar": "node verificar.mjs",
     "e2e": "node e2e.mjs",
-    "servir": "node montar.mjs && node servir.mjs"
+    "servir": "node montar.mjs && node servir.mjs",
+    "e2e:conectado": "node e2e-conectado.mjs"
   }
 }

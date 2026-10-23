@@ -3,7 +3,7 @@ export const CONTATO_COMERCIAL = { email: 'comercial@condofacil.cloud', whatsapp
 export const PASSOS_IMPLANTACAO = [['condominio', 'Condomínio'], ['unidades', 'Unidades'], ['moradores', 'Moradores'], ['cobranca', 'Cobrança'], ['asaas', 'Conta Asaas'], ['areas', 'Áreas comuns'], ['divulgacao', 'Divulgação']];
 export const NOMES_VINCULO_MORADOR = { titular: 'Titular', inquilino: 'Inquilino', proprietario: 'Proprietário' };
 export const UFS = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' ');
-export const MODELO_CSV_MORADORES = 'unidade;nome;email;celular;vinculo;responsavel\n101;Maria Silva;maria@email.com;11987654321;titular;sim\n102;João Souza;joao@email.com;11912345678;inquilino;nao';
+export const MODELO_CSV_MORADORES = 'unidade;nome;email;celular;vinculo;responsavel;cpf\n101;Maria Silva;maria@email.com;11987654321;titular;sim;529.982.247-25\n102;João Souza;joao@email.com;11912345678;inquilino;nao;';
 const LIMITE_UNIDADES = 1000;
 
 export const AREAS_MODELO = {
@@ -38,6 +38,22 @@ export function validarCondominio(dados) {
   if (s.email && !emailValido(s.email)) return 'E-mail do síndico inválido';
   if (s.celular && !celularValido(s.celular)) return 'Celular do síndico inválido';
   return null;
+}
+
+// CPF com os dois dígitos verificadores; 11 dígitos iguais não valem.
+export function cpfValido(cpf) {
+  const d = apenasDigitos(cpf);
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  const digito = (n) => {
+    const soma = [...d.slice(0, n)].reduce((s, c, i) => s + Number(c) * (n + 1 - i), 0);
+    const resto = (soma * 10) % 11;
+    return resto === 10 ? 0 : resto;
+  };
+  return digito(9) === Number(d[9]) && digito(10) === Number(d[10]);
+}
+
+export function fmtCpf(cpf) {
+  return apenasDigitos(cpf).replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
 }
 
 export function emailValido(email) {
@@ -118,13 +134,14 @@ export function lerCsvMoradores(texto, idsUnidades) {
   const unidades = new Set(idsUnidades);
   const responsaveis = new Set();
   const linhas = corpo.map((texto, i) => {
-    const [unidade, nome, email, celular, vinculo, responsavel] = dividirLinha(texto, sep);
+    const [unidade, nome, email, celular, vinculo, responsavel, cpf] = dividirLinha(texto, sep);
     const u = String(unidade || '').toUpperCase().replace(/\s+/g, '');
     const erros = [];
     if (!unidades.has(u)) erros.push(`Unidade ${u || '(vazia)'} não existe`);
     if (!String(nome || '').trim()) erros.push('Informe o nome');
     if (email && !emailValido(email)) erros.push('E-mail inválido');
     if (celular && !celularValido(celular)) erros.push('Celular inválido');
+    if (String(cpf || '').trim() && !cpfValido(cpf)) erros.push('CPF inválido');
     const v = vinculo ? VINCULOS_ACEITOS[String(vinculo).toLowerCase()] : 'titular';
     if (!v) erros.push(`Vínculo "${vinculo}" desconhecido`);
     const ehResponsavel = /^(s|sim|x|1|true)$/i.test(String(responsavel || '').trim());
@@ -132,7 +149,7 @@ export function lerCsvMoradores(texto, idsUnidades) {
       if (responsaveis.has(u)) erros.push(`A unidade ${u} já tem responsável financeiro`);
       else responsaveis.add(u);
     }
-    return { numero: i + 1 + (comCabecalho ? 1 : 0), dados: { unidade: u, nome: String(nome || '').trim(), email: String(email || '').trim(), celular: apenasDigitos(celular), vinculo: v || 'titular', responsavel: ehResponsavel }, erros };
+    return { numero: i + 1 + (comCabecalho ? 1 : 0), dados: { unidade: u, nome: String(nome || '').trim(), email: String(email || '').trim(), celular: apenasDigitos(celular), vinculo: v || 'titular', responsavel: ehResponsavel, cpf: apenasDigitos(cpf) }, erros };
   });
   return { linhas, validas: linhas.filter((l) => !l.erros.length).map((l) => l.dados), totalErros: linhas.filter((l) => l.erros.length).length };
 }

@@ -635,6 +635,11 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
   #cartaz-implantacao { position: absolute; inset: 0; margin: auto; width: 170mm; border: 0; }
 }
 .convite-link { white-space: nowrap; padding: 0 8px; font-size: 13px; }
+.selo-conexao { align-self: center; background: #e3f4e8; color: #1f6b3a; border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 600; }
+.conectar-piloto { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.conectar-piloto input { max-width: 160px; padding: 6px 8px; }
+.erro-conexao { color: #fff; background: #b4443a; border-radius: 6px; padding: 2px 8px; font-size: 13px; }
+.pix-real { display: block; width: 160px; height: 160px; image-rendering: pixelated; margin: 0 auto; }
 
 </style>
 <div id="app"></div>
@@ -1820,7 +1825,7 @@ const CONTATO_COMERCIAL = { email: 'comercial@condofacil.cloud', whatsapp: '+55 
 const PASSOS_IMPLANTACAO = [['condominio', 'Condomínio'], ['unidades', 'Unidades'], ['moradores', 'Moradores'], ['cobranca', 'Cobrança'], ['asaas', 'Conta Asaas'], ['areas', 'Áreas comuns'], ['divulgacao', 'Divulgação']];
 const NOMES_VINCULO_MORADOR = { titular: 'Titular', inquilino: 'Inquilino', proprietario: 'Proprietário' };
 const UFS = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' ');
-const MODELO_CSV_MORADORES = 'unidade;nome;email;celular;vinculo;responsavel\n101;Maria Silva;maria@email.com;11987654321;titular;sim\n102;João Souza;joao@email.com;11912345678;inquilino;nao';
+const MODELO_CSV_MORADORES = 'unidade;nome;email;celular;vinculo;responsavel;cpf\n101;Maria Silva;maria@email.com;11987654321;titular;sim;529.982.247-25\n102;João Souza;joao@email.com;11912345678;inquilino;nao;';
 const LIMITE_UNIDADES = 1000;
 
 const AREAS_MODELO = {
@@ -1855,6 +1860,22 @@ function validarCondominio(dados) {
   if (s.email && !emailValido(s.email)) return 'E-mail do síndico inválido';
   if (s.celular && !celularValido(s.celular)) return 'Celular do síndico inválido';
   return null;
+}
+
+// CPF com os dois dígitos verificadores; 11 dígitos iguais não valem.
+function cpfValido(cpf) {
+  const d = apenasDigitos(cpf);
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  const digito = (n) => {
+    const soma = [...d.slice(0, n)].reduce((s, c, i) => s + Number(c) * (n + 1 - i), 0);
+    const resto = (soma * 10) % 11;
+    return resto === 10 ? 0 : resto;
+  };
+  return digito(9) === Number(d[9]) && digito(10) === Number(d[10]);
+}
+
+function fmtCpf(cpf) {
+  return apenasDigitos(cpf).replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
 }
 
 function emailValido(email) {
@@ -1935,13 +1956,14 @@ function lerCsvMoradores(texto, idsUnidades) {
   const unidades = new Set(idsUnidades);
   const responsaveis = new Set();
   const linhas = corpo.map((texto, i) => {
-    const [unidade, nome, email, celular, vinculo, responsavel] = dividirLinha(texto, sep);
+    const [unidade, nome, email, celular, vinculo, responsavel, cpf] = dividirLinha(texto, sep);
     const u = String(unidade || '').toUpperCase().replace(/\s+/g, '');
     const erros = [];
     if (!unidades.has(u)) erros.push(`Unidade ${u || '(vazia)'} não existe`);
     if (!String(nome || '').trim()) erros.push('Informe o nome');
     if (email && !emailValido(email)) erros.push('E-mail inválido');
     if (celular && !celularValido(celular)) erros.push('Celular inválido');
+    if (String(cpf || '').trim() && !cpfValido(cpf)) erros.push('CPF inválido');
     const v = vinculo ? VINCULOS_ACEITOS[String(vinculo).toLowerCase()] : 'titular';
     if (!v) erros.push(`Vínculo "${vinculo}" desconhecido`);
     const ehResponsavel = /^(s|sim|x|1|true)$/i.test(String(responsavel || '').trim());
@@ -1949,7 +1971,7 @@ function lerCsvMoradores(texto, idsUnidades) {
       if (responsaveis.has(u)) erros.push(`A unidade ${u} já tem responsável financeiro`);
       else responsaveis.add(u);
     }
-    return { numero: i + 1 + (comCabecalho ? 1 : 0), dados: { unidade: u, nome: String(nome || '').trim(), email: String(email || '').trim(), celular: apenasDigitos(celular), vinculo: v || 'titular', responsavel: ehResponsavel }, erros };
+    return { numero: i + 1 + (comCabecalho ? 1 : 0), dados: { unidade: u, nome: String(nome || '').trim(), email: String(email || '').trim(), celular: apenasDigitos(celular), vinculo: v || 'titular', responsavel: ehResponsavel, cpf: apenasDigitos(cpf) }, erros };
   });
   return { linhas, validas: linhas.filter((l) => !l.erros.length).map((l) => l.dados), totalErros: linhas.filter((l) => l.erros.length).length };
 }
@@ -1993,7 +2015,7 @@ function condominioNovo(config, agora) {
   const fracoes = fracoesDasUnidades(unidades, valores);
   const unidadesFinanceiro = Object.fromEntries(unidades.map((u) => {
     const r = moradores.find((m) => m.unidade === u.id && m.responsavel);
-    return [u.id, { tipo: u.tipo, fracao: fracoes[u.id], responsavel: r ? { nome: r.nome, relacao: r.vinculo === 'proprietario' ? 'proprietario' : r.vinculo === 'inquilino' ? 'inquilino' : 'titular', documento: 'CPF informado na implantação', canais: ['App', 'E-mail', 'WhatsApp'] } : null }];
+    return [u.id, { tipo: u.tipo, fracao: fracoes[u.id], responsavel: r ? { nome: r.nome, relacao: r.vinculo === 'proprietario' ? 'proprietario' : r.vinculo === 'inquilino' ? 'inquilino' : 'titular', documento: 'CPF informado na implantação', cpf: r.cpf || null, canais: ['App', 'E-mail', 'WhatsApp'] } : null }];
   }));
   const vigente = somarMes(mes, -1);
   const versao = cob.modo === 'fracao'
@@ -2785,6 +2807,85 @@ function recusarMorador(estado, id, perfil) {
 
 function moradoresPendentes(estado) {
   return estado.pessoas.filter((p) => p.situacao === 'pendente');
+}
+
+// ---- src/conectado/acoes.js ----
+
+// Modo conectado: converte o que o servidor devolve do Asaas sandbox nas mesmas estruturas do modo simulado.
+const MSG_SEM_CPF = 'Sem CPF: não será emitida';
+
+function previaConectada(estado, competencia) {
+  const previa = previaCompetencia(estado, competencia);
+  return {
+    ...previa,
+    linhas: previa.linhas.map((l) => (!l.bloqueada && !l.responsavel.cpf ? { ...l, bloqueada: true, motivo: MSG_SEM_CPF } : l)),
+  };
+}
+
+function linhasParaAsaas(estado, competencia, apenas = null) {
+  const previa = previaConectada(estado, competencia);
+  const { multaPct, jurosPct } = estado.financeiro.parametros;
+  return previa.linhas.filter((l) => !l.bloqueada && (!apenas || apenas.includes(l.unidade))).map((l) => {
+    const pessoa = estado.pessoas.find((p) => p.unidade === l.unidade && p.nome === l.responsavel.nome);
+    return {
+      unidade: l.unidade,
+      responsavel: { nome: l.responsavel.nome, cpf: l.responsavel.cpf, email: pessoa ? pessoa.email : '', celular: pessoa ? pessoa.celular : '' },
+      valor: l.total,
+      vencimento: previa.vencimento,
+      descricao: `Taxa condominial de ${mesExtenso(competencia)} · apto ${l.unidade}`,
+      multaPct,
+      jurosPct,
+    };
+  });
+}
+
+function cobrancaDoAsaas(competencia, linha, c) {
+  return {
+    id: `CB-${competencia}-${linha.unidade}`, unidade: linha.unidade, competencia, vencimento: c.vencimento, itens: linha.itens, valor: c.valor,
+    status: 'aberta', pagaEm: null, valorPago: null, forma: null, baixaManual: null, eventosAsaas: [], regua: [], substituiu: null, acordo: null,
+    asaas: { id: c.asaasId, referencia: c.referencia, faturaUrl: c.faturaUrl, boletoUrl: c.boletoUrl, pixCopiaCola: c.pixCopiaCola, pixImagem: c.pixImagem },
+  };
+}
+
+function aplicarEmissao(estado, competencia, resultados, perfil, agora) {
+  if (!podeOperar(perfil)) return { estado, erro: SO_SINDICO };
+  const fin = estado.financeiro;
+  const previa = previaCompetencia(estado, competencia);
+  const existentes = new Set(fin.cobrancas.filter((c) => c.competencia === competencia && !c.acordo).map((c) => c.unidade));
+  const novas = resultados.filter((r) => r.ok && !existentes.has(r.unidade)).map((r) => cobrancaDoAsaas(competencia, previa.linhas.find((l) => l.unidade === r.unidade), r.cobranca));
+  // Falhas antigas das unidades reenviadas agora são substituídas pelo resultado novo.
+  const anteriores = ((fin.falhasAsaas || {})[competencia] || []).filter((f) => !resultados.some((r) => r.unidade === f.unidade));
+  const falhas = [...anteriores, ...resultados.filter((r) => !r.ok).map((r) => ({ unidade: r.unidade, erro: r.erro }))];
+  const emitidas = fin.emitidas.includes(competencia) ? fin.emitidas : [...fin.emitidas, competencia];
+  return {
+    estado: comFinanceiro(estado, {
+      cobrancas: [...fin.cobrancas, ...novas],
+      emitidas,
+      falhasAsaas: { ...(fin.falhasAsaas || {}), [competencia]: falhas },
+      auditoria: comAuditoria(estado, agora, 'Emissão no Asaas sandbox', `${mesExtenso(competencia)}: ${novas.length} cobranças${falhas.length ? ` · falharam: ${falhas.map((f) => f.unidade).join(', ')}` : ''}`),
+    }),
+    emitidas: novas.length,
+    falhas,
+    notificacao: novas.length ? { canal: 'Asaas sandbox', para: `${novas.length} responsáveis`, texto: `Cobranças de ${mesExtenso(competencia)} emitidas no Asaas sandbox: boleto, Pix e fatura` } : undefined,
+  };
+}
+
+function aplicarSituacoes(estado, cobrancasServidor, agora) {
+  let atual = estado;
+  let baixas = 0;
+  let notificacao;
+  for (const s of cobrancasServidor) {
+    if (s.situacao !== 'paga') continue;
+    const id = `CB-${s.competencia}-${s.unidade}`;
+    const c = atual.financeiro.cobrancas.find((x) => x.id === id);
+    if (!c || c.status !== 'aberta') continue;
+    const r = confirmarPagamentoAsaas(atual, id, `evt-${s.asaasId}`, s.forma || 'boleto', s.pagoEm ? new Date(`${s.pagoEm.slice(0, 10)}T12:00:00`) : agora);
+    if (r.erro) continue;
+    atual = r.estado;
+    baixas += 1;
+    notificacao = r.notificacao;
+  }
+  return { estado: atual, baixas, notificacao };
 }
 
 // ---- src/enquetes/regras.js ----
@@ -7747,6 +7848,17 @@ function configTeste() {
 
 const CASOS_IMPLANTACAO = [
   {
+    nome: 'implantação: CPF do responsável na planilha',
+    rodar() {
+      igual([cpfValido('529.982.247-25'), cpfValido('52998224724'), cpfValido('11111111111'), cpfValido('123'), fmtCpf('52998224725')], [true, false, false, false, '529.982.247-25']);
+      const l = lerCsvMoradores('A101;Maria;;;titular;sim;529.982.247-25\nA102;João;;;titular;sim;123\nA201;Ana;;;titular;sim', ['A101', 'A102', 'A201']);
+      igual([l.linhas[0].dados.cpf, l.linhas[1].erros, l.linhas[2].dados.cpf, l.linhas[2].erros], ['52998224725', ['CPF inválido'], '', []]);
+      const cfg = configTeste();
+      const e = condominioNovo({ ...cfg, moradores: [{ ...cfg.moradores[0], cpf: '52998224725' }, cfg.moradores[1]] }, AGORA_IMPLANTACAO);
+      igual([e.financeiro.unidades.A101.responsavel.cpf, e.financeiro.unidades.B201.responsavel.cpf], ['52998224725', null]);
+    },
+  },
+  {
     nome: 'implantação: gerador e planilha de unidades',
     rodar() {
       const g = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
@@ -7851,6 +7963,53 @@ const CASOS_IMPLANTACAO = [
       const ok = aprovarMorador(novo.estado, novo.id, 'sindico', AGORA_IMPLANTACAO).estado;
       igual([moradoresPendentes(ok).length, indicadoresSindico(ok, AGORA_IMPLANTACAO).adesao.com], [0, 3]);
       igual(recusarMorador(novo.estado, novo.id, 'sindico').estado.pessoas.length, 3);
+    },
+  },
+];
+
+// ---- src/casos/conectado.js ----
+
+function condominioConectado() {
+  const cfg = configTeste();
+  return condominioNovo({ ...cfg, id: 'cond-teste', moradores: [{ ...cfg.moradores[0], cpf: '52998224725' }, cfg.moradores[1]], asaas: { situacao: 'aprovada', ambiente: 'sandbox', real: true, walletId: 'wal_1' } }, AGORA_IMPLANTACAO);
+}
+
+const cobrancaServidor = (unidade, mais = {}) => ({ referencia: `cond-teste:2026-10:${unidade}`, condominioId: 'cond-teste', competencia: '2026-10', unidade, asaasId: `pay_${unidade}`, valor: 55000, vencimento: '2026-10-10', situacao: 'pendente', pagoEm: null, forma: null, faturaUrl: 'https://sandbox.asaas.com/i/x', boletoUrl: 'https://sandbox.asaas.com/b/x', pixCopiaCola: '000201', pixImagem: 'iVBOR', ...mais });
+
+const CASOS_CONECTADO = [
+  {
+    nome: 'conectado: prévia bloqueia quem não tem CPF e monta as linhas do Asaas',
+    rodar() {
+      const e = condominioConectado();
+      const comp = proximaCompetencia(e.financeiro);
+      const p = previaConectada(e, comp);
+      const linha = (u) => p.linhas.find((l) => l.unidade === u);
+      igual([linha('A101').bloqueada, linha('B201').motivo, linha('A102').motivo], [false, MSG_SEM_CPF, 'Sem responsável financeiro']);
+      const linhas = linhasParaAsaas(e, comp);
+      igual(linhas.map((l) => [l.unidade, l.valor, l.vencimento, l.responsavel.cpf, l.responsavel.email, l.multaPct]), [['A101', 55000, p.vencimento, '52998224725', 'maria@email.com', 2]]);
+      igual(linhasParaAsaas(e, comp, ['B201']), []);
+    },
+  },
+  {
+    nome: 'conectado: emissão parcial, reenvio sem duplicar e baixa pelo servidor',
+    rodar() {
+      const e = condominioConectado();
+      const r1 = aplicarEmissao(e, '2026-10', [{ unidade: 'A101', ok: true, cobranca: cobrancaServidor('A101') }, { unidade: 'B402', ok: false, erro: 'O CPF informado é inválido.' }], 'sindico', AGORA_IMPLANTACAO);
+      const fin1 = r1.estado.financeiro;
+      igual([r1.emitidas, fin1.emitidas, fin1.cobrancas.map((c) => c.asaas.referencia), fin1.falhasAsaas['2026-10']], [1, ['2026-10'], ['cond-teste:2026-10:A101'], [{ unidade: 'B402', erro: 'O CPF informado é inválido.' }]]);
+      const r2 = aplicarEmissao(r1.estado, '2026-10', [{ unidade: 'B402', ok: true, cobranca: cobrancaServidor('B402') }, { unidade: 'A101', ok: true, cobranca: cobrancaServidor('A101') }], 'sindico', AGORA_IMPLANTACAO);
+      igual([r2.estado.financeiro.cobrancas.length, r2.estado.financeiro.falhasAsaas['2026-10'], r2.estado.financeiro.emitidas], [2, [], ['2026-10']]);
+      igual(aplicarEmissao(e, '2026-10', [], 'morador', AGORA_IMPLANTACAO).erro, 'Somente o síndico pode fazer isso');
+      const pago = aplicarSituacoes(r2.estado, [cobrancaServidor('A101', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' }), cobrancaServidor('B402')], AGORA_IMPLANTACAO);
+      const a101 = pago.estado.financeiro.cobrancas.find((c) => c.unidade === 'A101');
+      igual([pago.baixas, a101.status, a101.forma, pago.estado.financeiro.saldo > 0, pago.notificacao.texto.startsWith('Pagamento recebido')], [1, 'paga', 'pix', true, true]);
+      igual(aplicarSituacoes(pago.estado, [cobrancaServidor('A101', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' })], AGORA_IMPLANTACAO).baixas, 0);
+    },
+  },
+  {
+    nome: 'conectado: só fala com o servidor no domínio do app ou na máquina local',
+    rodar() {
+      igual(['app.condofacil.cloud', 'localhost', '127.0.0.1', 'claude.ai', 'condofacil.cloud'].map(hostPermitido), [true, true, true, false, false]);
     },
   },
 ];
@@ -8045,6 +8204,64 @@ function salvarCondominios(dados) {
   } catch {
     // Sem armazenamento: os condomínios criados valem só nesta aba.
   }
+}
+
+// ---- src/conectado/cliente.js ----
+// Conversa com o servidor do CondoFácil (app.condofacil.cloud). No claude.ai e em arquivo local nada disso roda: tudo fica simulado.
+const CONEXAO = { ativa: false, codigo: null };
+const CHAVE_PILOTO = 'condofacil-piloto-v1';
+const HOSTS_CONECTADOS = ['app.condofacil.cloud', 'localhost', '127.0.0.1'];
+
+function hostPermitido(hostname) {
+  return HOSTS_CONECTADOS.includes(hostname);
+}
+
+async function detectarServidor() {
+  if (typeof location === 'undefined' || !hostPermitido(location.hostname)) return false;
+  try {
+    const r = await fetch('/api/saude', { signal: AbortSignal.timeout(3000) });
+    return r.ok && (await r.json()).ok === true;
+  } catch {
+    return false;
+  }
+}
+
+function lerCodigoPiloto() {
+  try {
+    return localStorage.getItem(CHAVE_PILOTO);
+  } catch {
+    return null;
+  }
+}
+
+function guardarCodigoPiloto(codigo) {
+  try {
+    if (codigo) localStorage.setItem(CHAVE_PILOTO, codigo);
+    else localStorage.removeItem(CHAVE_PILOTO);
+  } catch {
+    // Sem armazenamento, o código vale só até recarregar a página.
+  }
+}
+
+async function chamarApi(metodo, caminho, corpo, codigo = CONEXAO.codigo) {
+  let r;
+  try {
+    r = await fetch(caminho, {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json', 'x-codigo-piloto': codigo || '' },
+      body: corpo === undefined ? undefined : JSON.stringify(corpo),
+      signal: AbortSignal.timeout(20000),
+    });
+  } catch {
+    throw new Error('Sem conexão com o servidor do CondoFácil. Confira a internet e tente de novo');
+  }
+  const dados = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(dados.erro || `O servidor respondeu ${r.status}`);
+  return dados;
+}
+
+function usaAsaasReal(estado) {
+  return CONEXAO.ativa && !!CONEXAO.codigo && estado.origem === 'novo' && !!(estado.condominio.asaas && estado.condominio.asaas.real);
 }
 
 // ---- src/ui/comum.js ----
@@ -8771,14 +8988,35 @@ function EditorComposicao({ linha, competencia, executar }) {
 function CPrevia({ estado, executar }) {
   const fin = estado.financeiro;
   const competencia = proximaCompetencia(fin);
-  const previa = previaCompetencia(estado, competencia);
+  const real = usaAsaasReal(estado);
+  const previa = real ? previaConectada(estado, competencia) : previaCompetencia(estado, competencia);
   const emitida = fin.emitidas.includes(competencia);
+  const falhas = real ? (fin.falhasAsaas || {})[competencia] || [] : [];
   const [aberta, setAberta] = useState(null);
   const [erro, setErro] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [mensagem, setMensagem] = useState(null);
   const emitiveis = previa.linhas.filter((l) => !l.bloqueada);
   const total = emitiveis.reduce((soma, l) => soma + l.total, 0);
 
+  // Modo conectado: o servidor cria as cobranças no Asaas sandbox e o app guarda só as que deram certo.
+  async function emitirNoAsaas(apenas) {
+    setEnviando(true);
+    setErro(null);
+    try {
+      const resp = await chamarApi('POST', '/api/emissoes', { condominio: estado.condominio.id, competencia, linhas: linhasParaAsaas(estado, competencia, apenas) });
+      const r = executar((e) => aplicarEmissao(e, competencia, resp.resultados, 'sindico', new Date()));
+      setErro(r.erro || null);
+      const certas = resp.resultados.filter((x) => x.ok).length;
+      if (!r.erro) setMensagem(`${certas} ${certas === 1 ? 'cobrança emitida' : 'cobranças emitidas'} no Asaas sandbox${r.falhas.length ? ` · ${r.falhas.length} com falha` : ''}.`);
+    } catch (e) {
+      setErro(e.message);
+    }
+    setEnviando(false);
+  }
+
   function emitir() {
+    if (real) { emitirNoAsaas(null); return; }
     const r = executar((e) => emitirCompetencia(e, competencia, 'sindico', new Date()));
     setErro(r.erro || null);
   }
@@ -8793,7 +9031,7 @@ function CPrevia({ estado, executar }) {
       <tbody>${previa.linhas.map((l) => [
         html`<tr key=${l.unidade} class=${l.bloqueada ? 'linha-bloqueada' : ''}>
           <td>${l.unidade}</td>
-          <td>${l.bloqueada ? html`<strong class="texto-perigo">Sem responsável financeiro: não será emitida</strong>` : `${l.responsavel.nome} (${NOMES_RELACAO[l.responsavel.relacao]})`}</td>
+          <td>${l.bloqueada ? html`<strong class="texto-perigo">${l.motivo === 'Sem responsável financeiro' ? 'Sem responsável financeiro: não será emitida' : l.motivo}</strong>` : `${l.responsavel.nome} (${NOMES_RELACAO[l.responsavel.relacao]})`}</td>
           <td>${fmtReais(l.total)}</td>
           <td><button type="button" class="btn-link" onClick=${() => setAberta(aberta === l.unidade ? null : l.unidade)}>${aberta === l.unidade ? 'Fechar' : 'Ver composição'}</button></td>
         </tr>`,
@@ -8803,8 +9041,14 @@ function CPrevia({ estado, executar }) {
       ])}</tbody>
     </table></div>
     <div class="linha-entre total"><span>${emitiveis.length} cobranças · ${previa.linhas.length - emitiveis.length} não emitida(s)</span><strong>${fmtReais(total)}</strong></div>
+    <${Sucesso} texto=${mensagem} />
+    ${falhas.length > 0 && html`<div class="cartao pilha">
+      <strong>Não emitidas no Asaas</strong>
+      <ul class="itens-sacola">${falhas.map((x) => html`<li key=${x.unidade}><span>Apto ${x.unidade}</span><span>${x.erro}</span></li>`)}</ul>
+      <button type="button" class="btn secundario" data-acao="reenviar-falhas" disabled=${enviando} onClick=${() => emitirNoAsaas(falhas.map((x) => x.unidade))}>Reenviar as que falharam</button>
+    </div>`}
     <${Erro} texto=${erro} />
-    ${!emitida && html`<button type="button" class="btn primario" data-acao="emitir" onClick=${emitir}>Emitir ${emitiveis.length} cobranças</button>`}
+    ${!emitida && html`<button type="button" class="btn primario" data-acao="emitir" disabled=${enviando} onClick=${emitir}>${enviando ? 'Emitindo no Asaas…' : `Emitir ${emitiveis.length} cobranças`}</button>`}
   </div>`;
 }
 
@@ -10887,7 +11131,10 @@ function CartaoCobranca({ estado, cobranca, executar, hoje }) {
   const [mensagem, setMensagem] = useState(null);
   const situacao = situacaoCobranca(cobranca, hoje);
   const v = valorAtualizado(cobranca, fin.parametros, hoje);
-  const copiaECola = `00020126580014BR.GOV.BCB.PIX0136${cobranca.id}5204000053039865406${(v.total / 100).toFixed(2)}5802BR`;
+  // Emitida no Asaas sandbox: Pix, boleto e fatura são os reais; senão, simulados como no resto do protótipo.
+  const asaas = cobranca.asaas || null;
+  const [enviando, setEnviando] = useState(false);
+  const copiaECola = asaas && asaas.pixCopiaCola ? asaas.pixCopiaCola : `00020126580014BR.GOV.BCB.PIX0136${cobranca.id}5204000053039865406${(v.total / 100).toFixed(2)}5802BR`;
   const formas = [['pix', 'Pagar com Pix'], ['boleto', 'Boleto'], ['cartao', 'Cartão']].filter(([k]) => fin.parametros.formas.includes(k));
 
   function copiar() {
@@ -10901,6 +11148,17 @@ function CartaoCobranca({ estado, cobranca, executar, hoje }) {
       return;
     }
     navigator.clipboard.writeText(copiaECola).then(() => setMensagem('Código Pix copiado.')).catch(selecionar);
+  }
+
+  async function simularNoSandbox() {
+    setEnviando(true);
+    try {
+      await chamarApi('POST', '/api/simular-pagamento', { referencia: asaas.referencia });
+      setMensagem('Pagamento enviado ao sandbox. A baixa chega pelo webhook em alguns segundos.');
+    } catch (e) {
+      setMensagem(e.message);
+    }
+    setEnviando(false);
   }
 
   function confirmar() {
@@ -10921,16 +11179,21 @@ function CartaoCobranca({ estado, cobranca, executar, hoje }) {
       ${formas.map(([k, nome]) => html`<button type="button" key=${k} class=${forma === k ? 'btn primario' : 'btn secundario'} aria-pressed=${forma === k} onClick=${() => { setForma(k); setMensagem(null); }}>${nome}</button>`)}
     </div>
     ${forma === 'pix' && html`<div class="pagamento">
-      <${QrFalso} texto=${cobranca.id} tamanho=${120} />
+      ${asaas && asaas.pixImagem ? html`<img class="pix-real" alt="QR Code Pix" width="160" height="160" src=${`data:image/png;base64,${asaas.pixImagem}`} />` : html`<${QrFalso} texto=${cobranca.id} tamanho=${120} />`}
       <label class="campo"><span>Pix copia e cola</span><input id=${`pix-${cobranca.id}`} readonly value=${copiaECola} /></label>
       <button type="button" class="btn secundario" onClick=${copiar}>Copiar código</button>
     </div>`}
-    ${forma === 'boleto' && html`<div class="pagamento">
+    ${forma === 'boleto' && asaas && html`<div class="pagamento">
+      <a class="btn secundario" href=${asaas.boletoUrl} target="_blank" rel="noopener">Abrir boleto</a>
+    </div>`}
+    ${forma === 'boleto' && !asaas && html`<div class="pagamento">
       <label class="campo"><span>Linha digitável</span><input id=${`boleto-${cobranca.id}`} readonly value=${linhaDigitavel(cobranca, v.total)} /></label>
       <small class="sub">O PDF do boleto chega por e-mail e WhatsApp.</small>
     </div>`}
     ${forma === 'cartao' && html`<div class="pagamento"><small class="sub">O cartão é pago na página segura do Asaas (simulada no protótipo).</small></div>`}
-    ${forma && html`<button type="button" class="btn primario bloco" onClick=${confirmar}>Simular confirmação do Asaas</button>`}
+    ${asaas && html`<a class="btn-link" href=${asaas.faturaUrl} target="_blank" rel="noopener">Abrir fatura do Asaas</a>`}
+    ${forma && asaas && html`<button type="button" class="btn primario bloco" data-acao="simular-sandbox" disabled=${enviando} onClick=${simularNoSandbox}>Simular pagamento no sandbox</button>`}
+    ${forma && !asaas && html`<button type="button" class="btn primario bloco" onClick=${confirmar}>Simular confirmação do Asaas</button>`}
     <${Sucesso} texto=${mensagem} />
     <button type="button" class="btn-link" onClick=${() => setMensagem(`2ª via gerada com valor atualizado: ${fmtReais(v.total)}.`)}>Gerar 2ª via</button>
   </article>`;
@@ -12917,6 +13180,7 @@ function numeroImplantacao(texto) {
 // Converte o rascunho (textos do formulário) na configuração que o condominioNovo espera.
 function configDoRascunho(r) {
   return {
+    id: r.idCondominio,
     condominio: { ...r.condominio, sindico: { ...r.condominio.sindico, unidade: String(r.condominio.sindico.unidade || '').toUpperCase().replace(/\s+/g, '') } },
     unidades: r.unidades,
     moradores: r.moradores,
@@ -13012,14 +13276,14 @@ function PassoMoradores({ r, mudar }) {
   }, [r.csvMoradores, r.unidades.length]);
   return html`<div class="pilha formulario">
     <p class="sub">Cole a planilha dos moradores (pode ser exportada do Excel ou do Google Planilhas). Este passo é opcional: quem não estiver na lista pode entrar pelo QR Code do convite.</p>
-    <details class="composicao"><summary>Modelo da planilha</summary><pre class="modelo-csv">${MODELO_CSV_MORADORES}</pre><small class="sub">vinculo: titular, inquilino ou proprietario · responsavel: sim ou não (quem recebe a cobrança).</small></details>
+    <details class="composicao"><summary>Modelo da planilha</summary><pre class="modelo-csv">${MODELO_CSV_MORADORES}</pre><small class="sub">vinculo: titular, inquilino ou proprietario · responsavel: sim ou não (quem recebe a cobrança) · cpf: do responsável, exigido pelo Asaas para emitir a cobrança real.</small></details>
     <${Campo} rotulo="Planilha de moradores"><textarea id="impl-csv-moradores" rows="8" value=${r.csvMoradores} onInput=${(ev) => mudar({ csvMoradores: ev.target.value })} placeholder=${MODELO_CSV_MORADORES}></textarea><//>
     ${leitura.linhas.length > 0 && html`<div class="cartao pilha">
       <strong>${leitura.validas.length} de ${leitura.linhas.length} linhas prontas${leitura.totalErros ? ` · ${leitura.totalErros} com erro` : ''}</strong>
       <div class="tabela-rolagem"><table class="tabela">
-        <thead><tr><th>Linha</th><th>Unidade</th><th>Nome</th><th>Vínculo</th><th>Responsável</th><th>Situação</th></tr></thead>
+        <thead><tr><th>Linha</th><th>Unidade</th><th>Nome</th><th>Vínculo</th><th>Responsável</th><th>CPF</th><th>Situação</th></tr></thead>
         <tbody>${leitura.linhas.map((l) => html`<tr key=${l.numero}>
-          <td>${l.numero}</td><td>${l.dados.unidade}</td><td>${l.dados.nome}</td><td>${NOMES_VINCULO_MORADOR[l.dados.vinculo]}</td><td>${l.dados.responsavel ? 'Sim' : '—'}</td>
+          <td>${l.numero}</td><td>${l.dados.unidade}</td><td>${l.dados.nome}</td><td>${NOMES_VINCULO_MORADOR[l.dados.vinculo]}</td><td>${l.dados.responsavel ? 'Sim' : '—'}</td><td>${l.dados.cpf ? fmtCpf(l.dados.cpf) : '—'}</td>
           <td>${l.erros.length ? html`<span class="erro-linha">${l.erros.join(' · ')}</span>` : html`<${Etiqueta} tipo="ok">OK<//>`}</td>
         </tr>`)}</tbody>
       </table></div>
@@ -13050,12 +13314,60 @@ function PassoCobranca({ r, mudar }) {
     </div>
     ${cfg.valores.A > 0 && html`<div class="cartao simulacao"><strong>Prévia da taxa</strong><dl class="resumo">
       ${['A', 'cobertura'].map((tipo) => exemplo(tipo) && html`<dt key=${`t${tipo}`}>${tipo === 'A' ? 'Apto padrão' : 'Cobertura'}${fracoes ? ` · fração ${(fracoes[exemplo(tipo).id] * 100).toFixed(4).replace('.', ',')}%` : ''}</dt><dd key=${`v${tipo}`}>${fmtReais(Math.round(mensal(exemplo(tipo)) * (1 + (cfg.fundoPct || 0) / 100)))} por mês com fundo</dd>`)}
-      <dt>Arrecadação mensal</dt><dd>${fmtReais(r.unidades.reduce((s, u) => s + Math.round(mensal(u) * (1 + (cfg.fundoPct || 0) / 100)), 0))}</dd>
+      <dt>Arrecadação mensal</dt><dd>${fmtReais(arrecadacaoPrevista(r))}</dd>
     </dl></div>`}
   </div>`;
 }
 
+// Soma das taxas do mês com o fundo de reserva; vai como faturamento estimado na subconta do Asaas.
+function arrecadacaoPrevista(r) {
+  const cfg = configDoRascunho(r).cobranca;
+  if (!(cfg.valores.A > 0)) return 0;
+  const fracoes = fracoesDasUnidades(r.unidades, cfg.valores);
+  const mensal = cfg.modo === 'fracao' && cfg.orcamento > 0 ? (u) => Math.round(cfg.orcamento * fracoes[u.id]) : (u) => (u.tipo === 'cobertura' ? cfg.valores.cobertura : cfg.valores.A);
+  return r.unidades.reduce((s, u) => s + Math.round(mensal(u) * (1 + (cfg.fundoPct || 0) / 100)), 0);
+}
+
+function SubcontaReal({ r, mudar }) {
+  const a = r.asaas;
+  const c = r.condominio;
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState(null);
+  const campo = (chave) => (ev) => mudar({ asaas: { ...a, [chave]: ev.target.value } });
+
+  async function criar() {
+    const cnpj = apenasDigitos(a.cnpj || c.cnpj);
+    if (cnpj.length !== 14) { setErro('Informe o CNPJ do condomínio (14 dígitos)'); return; }
+    if (!c.cep || !c.endereco || !a.numero || !a.bairro) { setErro('Preencha CEP e endereço (passo Condomínio), número e bairro'); return; }
+    if (!c.sindico.email || !c.sindico.celular) { setErro('Informe o e-mail e o celular do síndico no passo Condomínio'); return; }
+    const id = r.idCondominio || `cond-${identificadorCondominio(c.nome)}-${Date.now().toString(36)}`;
+    setEnviando(true);
+    setErro(null);
+    try {
+      const resp = await chamarApi('POST', '/api/condominios', { id, nome: c.nome, cnpj, email: c.sindico.email, celular: apenasDigitos(c.sindico.celular), cep: apenasDigitos(c.cep), endereco: c.endereco, numero: a.numero, bairro: a.bairro, rendaMensal: arrecadacaoPrevista(r) || 100000 });
+      mudar({ idCondominio: id, asaas: { ...a, cnpj, situacao: 'aprovada', ambiente: 'sandbox', real: true, walletId: resp.walletId } });
+    } catch (e) {
+      setErro(e.message);
+    }
+    setEnviando(false);
+  }
+
+  return html`<div class="pilha formulario">
+    <p class="sub">Asaas sandbox conectado: a subconta é criada de verdade no ambiente de testes (dinheiro de mentira).</p>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="CNPJ do condomínio"><input id="impl-asaas-cnpj" inputmode="numeric" value=${a.cnpj || c.cnpj} onInput=${campo('cnpj')} /><//>
+      <${Campo} rotulo="Número"><input id="impl-numero" value=${a.numero || ''} onInput=${campo('numero')} /><//>
+      <${Campo} rotulo="Bairro"><input id="impl-bairro" value=${a.bairro || ''} onInput=${campo('bairro')} /><//>
+    </div>
+    ${a.real
+      ? html`<p class="sucesso">Subconta aprovada no Asaas sandbox (carteira ${a.walletId}). As cobranças vão sair por ela.</p>`
+      : html`<button type="button" class="btn primario" data-acao="criar-subconta" disabled=${enviando} onClick=${criar}>${enviando ? 'Criando no Asaas…' : 'Criar subconta no Asaas sandbox'}</button>`}
+    <${Erro} texto=${erro} />
+  </div>`;
+}
+
 function PassoAsaas({ r, mudar }) {
+  if (CONEXAO.ativa && CONEXAO.codigo) return html`<${SubcontaReal} r=${r} mudar=${mudar} />`;
   const a = r.asaas;
   const campo = (chave) => (ev) => mudar({ asaas: { ...a, [chave]: ev.target.value } });
   const etiqueta = { pendente: ['neutro', 'Não criada'], analise: ['alerta', 'Em análise'], aprovada: ['ok', 'Aprovada'] }[a.situacao];
@@ -13331,6 +13643,41 @@ function App() {
     setGeracao(geracao + 1);
   }
 
+  // Modo conectado: só em app.condofacil.cloud (ou na máquina local) com o servidor respondendo.
+  const [conexao, setConexao] = useState({ servidor: false, codigo: null, erro: null });
+  useEffect(() => {
+    detectarServidor().then((achou) => {
+      if (!achou) return;
+      CONEXAO.ativa = true;
+      CONEXAO.codigo = lerCodigoPiloto();
+      setConexao({ servidor: true, codigo: CONEXAO.codigo, erro: null });
+    });
+  }, []);
+
+  async function conectar(codigo) {
+    try {
+      await chamarApi('GET', '/api/cobrancas?condominio=teste', undefined, codigo);
+      CONEXAO.codigo = codigo;
+      guardarCodigoPiloto(codigo);
+      setConexao({ servidor: true, codigo, erro: null });
+    } catch (e) {
+      setConexao({ servidor: true, codigo: null, erro: e.message });
+    }
+  }
+
+  const real = conexao.codigo && usaAsaasReal(estado);
+  const telaFinanceira = (rota.perfil === 'sindico' && rota.tela === 'cobranca') || (rota.perfil === 'morador' && rota.tela === 'financeiro');
+  useEffect(() => {
+    if (!real) return undefined;
+    const id = estado.condominio.id;
+    const sincronizar = () => chamarApi('GET', `/api/cobrancas?condominio=${encodeURIComponent(id)}`)
+      .then((r) => { if (estadoAtual.current.condominio.id === id) executar((e) => aplicarSituacoes(e, r.cobrancas, new Date())); })
+      .catch(() => {});
+    sincronizar();
+    const t = setInterval(sincronizar, 15000);
+    return () => clearInterval(t);
+  }, [real, estado.condominio.id, telaFinanceira]);
+
   const Tela = TELAS_PERFIL[rota.perfil];
   return html`
     <header class="barra-demo">
@@ -13350,6 +13697,9 @@ function App() {
         <button type="button" class="precos" aria-expanded=${mostrarPrecos} onClick=${() => setMostrarPrecos(!mostrarPrecos)}>Preços</button>
       </div>
       ${estado.origem !== 'novo' && html`<button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>`}
+      ${conexao.servidor && (conexao.codigo
+        ? html`<span class="selo-conexao">Asaas sandbox conectado</span>`
+        : html`<${ConectarPiloto} erro=${conexao.erro} aoConectar=${conectar} />`)}
     </header>
     ${mostrarPrecos && html`<${PainelPrecos} plano=${estado.plano} unidades=${estado.condominio.unidades.length} aoFechar=${() => setMostrarPrecos(false)} />`}
     <main class=${`palco palco-${rota.perfil}`}>
@@ -13362,6 +13712,15 @@ function App() {
   `;
 }
 
+function ConectarPiloto({ erro, aoConectar }) {
+  const [codigo, setCodigo] = useState('');
+  return html`<form class="conectar-piloto" onSubmit=${(ev) => { ev.preventDefault(); if (codigo.trim()) aoConectar(codigo.trim()); }}>
+    <label><span class="so-leitor">Código do piloto</span><input id="codigo-piloto" type="password" autocomplete="off" placeholder="Código do piloto" value=${codigo} onInput=${(ev) => setCodigo(ev.target.value)} /></label>
+    <button type="submit" data-acao="conectar-piloto">Conectar ao Asaas</button>
+    ${erro && html`<span class="erro-conexao" role="alert">${erro}</span>`}
+  </form>`;
+}
+
 function PainelPrecos({ plano, unidades, aoFechar }) {
   return html`<div class="painel-precos" role="dialog" aria-label="Preços por plano">
     <div class="linha-entre"><strong>Preços para ${unidades} unidades · faixa de ${PRECO_BASE.faixa}</strong><button type="button" class="btn-link" onClick=${aoFechar}>Fechar</button></div>
@@ -13371,7 +13730,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE, ...CASOS_IMPLANTACAO].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE, ...CASOS_IMPLANTACAO, ...CASOS_CONECTADO].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };

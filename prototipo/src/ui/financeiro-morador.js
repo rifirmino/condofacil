@@ -9,6 +9,7 @@ import { Sucesso, Vazio, QrFalso, PrevDoc } from './comum.js';
 import { EtqCobranca } from './financeiro-sindico.js';
 import { PropostaAcordo, MeuAcordo } from './acordos.js';
 import { MudancasTaxa } from './composicao.js';
+import { chamarApi } from '../conectado/cliente.js';
 
 function responsavelDaPessoa(estado, eu) {
   const responsavel = estado.financeiro.unidades[eu].responsavel;
@@ -69,7 +70,10 @@ function CartaoCobranca({ estado, cobranca, executar, hoje }) {
   const [mensagem, setMensagem] = useState(null);
   const situacao = situacaoCobranca(cobranca, hoje);
   const v = valorAtualizado(cobranca, fin.parametros, hoje);
-  const copiaECola = `00020126580014BR.GOV.BCB.PIX0136${cobranca.id}5204000053039865406${(v.total / 100).toFixed(2)}5802BR`;
+  // Emitida no Asaas sandbox: Pix, boleto e fatura são os reais; senão, simulados como no resto do protótipo.
+  const asaas = cobranca.asaas || null;
+  const [enviando, setEnviando] = useState(false);
+  const copiaECola = asaas && asaas.pixCopiaCola ? asaas.pixCopiaCola : `00020126580014BR.GOV.BCB.PIX0136${cobranca.id}5204000053039865406${(v.total / 100).toFixed(2)}5802BR`;
   const formas = [['pix', 'Pagar com Pix'], ['boleto', 'Boleto'], ['cartao', 'Cartão']].filter(([k]) => fin.parametros.formas.includes(k));
 
   function copiar() {
@@ -83,6 +87,17 @@ function CartaoCobranca({ estado, cobranca, executar, hoje }) {
       return;
     }
     navigator.clipboard.writeText(copiaECola).then(() => setMensagem('Código Pix copiado.')).catch(selecionar);
+  }
+
+  async function simularNoSandbox() {
+    setEnviando(true);
+    try {
+      await chamarApi('POST', '/api/simular-pagamento', { referencia: asaas.referencia });
+      setMensagem('Pagamento enviado ao sandbox. A baixa chega pelo webhook em alguns segundos.');
+    } catch (e) {
+      setMensagem(e.message);
+    }
+    setEnviando(false);
   }
 
   function confirmar() {
@@ -103,16 +118,21 @@ function CartaoCobranca({ estado, cobranca, executar, hoje }) {
       ${formas.map(([k, nome]) => html`<button type="button" key=${k} class=${forma === k ? 'btn primario' : 'btn secundario'} aria-pressed=${forma === k} onClick=${() => { setForma(k); setMensagem(null); }}>${nome}</button>`)}
     </div>
     ${forma === 'pix' && html`<div class="pagamento">
-      <${QrFalso} texto=${cobranca.id} tamanho=${120} />
+      ${asaas && asaas.pixImagem ? html`<img class="pix-real" alt="QR Code Pix" width="160" height="160" src=${`data:image/png;base64,${asaas.pixImagem}`} />` : html`<${QrFalso} texto=${cobranca.id} tamanho=${120} />`}
       <label class="campo"><span>Pix copia e cola</span><input id=${`pix-${cobranca.id}`} readonly value=${copiaECola} /></label>
       <button type="button" class="btn secundario" onClick=${copiar}>Copiar código</button>
     </div>`}
-    ${forma === 'boleto' && html`<div class="pagamento">
+    ${forma === 'boleto' && asaas && html`<div class="pagamento">
+      <a class="btn secundario" href=${asaas.boletoUrl} target="_blank" rel="noopener">Abrir boleto</a>
+    </div>`}
+    ${forma === 'boleto' && !asaas && html`<div class="pagamento">
       <label class="campo"><span>Linha digitável</span><input id=${`boleto-${cobranca.id}`} readonly value=${linhaDigitavel(cobranca, v.total)} /></label>
       <small class="sub">O PDF do boleto chega por e-mail e WhatsApp.</small>
     </div>`}
     ${forma === 'cartao' && html`<div class="pagamento"><small class="sub">O cartão é pago na página segura do Asaas (simulada no protótipo).</small></div>`}
-    ${forma && html`<button type="button" class="btn primario bloco" onClick=${confirmar}>Simular confirmação do Asaas</button>`}
+    ${asaas && html`<a class="btn-link" href=${asaas.faturaUrl} target="_blank" rel="noopener">Abrir fatura do Asaas</a>`}
+    ${forma && asaas && html`<button type="button" class="btn primario bloco" data-acao="simular-sandbox" disabled=${enviando} onClick=${simularNoSandbox}>Simular pagamento no sandbox</button>`}
+    ${forma && !asaas && html`<button type="button" class="btn primario bloco" onClick=${confirmar}>Simular confirmação do Asaas</button>`}
     <${Sucesso} texto=${mensagem} />
     <button type="button" class="btn-link" onClick=${() => setMensagem(`2ª via gerada com valor atualizado: ${fmtReais(v.total)}.`)}>Gerar 2ª via</button>
   </article>`;

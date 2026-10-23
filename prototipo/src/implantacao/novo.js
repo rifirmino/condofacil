@@ -24,7 +24,7 @@ export function condominioNovo(config, agora) {
   const fracoes = fracoesDasUnidades(unidades, valores);
   const unidadesFinanceiro = Object.fromEntries(unidades.map((u) => {
     const r = moradores.find((m) => m.unidade === u.id && m.responsavel);
-    return [u.id, { tipo: u.tipo, fracao: fracoes[u.id], responsavel: r ? { nome: r.nome, relacao: r.vinculo === 'proprietario' ? 'proprietario' : r.vinculo === 'inquilino' ? 'inquilino' : 'titular', documento: 'CPF informado na implantação', canais: ['App', 'E-mail', 'WhatsApp'] } : null }];
+    return [u.id, { tipo: u.tipo, fracao: fracoes[u.id], responsavel: r ? { nome: r.nome, relacao: r.vinculo === 'proprietario' ? 'proprietario' : r.vinculo === 'inquilino' ? 'inquilino' : 'titular', documento: 'CPF informado na implantação', cpf: r.cpf || null, canais: ['App', 'E-mail', 'WhatsApp'] } : null }];
   }));
   const vigente = somarMes(mes, -1);
   const versao = cob.modo === 'fracao'

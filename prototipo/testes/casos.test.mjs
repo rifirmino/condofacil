@@ -16,6 +16,7 @@ import { CASOS_ORCAMENTO } from '../src/casos/orcamento.js';
 import { CASOS_FINANCEIRO } from '../src/casos/financeiro.js';
 import { CASOS_ENQUETES } from '../src/casos/enquetes.js';
 import { CASOS_IMPLANTACAO } from '../src/casos/implantacao.js';
+import { CASOS_CONECTADO } from '../src/casos/conectado.js';
 import { CASOS_ASSISTENTE } from '../src/casos/assistente.js';
 
-for (const caso of [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE, ...CASOS_IMPLANTACAO]) test(caso.nome, () => caso.rodar());
+for (const caso of [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE, ...CASOS_IMPLANTACAO, ...CASOS_CONECTADO]) test(caso.nome, () => caso.rodar());

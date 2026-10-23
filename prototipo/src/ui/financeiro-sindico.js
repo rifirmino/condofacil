@@ -11,6 +11,8 @@ import { Campo, Erro, Sucesso, Vazio, Etiqueta, QuadroIcone } from './comum.js';
 import { CAcordos } from './acordos.js';
 import { CTaxas } from './composicao.js';
 import { COrcamento } from './orcamento.js';
+import { usaAsaasReal, chamarApi } from '../conectado/cliente.js';
+import { previaConectada, linhasParaAsaas, aplicarEmissao } from '../conectado/acoes.js';
 
 const ETQ_COBRANCA = { aberta: 'info', vencida: 'perigo', paga: 'ok', cancelada: 'neutro' };
 const NOMES_SITUACAO_COBRANCA = { aberta: 'Em aberto', vencida: 'Vencida', paga: 'Paga', cancelada: 'Cancelada' };
@@ -190,14 +192,35 @@ function EditorComposicao({ linha, competencia, executar }) {
 function CPrevia({ estado, executar }) {
   const fin = estado.financeiro;
   const competencia = proximaCompetencia(fin);
-  const previa = previaCompetencia(estado, competencia);
+  const real = usaAsaasReal(estado);
+  const previa = real ? previaConectada(estado, competencia) : previaCompetencia(estado, competencia);
   const emitida = fin.emitidas.includes(competencia);
+  const falhas = real ? (fin.falhasAsaas || {})[competencia] || [] : [];
   const [aberta, setAberta] = useState(null);
   const [erro, setErro] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [mensagem, setMensagem] = useState(null);
   const emitiveis = previa.linhas.filter((l) => !l.bloqueada);
   const total = emitiveis.reduce((soma, l) => soma + l.total, 0);
 
+  // Modo conectado: o servidor cria as cobranças no Asaas sandbox e o app guarda só as que deram certo.
+  async function emitirNoAsaas(apenas) {
+    setEnviando(true);
+    setErro(null);
+    try {
+      const resp = await chamarApi('POST', '/api/emissoes', { condominio: estado.condominio.id, competencia, linhas: linhasParaAsaas(estado, competencia, apenas) });
+      const r = executar((e) => aplicarEmissao(e, competencia, resp.resultados, 'sindico', new Date()));
+      setErro(r.erro || null);
+      const certas = resp.resultados.filter((x) => x.ok).length;
+      if (!r.erro) setMensagem(`${certas} ${certas === 1 ? 'cobrança emitida' : 'cobranças emitidas'} no Asaas sandbox${r.falhas.length ? ` · ${r.falhas.length} com falha` : ''}.`);
+    } catch (e) {
+      setErro(e.message);
+    }
+    setEnviando(false);
+  }
+
   function emitir() {
+    if (real) { emitirNoAsaas(null); return; }
     const r = executar((e) => emitirCompetencia(e, competencia, 'sindico', new Date()));
     setErro(r.erro || null);
   }
@@ -212,7 +235,7 @@ function CPrevia({ estado, executar }) {
       <tbody>${previa.linhas.map((l) => [
         html`<tr key=${l.unidade} class=${l.bloqueada ? 'linha-bloqueada' : ''}>
           <td>${l.unidade}</td>
-          <td>${l.bloqueada ? html`<strong class="texto-perigo">Sem responsável financeiro: não será emitida</strong>` : `${l.responsavel.nome} (${NOMES_RELACAO[l.responsavel.relacao]})`}</td>
+          <td>${l.bloqueada ? html`<strong class="texto-perigo">${l.motivo === 'Sem responsável financeiro' ? 'Sem responsável financeiro: não será emitida' : l.motivo}</strong>` : `${l.responsavel.nome} (${NOMES_RELACAO[l.responsavel.relacao]})`}</td>
           <td>${fmtReais(l.total)}</td>
           <td><button type="button" class="btn-link" onClick=${() => setAberta(aberta === l.unidade ? null : l.unidade)}>${aberta === l.unidade ? 'Fechar' : 'Ver composição'}</button></td>
         </tr>`,
@@ -222,8 +245,14 @@ function CPrevia({ estado, executar }) {
       ])}</tbody>
     </table></div>
     <div class="linha-entre total"><span>${emitiveis.length} cobranças · ${previa.linhas.length - emitiveis.length} não emitida(s)</span><strong>${fmtReais(total)}</strong></div>
+    <${Sucesso} texto=${mensagem} />
+    ${falhas.length > 0 && html`<div class="cartao pilha">
+      <strong>Não emitidas no Asaas</strong>
+      <ul class="itens-sacola">${falhas.map((x) => html`<li key=${x.unidade}><span>Apto ${x.unidade}</span><span>${x.erro}</span></li>`)}</ul>
+      <button type="button" class="btn secundario" data-acao="reenviar-falhas" disabled=${enviando} onClick=${() => emitirNoAsaas(falhas.map((x) => x.unidade))}>Reenviar as que falharam</button>
+    </div>`}
     <${Erro} texto=${erro} />
-    ${!emitida && html`<button type="button" class="btn primario" data-acao="emitir" onClick=${emitir}>Emitir ${emitiveis.length} cobranças</button>`}
+    ${!emitida && html`<button type="button" class="btn primario" data-acao="emitir" disabled=${enviando} onClick=${emitir}>${enviando ? 'Emitindo no Asaas…' : `Emitir ${emitiveis.length} cobranças`}</button>`}
   </div>`;
 }
 
