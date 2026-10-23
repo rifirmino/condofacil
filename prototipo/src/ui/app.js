@@ -133,7 +133,7 @@ function App() {
   return html`
     <header class="barra-demo">
       <div class="marca"><span class="logo"><${Icone} nome="predio" tamanho=${20} /></span><strong class="marca-nome">CondoFácil</strong><span class="sub">${estado.condominio.nome} · ${estado.condominio.unidades.length} unidades</span></div>
-      <label class="seletor-condominio"><span class="so-leitor">Condomínio</span><select id="seletor-condominio" value=${estado.origem === 'novo' ? estado.condominio.id : 'demo'} onChange=${(ev) => trocarCondominio(ev.target.value)}>
+      <label class="seletor-condominio"><span class="so-leitor">Condomínio</span><select id="seletor-condominio" value=${rota.perfil === 'implantacao' ? 'novo' : estado.origem === 'novo' ? estado.condominio.id : 'demo'} onChange=${(ev) => trocarCondominio(ev.target.value)}>
         <option value="demo">Residencial Ipê Amarelo (demonstração)</option>
         ${Object.values(condominios.lista).map((c) => html`<option key=${c.condominio.id} value=${c.condominio.id}>${c.condominio.nome}</option>`)}
         <option value="novo">+ Novo condomínio</option>
@@ -155,7 +155,7 @@ function App() {
         ? html`<${TelaImplantacao} rota=${rota} rascunho=${condominios.rascunho} aoSalvarRascunho=${(r) => guardarCondominios({ rascunho: r })} aoAtivar=${ativarCondominio} />`
         : html`<${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />`}
     </main>
-    ${rota.perfil !== 'implantacao' && html`<${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} executar=${executar} obterEstado=${() => estadoAtual.current} />`}
+    ${rota.perfil !== 'implantacao' && rota.tela !== 'convite' && html`<${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} executar=${executar} obterEstado=${() => estadoAtual.current} />`}
     ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
   `;
 }

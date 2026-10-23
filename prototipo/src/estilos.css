@@ -629,3 +629,4 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
   #cartaz-implantacao, #cartaz-implantacao * { visibility: visible; }
   #cartaz-implantacao { position: absolute; inset: 0; margin: auto; width: 170mm; border: 0; }
 }
+.convite-link { white-space: nowrap; padding: 0 8px; font-size: 13px; }

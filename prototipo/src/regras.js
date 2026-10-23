@@ -162,6 +162,6 @@ export function indicadoresSindico(estado, agora) {
     slaVencidas: estado.ocorrencias.filter((o) => slaVencido(o, agora)).length,
     paradas: estado.encomendas.filter((e) => encomendaParada(e, agora)).length,
     vencendo: alertasDocumentos(estado.documentos, isoDia(agora)).length,
-    adesao: { com: new Set(estado.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, total: estado.condominio.unidades.length },
+    adesao: { com: new Set(estado.pessoas.filter((p) => !p.naoResidente && (!p.situacao || p.situacao === 'ativo')).map((p) => p.unidade)).size, total: estado.condominio.unidades.length },
   };
 }

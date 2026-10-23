@@ -72,7 +72,7 @@ function Categorias({ estado }) {
   const maximo = linhas[0][1];
   return html`<section class="cartao">
     <p class="titulo-grafico">Para onde foi o dinheiro em ${mesExtenso(fin.vigente)}</p>
-    <ul class="barras-h">${linhas.map(([nome, valor]) => html`<li key=${nome}><span>${nome}</span><span class="trilho"><span class="b-despesa" style=${`width:${Math.round((valor / maximo) * 100)}%`}></span></span><strong>${fmtReaisCurto(valor)}</strong></li>`)}</ul>
+    <ul class="barras-h">${linhas.map(([nome, valor]) => html`<li key=${nome}><span>${nome}</span><span class="trilho"><span class="b-despesa" style=${`width:${maximo ? Math.round((valor / maximo) * 100) : 0}%`}></span></span><strong>${fmtReaisCurto(valor)}</strong></li>`)}</ul>
   </section>`;
 }
 

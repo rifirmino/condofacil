@@ -17,6 +17,7 @@ import { alertasEscala } from '../escala/regras.js';
 import { infracaoPorId, alertasInfracoes } from '../infracoes/regras.js';
 import { CartaoProcessoOcorrencia, BlocoProcessos, SDetalheInfracao } from './infracoes.js';
 import { SFinanceiro } from './financeiro.js';
+import { AprovacaoMoradores } from './convite.js';
 import { SEnquetes } from './enquetes.js';
 import { alertasEnquetes } from '../enquetes/regras.js';
 import { alertasContas } from '../financeiro/contas.js';
@@ -60,7 +61,7 @@ export function TelaSindico(props) {
   </div>`;
 }
 
-function SInicio({ estado, agora }) {
+function SInicio({ estado, agora, executar }) {
   const ind = indicadoresSindico(estado, agora);
   const pendentes = estado.reservas.filter((r) => r.status === 'pendente');
   const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora));
@@ -85,6 +86,7 @@ function SInicio({ estado, agora }) {
   const semPendencias = !pendentes.length && !pendOperacao.length && !paradas.length && !alertas.length && !vendedoresPendentes.length && !pendCobranca.length;
   return html`<section>
     <h1>Olá, ${estado.condominio.sindico.nome.split(' ')[0]}</h1>
+    <${AprovacaoMoradores} estado=${estado} executar=${executar} />
     <${PainelFinanceiro} estado=${estado} agora=${agora} />
     <h2>Precisa da sua atenção</h2>
     ${semPendencias

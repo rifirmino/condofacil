@@ -141,7 +141,7 @@ export function indicadoresFinanceiros(estado, hoje) {
   const inadimplenciaPct = Math.round((lista.length / totalUnidades) * 1000) / 10;
   return {
     saldo: { valor: fin.saldo, despesaMedia, alerta: fin.saldo < despesaMedia },
-    arrecadado: { competencia: fin.vigente, recebido, previsto, pct, alerta: pct < 85, proxima: fin.emitidas.includes(proxima) ? { competencia: proxima, pagas: daProxima.filter((c) => c.status === 'paga').length, total: daProxima.length } : null },
+    arrecadado: { competencia: fin.vigente, recebido, previsto, pct, alerta: previsto > 0 && pct < 85, proxima: fin.emitidas.includes(proxima) ? { competencia: proxima, pagas: daProxima.filter((c) => c.status === 'paga').length, total: daProxima.length } : null },
     inadimplencia: { unidades: lista.length, total: totalUnidades, pct: inadimplenciaPct, valor: lista.reduce((soma, d) => soma + d.valor, 0), alerta: inadimplenciaPct > 10 },
     despesas: { valor: despesas, orcado, desvio, alerta: desvio > 10 },
   };
@@ -153,6 +153,7 @@ export function serieReceitasDespesas(estado, hoje) {
 }
 
 export function tituloSerie(serie) {
+  if (serie.every((m) => !m.receitas && !m.despesas)) return 'Ainda sem receitas e despesas registradas';
   const acima = serie.filter((m) => m.despesas > m.receitas);
   if (!acima.length) return 'Receita cobriu a despesa em todos os meses';
   if (acima.length === 1) return `Despesa superou a receita só em ${mesExtenso(acima[0].mes)}`;

@@ -10,6 +10,7 @@ import { MFinanceiro, CartaoCobrancaInicio } from './financeiro-morador.js';
 import { infracaoPorId } from '../infracoes/regras.js';
 import { resumosPublicados, resumoDoBalancete } from '../financeiro/balancete.js';
 import { MEnquetes, CartaoEnqueteInicio } from './enquetes-morador.js';
+import { MConvite } from './convite.js';
 import { fmtReais } from '../cobranca/regras.js';
 import { MBlocoInfracoes, MDetalheInfracao, CartaoInfracaoInicio } from './infracoes.js';
 import { areaPorId, statusDia, horariosDaArea, comunicadosDaUnidade, avisoCancelamento, encomendaParada, STATUS_ATIVOS } from '../regras.js';
@@ -45,18 +46,19 @@ function tipoEtiquetaAviso(c) {
 function personasMorador(estado) {
   if (estado.origem !== 'novo') return MORADORES_DEMO;
   const vistos = new Set();
-  return estado.pessoas.filter((p) => p.situacao !== 'pendente' && !vistos.has(p.unidade) && vistos.add(p.unidade)).slice(0, 6).map((p) => [p.unidade, p.nome.split(' ')[0]]);
+  return estado.pessoas.filter((p) => p.situacao === 'ativo' && !vistos.has(p.unidade) && vistos.add(p.unidade)).slice(0, 6).map((p) => [p.unidade, p.nome.split(' ')[0]]);
 }
 
 export function TelaMorador(props) {
   const eu = props.estado.moradorAtual;
-  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao, enquetes: MEnquetes };
+  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao, enquetes: MEnquetes, convite: MConvite };
   const Conteudo = telas[props.rota.tela] || MInicio;
   const aba = ['documentos', 'encomendas', 'preferencias', 'avisos', 'prestacao', 'enquetes'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
   return html`<div class="celular">
     <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
     <div class="cel-pessoa" role="group" aria-label="Morador da demonstração">
       ${personasMorador(props.estado).map(([unidade, nome]) => html`<button type="button" key=${unidade} aria-pressed=${unidade === eu} onClick=${() => props.executar((e) => trocarMorador(e, unidade))}>${nome} · ${unidade}</button>`)}
+    ${props.estado.origem === 'novo' && html`<a class="btn-link convite-link" href="#morador.convite">Entrar pelo convite</a>`}
     </div>
     <div class="cel-conteudo"><${Conteudo} ...${props} eu=${eu} /></div>
     <nav class="cel-abas" aria-label="Navegação do morador">

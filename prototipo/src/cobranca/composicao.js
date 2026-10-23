@@ -31,10 +31,20 @@ function unidadeModelo(fin, tipo) {
   return Object.keys(fin.unidades).find((u) => fin.unidades[u].tipo === tipo);
 }
 
+// Só os tipos que existem no condomínio (um prédio sem coberturas não mostra a linha da cobertura).
+export function tiposPresentes(fin) {
+  return Object.keys(NOMES_TIPO_UNIDADE).filter((tipo) => unidadeModelo(fin, tipo));
+}
+
+// Versão que a nova substitui: a anterior, ou a própria vigente quando ainda não houve emissão (mesma competência).
+function versaoBase(fin, vigencia) {
+  return versaoAnterior(fin, vigencia) || versaoVigente(fin);
+}
+
 export function montarVersao(fin, dados) {
   const minimo = primeiraNaoEmitida(fin);
   if (!dados.vigencia || dados.vigencia < minimo) return { erro: `A vigência deve ser a partir de ${nomeMes(minimo)}` };
-  const base = versaoAnterior(fin, dados.vigencia);
+  const base = versaoBase(fin, dados.vigencia);
   const modo = dados.modo || base.modo;
   const fundoPct = dados.fundoPct === undefined || dados.fundoPct === '' ? base.fundoPct : Number(dados.fundoPct);
   if (!Number.isFinite(fundoPct) || fundoPct < 0 || fundoPct > 30) return { erro: 'O fundo de reserva deve ser de 0% a 30%' };
@@ -49,8 +59,9 @@ export function montarVersao(fin, dados) {
     else orcamento = aplicar(base.orcamento);
   } else if (modo === 'fixo') {
     const o = dados.ordinaria || {};
-    if (!(o.A > 0 && o.cobertura > 0)) return { erro: MSG_VALORES };
-    ordinaria = { A: Math.round(o.A), cobertura: Math.round(o.cobertura) };
+    const temCobertura = tiposPresentes(fin).includes('cobertura');
+    if (!(o.A > 0 && (o.cobertura > 0 || !temCobertura))) return { erro: MSG_VALORES };
+    ordinaria = { A: Math.round(o.A), cobertura: Math.round(temCobertura ? o.cobertura : o.A) };
   } else {
     if (!(dados.orcamento > 0)) return { erro: MSG_VALORES };
     orcamento = Math.round(dados.orcamento);
@@ -59,8 +70,8 @@ export function montarVersao(fin, dados) {
 }
 
 export function simularComposicao(fin, nova) {
-  const antes = versaoAnterior(fin, nova.vigencia);
-  const tipos = Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => {
+  const antes = versaoBase(fin, nova.vigencia);
+  const tipos = tiposPresentes(fin).map((tipo) => {
     const u = unidadeModelo(fin, tipo);
     const a = mensalDe(fin, antes, u);
     const d = mensalDe(fin, nova, u);
@@ -71,19 +82,19 @@ export function simularComposicao(fin, nova) {
 }
 
 export function resumoVersao(fin, v) {
-  const valores = Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => `${NOMES_TIPO_UNIDADE[tipo]} ${fmtReais(ordinariaDe(fin, v, unidadeModelo(fin, tipo)))}`).join(' · ');
+  const valores = tiposPresentes(fin).map((tipo) => `${NOMES_TIPO_UNIDADE[tipo]} ${fmtReais(ordinariaDe(fin, v, unidadeModelo(fin, tipo)))}`).join(' · ');
   return `${v.modo === 'fracao' ? `Orçamento ${fmtReais(v.orcamento)}/mês · ` : ''}${valores} · fundo ${v.fundoPct}%`;
 }
 
 export function textoValoresVersao(fin, v) {
-  return Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => {
+  return tiposPresentes(fin).map((tipo) => {
     const u = unidadeModelo(fin, tipo);
     return `${NOMES_TIPO_UNIDADE[tipo]}: ${fmtReais(mensalDe(fin, v, u))} por mês (taxa ordinária ${fmtReais(ordinariaDe(fin, v, u))} + fundo de reserva ${fmtReais(fundoDe(fin, v, u))})`;
   }).join('\n');
 }
 
 export function valorPorTipoExtra(fin, extra) {
-  return Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => ({ tipo, valor: valorExtraDe(fin, extra, unidadeModelo(fin, tipo)) }));
+  return tiposPresentes(fin).map((tipo) => ({ tipo, valor: valorExtraDe(fin, extra, unidadeModelo(fin, tipo)) }));
 }
 
 export function versoesAgendadas(fin) {

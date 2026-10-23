@@ -1,7 +1,7 @@
 import { html, useState } from '../vendor.js';
 import { ordinariaDe, fundoDe, parcelaDe, fimExtra } from '../cobranca/dados.js';
 import { fmtReais } from '../cobranca/regras.js';
-import { NOMES_TIPO_UNIDADE, NOMES_MODO, NOMES_RATEIO, primeiraNaoEmitida, versaoVigente, versoesAgendadas, montarVersao, simularComposicao, resumoVersao, valorPorTipoExtra, fmtFracao, fmtVariacao, mudancasDaUnidade } from '../cobranca/composicao.js';
+import { NOMES_TIPO_UNIDADE, NOMES_MODO, NOMES_RATEIO, primeiraNaoEmitida, versaoVigente, versoesAgendadas, montarVersao, simularComposicao, resumoVersao, valorPorTipoExtra, fmtFracao, fmtVariacao, mudancasDaUnidade, tiposPresentes } from '../cobranca/composicao.js';
 import { novaComposicao, cancelarComposicao, montarTaxaExtra, criarTaxaExtra, encerrarTaxaExtra } from '../cobranca/acoes-composicao.js';
 import { lerPreco } from '../vendas/regras.js';
 import { liberado } from '../planos.js';
@@ -36,7 +36,7 @@ function ResumoEmVigor({ estado }) {
   return html`<dl class="resumo">
     <dt>Modo</dt><dd>${NOMES_MODO[v.modo]}</dd>
     ${v.modo === 'fracao' && html`<dt>Orçamento mensal</dt><dd>${fmtReais(v.orcamento)}</dd>`}
-    ${Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => {
+    ${tiposPresentes(fin).map((tipo) => {
       const u = unidadeDoTipo(fin, tipo);
       return html`<dt key=${`t-${tipo}`}>${NOMES_TIPO_UNIDADE[tipo]}</dt><dd key=${`v-${tipo}`}>${fmtReais(ordinariaDe(fin, v, u))} + fundo ${fmtReais(fundoDe(fin, v, u))}</dd>`;
     })}
@@ -93,7 +93,7 @@ export function FormReajuste({ estado, executar, aoConcluir, inicial = {} }) {
       ${form.forma === 'percentual' && html`<${Campo} rotulo="Percentual (%)" dica="Use negativo para redução"><input id="taxa-pct" inputmode="decimal" value=${form.pct} onInput=${campo('pct')} placeholder="Ex.: 6" /><//>`}
       ${form.forma === 'valores' && form.modo === 'fixo' && html`
         <${Campo} rotulo="Apto tipo A (R$)"><input id="taxa-a" inputmode="decimal" value=${form.A} onInput=${campo('A')} placeholder=${fmtReais(base.ordinaria ? base.ordinaria.A : 0)} /><//>
-        <${Campo} rotulo="Cobertura (R$)"><input id="taxa-cobertura" inputmode="decimal" value=${form.cobertura} onInput=${campo('cobertura')} placeholder=${fmtReais(base.ordinaria ? base.ordinaria.cobertura : 0)} /><//>`}
+        ${tiposPresentes(fin).includes('cobertura') && html`<${Campo} rotulo="Cobertura (R$)"><input id="taxa-cobertura" inputmode="decimal" value=${form.cobertura} onInput=${campo('cobertura')} placeholder=${fmtReais(base.ordinaria ? base.ordinaria.cobertura : 0)} /><//>`}`}
       ${form.forma === 'valores' && form.modo === 'fracao' && html`<${Campo} rotulo="Orçamento mensal (R$)" dica="Rateado pela fração ideal de cada unidade"><input id="taxa-orcamento" inputmode="decimal" value=${form.orcamento} onInput=${campo('orcamento')} placeholder="Ex.: 22.120,00" /><//>`}
       ${comFundo && html`<${Campo} rotulo="Fundo de reserva (%)"><input id="taxa-fundo" inputmode="decimal" value=${form.fundoPct} onInput=${campo('fundoPct')} /><//>`}
       <${Campo} rotulo="Aprovado em" dica="Ata ou data da assembleia"><input id="taxa-ata" value=${form.aprovadoEm} onInput=${campo('aprovadoEm')} placeholder="Ex.: AGE de 15/10/2026, item 2" /><//>

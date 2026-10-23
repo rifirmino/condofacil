@@ -3,7 +3,8 @@ import { condominioNovo } from '../implantacao/novo.js';
 import { indicadoresSindico, alertasDocumentos, destinatarios, comunicadosDaUnidade, horariosDaArea } from '../regras.js';
 import { indicadoresFinanceiros, devedores, previaCompetencia, proximaCompetencia, serieReceitasDespesas, tituloSerie, pendentesDaRegua } from '../cobranca/regras.js';
 import { emitirCompetencia } from '../cobranca/acoes.js';
-import { primeiraNaoEmitida, versaoVigente, alertasComposicao } from '../cobranca/composicao.js';
+import { primeiraNaoEmitida, versaoVigente, alertasComposicao, simularComposicao, resumoVersao } from '../cobranca/composicao.js';
+import { candidataDaPrevisao } from '../cobranca/orcamento.js';
 import { caixaDeEntrada, alertasNotificacoes, indicadorAtendimento } from '../notificacoes/regras.js';
 import { listaOS, alertasManutencao } from '../manutencao/regras.js';
 import { plantaoAgora, alertasEscala } from '../escala/regras.js';
@@ -14,6 +15,7 @@ import { balanceteVivo, mesesDaPrestacao, alertasPrestacao, saldoFinal } from '.
 import { fluxoProjetado } from '../financeiro/fluxo.js';
 import { contextoAbel } from '../assistente/ia.js';
 import { responderAbel } from '../assistente/regras.js';
+import { confirmarConvite, aprovarMorador, recusarMorador, codigoDoConvite, moradoresPendentes } from '../implantacao/acoes.js';
 import { igual } from './afirmar.js';
 
 export const AGORA_IMPLANTACAO = new Date(2026, 9, 23, 10, 0);
@@ -83,18 +85,31 @@ export const CASOS_IMPLANTACAO = [
     },
   },
   {
+    nome: 'implantação: reajuste antes da primeira emissão e condomínio sem coberturas',
+    rodar() {
+      const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
+      const candidata = candidataDaPrevisao(e.financeiro, { linhas: [{ categoria: 'limpeza', valor: 1200000 }], margemPct: 0 });
+      const sim = simularComposicao(e.financeiro, candidata);
+      igual([sim.tipos.map((x) => x.antes), sim.arrecadacaoAntes], [[55000, 82500], 12 * 55000 + 4 * 82500]);
+      const cfg = configTeste();
+      const semCobertura = condominioNovo({ ...cfg, unidades: gerarUnidades({ blocos: [], andares: 2, porAndar: 2, coberturaUltimo: false }).unidades, moradores: [], condominio: { ...cfg.condominio, sindico: { nome: 'Helena Prado', unidade: '201' } } }, AGORA_IMPLANTACAO);
+      const v = versaoVigente(semCobertura.financeiro);
+      igual([simularComposicao(semCobertura.financeiro, v).tipos.map((x) => x.tipo), resumoVersao(semCobertura.financeiro, v).includes('Cobertura')], [['A'], false]);
+    },
+  },
+  {
     nome: 'implantação: regras principais funcionam com o condomínio vazio',
     rodar() {
       const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
       const agora = AGORA_IMPLANTACAO;
       const hoje = '2026-10-23';
       const ind = indicadoresSindico(e, agora);
-      igual([ind.adesao.com, ind.adesao.total], [2, 16]);
+      igual([ind.adesao.com, ind.adesao.total], [1, 16]);
       const fin = indicadoresFinanceiros(e, hoje);
       igual([fin.saldo.valor, fin.saldo.despesaMedia, fin.inadimplencia.unidades, fin.despesas.desvio, fin.arrecadado.pct], [0, 0, 0, 0, 0]);
       igual(devedores(e, hoje), []);
       const serie = serieReceitasDespesas(e, hoje);
-      igual([serie.length, typeof tituloSerie(serie)], [1, 'string']);
+      igual([serie.length, tituloSerie(serie), fin.arrecadado.alerta], [1, 'Ainda sem receitas e despesas registradas', false]);
       igual(pendentesDaRegua(e, hoje, e.plano), []);
       igual([alertasDocumentos(e.documentos, hoje), alertasNotificacoes(e, agora), alertasManutencao(e, agora), alertasInfracoes(e, hoje), alertasEnquetes(e, agora), alertasContas(e, hoje), alertasPrestacao(e, hoje), alertasComposicao(e)], [[], [], [], [], [], [], [], []]);
       igual(alertasEscala(e, agora).length >= 0, true);
@@ -107,6 +122,24 @@ export const CASOS_IMPLANTACAO = [
       igual(horariosDaArea(e, 'academia', '2026-10-24', agora).length, 17);
       for (const perfil of ['sindico', 'morador', 'portaria', 'zelador', 'conselho']) igual(typeof contextoAbel(e, perfil, agora), 'string', perfil);
       igual(responderAbel(e, 'morador', 'Tenho encomenda na portaria?', agora).texto.includes('Nenhuma encomenda'), true);
+    },
+  },
+  {
+    nome: 'implantação: primeiro acesso pelo convite e aprovação do síndico',
+    rodar() {
+      const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
+      igual(e.pessoas.map((p) => p.situacao), ['ativo', 'convidado', 'convidado']);
+      const cod = codigoDoConvite('11987654321');
+      igual(confirmarConvite(e, { unidade: 'A101', nome: 'Maria Silva', celular: '11987654321', codigo: '000000' }, AGORA_IMPLANTACAO).erro, 'Código inválido. Confira o SMS');
+      igual(confirmarConvite(e, { unidade: 'Z1', nome: 'x', celular: '11987654321', codigo: cod }, AGORA_IMPLANTACAO).erro, 'Escolha a sua unidade');
+      const maria = confirmarConvite(e, { unidade: 'a101', nome: 'maria silva', celular: '(11) 98765-4321', codigo: cod }, AGORA_IMPLANTACAO);
+      igual([maria.situacao, maria.estado.pessoas[1].situacao, maria.estado.moradorAtual, indicadoresSindico(maria.estado, AGORA_IMPLANTACAO).adesao.com], ['ativo', 'ativo', 'A101', 2]);
+      const novo = confirmarConvite(maria.estado, { unidade: 'A202', nome: 'Paulo Reis', celular: '11911112222', codigo: codigoDoConvite('11911112222') }, AGORA_IMPLANTACAO);
+      igual([novo.situacao, moradoresPendentes(novo.estado).map((p) => p.nome), novo.notificacao.texto], ['pendente', ['Paulo Reis'], 'Novo morador no apto A202: Paulo Reis. Aprove no Início']);
+      igual(aprovarMorador(novo.estado, novo.id, 'morador', AGORA_IMPLANTACAO).erro, 'Somente o síndico pode fazer isso');
+      const ok = aprovarMorador(novo.estado, novo.id, 'sindico', AGORA_IMPLANTACAO).estado;
+      igual([moradoresPendentes(ok).length, indicadoresSindico(ok, AGORA_IMPLANTACAO).adesao.com], [0, 3]);
+      igual(recusarMorador(novo.estado, novo.id, 'sindico').estado.pessoas.length, 3);
     },
   },
 ];

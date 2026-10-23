@@ -634,6 +634,7 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
   #cartaz-implantacao, #cartaz-implantacao * { visibility: visible; }
   #cartaz-implantacao { position: absolute; inset: 0; margin: auto; width: 170mm; border: 0; }
 }
+.convite-link { white-space: nowrap; padding: 0 8px; font-size: 13px; }
 
 </style>
 <div id="app"></div>
@@ -1191,7 +1192,7 @@ function indicadoresFinanceiros(estado, hoje) {
   const inadimplenciaPct = Math.round((lista.length / totalUnidades) * 1000) / 10;
   return {
     saldo: { valor: fin.saldo, despesaMedia, alerta: fin.saldo < despesaMedia },
-    arrecadado: { competencia: fin.vigente, recebido, previsto, pct, alerta: pct < 85, proxima: fin.emitidas.includes(proxima) ? { competencia: proxima, pagas: daProxima.filter((c) => c.status === 'paga').length, total: daProxima.length } : null },
+    arrecadado: { competencia: fin.vigente, recebido, previsto, pct, alerta: previsto > 0 && pct < 85, proxima: fin.emitidas.includes(proxima) ? { competencia: proxima, pagas: daProxima.filter((c) => c.status === 'paga').length, total: daProxima.length } : null },
     inadimplencia: { unidades: lista.length, total: totalUnidades, pct: inadimplenciaPct, valor: lista.reduce((soma, d) => soma + d.valor, 0), alerta: inadimplenciaPct > 10 },
     despesas: { valor: despesas, orcado, desvio, alerta: desvio > 10 },
   };
@@ -1203,6 +1204,7 @@ function serieReceitasDespesas(estado, hoje) {
 }
 
 function tituloSerie(serie) {
+  if (serie.every((m) => !m.receitas && !m.despesas)) return 'Ainda sem receitas e despesas registradas';
   const acima = serie.filter((m) => m.despesas > m.receitas);
   if (!acima.length) return 'Receita cobriu a despesa em todos os meses';
   if (acima.length === 1) return `Despesa superou a receita só em ${mesExtenso(acima[0].mes)}`;
@@ -1244,10 +1246,20 @@ function unidadeModelo(fin, tipo) {
   return Object.keys(fin.unidades).find((u) => fin.unidades[u].tipo === tipo);
 }
 
+// Só os tipos que existem no condomínio (um prédio sem coberturas não mostra a linha da cobertura).
+function tiposPresentes(fin) {
+  return Object.keys(NOMES_TIPO_UNIDADE).filter((tipo) => unidadeModelo(fin, tipo));
+}
+
+// Versão que a nova substitui: a anterior, ou a própria vigente quando ainda não houve emissão (mesma competência).
+function versaoBase(fin, vigencia) {
+  return versaoAnterior(fin, vigencia) || versaoVigente(fin);
+}
+
 function montarVersao(fin, dados) {
   const minimo = primeiraNaoEmitida(fin);
   if (!dados.vigencia || dados.vigencia < minimo) return { erro: `A vigência deve ser a partir de ${nomeMes(minimo)}` };
-  const base = versaoAnterior(fin, dados.vigencia);
+  const base = versaoBase(fin, dados.vigencia);
   const modo = dados.modo || base.modo;
   const fundoPct = dados.fundoPct === undefined || dados.fundoPct === '' ? base.fundoPct : Number(dados.fundoPct);
   if (!Number.isFinite(fundoPct) || fundoPct < 0 || fundoPct > 30) return { erro: 'O fundo de reserva deve ser de 0% a 30%' };
@@ -1262,8 +1274,9 @@ function montarVersao(fin, dados) {
     else orcamento = aplicar(base.orcamento);
   } else if (modo === 'fixo') {
     const o = dados.ordinaria || {};
-    if (!(o.A > 0 && o.cobertura > 0)) return { erro: MSG_VALORES };
-    ordinaria = { A: Math.round(o.A), cobertura: Math.round(o.cobertura) };
+    const temCobertura = tiposPresentes(fin).includes('cobertura');
+    if (!(o.A > 0 && (o.cobertura > 0 || !temCobertura))) return { erro: MSG_VALORES };
+    ordinaria = { A: Math.round(o.A), cobertura: Math.round(temCobertura ? o.cobertura : o.A) };
   } else {
     if (!(dados.orcamento > 0)) return { erro: MSG_VALORES };
     orcamento = Math.round(dados.orcamento);
@@ -1272,8 +1285,8 @@ function montarVersao(fin, dados) {
 }
 
 function simularComposicao(fin, nova) {
-  const antes = versaoAnterior(fin, nova.vigencia);
-  const tipos = Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => {
+  const antes = versaoBase(fin, nova.vigencia);
+  const tipos = tiposPresentes(fin).map((tipo) => {
     const u = unidadeModelo(fin, tipo);
     const a = mensalDe(fin, antes, u);
     const d = mensalDe(fin, nova, u);
@@ -1284,19 +1297,19 @@ function simularComposicao(fin, nova) {
 }
 
 function resumoVersao(fin, v) {
-  const valores = Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => `${NOMES_TIPO_UNIDADE[tipo]} ${fmtReais(ordinariaDe(fin, v, unidadeModelo(fin, tipo)))}`).join(' · ');
+  const valores = tiposPresentes(fin).map((tipo) => `${NOMES_TIPO_UNIDADE[tipo]} ${fmtReais(ordinariaDe(fin, v, unidadeModelo(fin, tipo)))}`).join(' · ');
   return `${v.modo === 'fracao' ? `Orçamento ${fmtReais(v.orcamento)}/mês · ` : ''}${valores} · fundo ${v.fundoPct}%`;
 }
 
 function textoValoresVersao(fin, v) {
-  return Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => {
+  return tiposPresentes(fin).map((tipo) => {
     const u = unidadeModelo(fin, tipo);
     return `${NOMES_TIPO_UNIDADE[tipo]}: ${fmtReais(mensalDe(fin, v, u))} por mês (taxa ordinária ${fmtReais(ordinariaDe(fin, v, u))} + fundo de reserva ${fmtReais(fundoDe(fin, v, u))})`;
   }).join('\n');
 }
 
 function valorPorTipoExtra(fin, extra) {
-  return Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => ({ tipo, valor: valorExtraDe(fin, extra, unidadeModelo(fin, tipo)) }));
+  return tiposPresentes(fin).map((tipo) => ({ tipo, valor: valorExtraDe(fin, extra, unidadeModelo(fin, tipo)) }));
 }
 
 function versoesAgendadas(fin) {
@@ -1973,7 +1986,8 @@ function condominioNovo(config, agora) {
   const sindico = { nome: c.sindico.nome.trim(), unidade: c.sindico.unidade || ids[0], email: c.sindico.email || '', celular: apenasDigitos(c.sindico.celular) };
   const moradores = [...(config.moradores || [])];
   if (sindico.unidade && !moradores.some((m) => m.nome === sindico.nome)) moradores.unshift({ unidade: sindico.unidade, nome: sindico.nome, email: sindico.email, celular: sindico.celular, vinculo: 'titular', responsavel: !moradores.some((m) => m.unidade === sindico.unidade && m.responsavel) });
-  const pessoas = moradores.map((m, n) => pessoaNova(m, n + 1, agora));
+  // Só o síndico já usa o app; quem veio da planilha está "convidado" até entrar pelo convite.
+  const pessoas = moradores.map((m, n) => pessoaNova(m, n + 1, agora, m.nome === sindico.nome && m.unidade === sindico.unidade ? 'ativo' : 'convidado'));
   const cob = config.cobranca;
   const valores = { A: Math.round(cob.valores.A), cobertura: Math.round(cob.valores.cobertura || cob.valores.A) };
   const fracoes = fracoesDasUnidades(unidades, valores);
@@ -2363,7 +2377,7 @@ function indicadoresSindico(estado, agora) {
     slaVencidas: estado.ocorrencias.filter((o) => slaVencido(o, agora)).length,
     paradas: estado.encomendas.filter((e) => encomendaParada(e, agora)).length,
     vencendo: alertasDocumentos(estado.documentos, isoDia(agora)).length,
-    adesao: { com: new Set(estado.pessoas.filter((p) => !p.naoResidente).map((p) => p.unidade)).size, total: estado.condominio.unidades.length },
+    adesao: { com: new Set(estado.pessoas.filter((p) => !p.naoResidente && (!p.situacao || p.situacao === 'ativo')).map((p) => p.unidade)).size, total: estado.condominio.unidades.length },
   };
 }
 
@@ -2701,6 +2715,76 @@ function arquivarComJustificativa(estado, id, motivo, perfil, agora) {
   if (!texto) return erroNotif(estado, 'Informe o motivo do arquivamento');
   if (!estado.ocorrencias.some((o) => o.id === id)) return erroNotif(estado, 'Ocorrência não encontrada');
   return { estado: comEntrada(estado, id, { arquivada: true, motivoArquivamento: texto }, { em: agora.toISOString(), status: null, texto: `Arquivada: ${texto}`, autor: 'Síndico' }) };
+}
+
+// ---- src/implantacao/acoes.js ----
+
+// Primeiro acesso pelo convite (QR Code): quem está na planilha passa a ativo; quem não está aguarda o síndico aprovar.
+function erroConvite(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function normalizarNome(nome) {
+  return String(nome || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Código simulado do "SMS": fixo por celular, para o teste ponta a ponta poder conferi-lo.
+function codigoDoConvite(celular) {
+  const d = apenasDigitos(celular);
+  return String((Number(d.slice(-6) || '0') * 7919 + 104729) % 900000 + 100000);
+}
+
+function confirmarConvite(estado, { unidade, nome, celular, codigo }, agora) {
+  const u = String(unidade || '').toUpperCase().replace(/\s+/g, '');
+  if (!estado.condominio.unidades.includes(u)) return erroConvite(estado, 'Escolha a sua unidade');
+  const n = String(nome || '').trim();
+  if (!n) return erroConvite(estado, 'Informe o seu nome');
+  if (!celularValido(celular)) return erroConvite(estado, 'Informe um celular com DDD');
+  if (String(codigo || '').trim() !== codigoDoConvite(celular)) return erroConvite(estado, 'Código inválido. Confira o SMS');
+  const cel = apenasDigitos(celular);
+  const existente = estado.pessoas.find((p) => p.unidade === u && (normalizarNome(p.nome) === normalizarNome(n) || (p.celular && p.celular === cel)));
+  if (existente) {
+    if (existente.situacao === 'pendente') return { estado, id: existente.id, situacao: 'pendente' };
+    const ativo = { situacao: 'ativo', celular: existente.celular || cel, acessoEm: agora.toISOString() };
+    return {
+      estado: { ...estado, pessoas: trocarItem(estado.pessoas, existente.id, ativo), moradorAtual: u },
+      id: existente.id,
+      situacao: 'ativo',
+      notificacao: { canal: 'App', para: estado.condominio.sindico ? estado.condominio.sindico.nome : 'Síndico', texto: `${existente.nome} (apto ${u}) entrou no app pelo convite` },
+    };
+  }
+  const id = `p${u}-c${estado.pessoas.length + 1}`;
+  const pessoa = { id, nome: n, unidade: u, email: '', celular: cel, vinculo: 'titular', situacao: 'pendente', criadaEm: agora.toISOString(), recebeOfertas: false, vendedor: 'nao', pedidoVenda: null, motivoVendedor: null };
+  return {
+    estado: { ...estado, pessoas: [...estado.pessoas, pessoa] },
+    id,
+    situacao: 'pendente',
+    notificacao: { canal: 'App + e-mail', para: estado.condominio.sindico ? estado.condominio.sindico.nome : 'Síndico', texto: `Novo morador no apto ${u}: ${n}. Aprove no Início` },
+  };
+}
+
+function aprovarMorador(estado, id, perfil, agora) {
+  if (perfil !== 'sindico') return erroConvite(estado, 'Somente o síndico pode fazer isso');
+  const p = estado.pessoas.find((x) => x.id === id);
+  if (!p || p.situacao !== 'pendente') return erroConvite(estado, 'Este cadastro não está aguardando aprovação');
+  return {
+    estado: { ...estado, pessoas: trocarItem(estado.pessoas, id, { situacao: 'ativo', acessoEm: agora.toISOString() }) },
+    notificacao: { canal: 'App + WhatsApp', para: p.nome, texto: `Seu acesso ao apto ${p.unidade} foi aprovado. Bem-vindo ao CondoFácil!` },
+  };
+}
+
+function recusarMorador(estado, id, perfil) {
+  if (perfil !== 'sindico') return erroConvite(estado, 'Somente o síndico pode fazer isso');
+  const p = estado.pessoas.find((x) => x.id === id);
+  if (!p || p.situacao !== 'pendente') return erroConvite(estado, 'Este cadastro não está aguardando aprovação');
+  return {
+    estado: { ...estado, pessoas: estado.pessoas.filter((x) => x.id !== id) },
+    notificacao: { canal: 'App + WhatsApp', para: p.nome, texto: `O cadastro no apto ${p.unidade} não foi confirmado. Fale com o síndico.` },
+  };
+}
+
+function moradoresPendentes(estado) {
+  return estado.pessoas.filter((p) => p.situacao === 'pendente');
 }
 
 // ---- src/enquetes/regras.js ----
@@ -4704,7 +4788,7 @@ function textoLimpo(texto) {
 }
 
 function trocarMorador(estado, unidade) {
-  const disponivel = estado.origem === 'novo' ? estado.pessoas.some((p) => p.unidade === unidade && p.situacao !== 'pendente') : MORADORES_DEMO.some(([u]) => u === unidade);
+  const disponivel = estado.origem === 'novo' ? estado.pessoas.some((p) => p.unidade === unidade && p.situacao === 'ativo') : MORADORES_DEMO.some(([u]) => u === unidade);
   if (!disponivel) return erroVenda(estado, 'Morador indisponível na demonstração');
   return { estado: { ...estado, moradorAtual: unidade, sacola: [] } };
 }
@@ -7712,18 +7796,31 @@ const CASOS_IMPLANTACAO = [
     },
   },
   {
+    nome: 'implantação: reajuste antes da primeira emissão e condomínio sem coberturas',
+    rodar() {
+      const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
+      const candidata = candidataDaPrevisao(e.financeiro, { linhas: [{ categoria: 'limpeza', valor: 1200000 }], margemPct: 0 });
+      const sim = simularComposicao(e.financeiro, candidata);
+      igual([sim.tipos.map((x) => x.antes), sim.arrecadacaoAntes], [[55000, 82500], 12 * 55000 + 4 * 82500]);
+      const cfg = configTeste();
+      const semCobertura = condominioNovo({ ...cfg, unidades: gerarUnidades({ blocos: [], andares: 2, porAndar: 2, coberturaUltimo: false }).unidades, moradores: [], condominio: { ...cfg.condominio, sindico: { nome: 'Helena Prado', unidade: '201' } } }, AGORA_IMPLANTACAO);
+      const v = versaoVigente(semCobertura.financeiro);
+      igual([simularComposicao(semCobertura.financeiro, v).tipos.map((x) => x.tipo), resumoVersao(semCobertura.financeiro, v).includes('Cobertura')], [['A'], false]);
+    },
+  },
+  {
     nome: 'implantação: regras principais funcionam com o condomínio vazio',
     rodar() {
       const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
       const agora = AGORA_IMPLANTACAO;
       const hoje = '2026-10-23';
       const ind = indicadoresSindico(e, agora);
-      igual([ind.adesao.com, ind.adesao.total], [2, 16]);
+      igual([ind.adesao.com, ind.adesao.total], [1, 16]);
       const fin = indicadoresFinanceiros(e, hoje);
       igual([fin.saldo.valor, fin.saldo.despesaMedia, fin.inadimplencia.unidades, fin.despesas.desvio, fin.arrecadado.pct], [0, 0, 0, 0, 0]);
       igual(devedores(e, hoje), []);
       const serie = serieReceitasDespesas(e, hoje);
-      igual([serie.length, typeof tituloSerie(serie)], [1, 'string']);
+      igual([serie.length, tituloSerie(serie), fin.arrecadado.alerta], [1, 'Ainda sem receitas e despesas registradas', false]);
       igual(pendentesDaRegua(e, hoje, e.plano), []);
       igual([alertasDocumentos(e.documentos, hoje), alertasNotificacoes(e, agora), alertasManutencao(e, agora), alertasInfracoes(e, hoje), alertasEnquetes(e, agora), alertasContas(e, hoje), alertasPrestacao(e, hoje), alertasComposicao(e)], [[], [], [], [], [], [], [], []]);
       igual(alertasEscala(e, agora).length >= 0, true);
@@ -7736,6 +7833,24 @@ const CASOS_IMPLANTACAO = [
       igual(horariosDaArea(e, 'academia', '2026-10-24', agora).length, 17);
       for (const perfil of ['sindico', 'morador', 'portaria', 'zelador', 'conselho']) igual(typeof contextoAbel(e, perfil, agora), 'string', perfil);
       igual(responderAbel(e, 'morador', 'Tenho encomenda na portaria?', agora).texto.includes('Nenhuma encomenda'), true);
+    },
+  },
+  {
+    nome: 'implantação: primeiro acesso pelo convite e aprovação do síndico',
+    rodar() {
+      const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
+      igual(e.pessoas.map((p) => p.situacao), ['ativo', 'convidado', 'convidado']);
+      const cod = codigoDoConvite('11987654321');
+      igual(confirmarConvite(e, { unidade: 'A101', nome: 'Maria Silva', celular: '11987654321', codigo: '000000' }, AGORA_IMPLANTACAO).erro, 'Código inválido. Confira o SMS');
+      igual(confirmarConvite(e, { unidade: 'Z1', nome: 'x', celular: '11987654321', codigo: cod }, AGORA_IMPLANTACAO).erro, 'Escolha a sua unidade');
+      const maria = confirmarConvite(e, { unidade: 'a101', nome: 'maria silva', celular: '(11) 98765-4321', codigo: cod }, AGORA_IMPLANTACAO);
+      igual([maria.situacao, maria.estado.pessoas[1].situacao, maria.estado.moradorAtual, indicadoresSindico(maria.estado, AGORA_IMPLANTACAO).adesao.com], ['ativo', 'ativo', 'A101', 2]);
+      const novo = confirmarConvite(maria.estado, { unidade: 'A202', nome: 'Paulo Reis', celular: '11911112222', codigo: codigoDoConvite('11911112222') }, AGORA_IMPLANTACAO);
+      igual([novo.situacao, moradoresPendentes(novo.estado).map((p) => p.nome), novo.notificacao.texto], ['pendente', ['Paulo Reis'], 'Novo morador no apto A202: Paulo Reis. Aprove no Início']);
+      igual(aprovarMorador(novo.estado, novo.id, 'morador', AGORA_IMPLANTACAO).erro, 'Somente o síndico pode fazer isso');
+      const ok = aprovarMorador(novo.estado, novo.id, 'sindico', AGORA_IMPLANTACAO).estado;
+      igual([moradoresPendentes(ok).length, indicadoresSindico(ok, AGORA_IMPLANTACAO).adesao.com], [0, 3]);
+      igual(recusarMorador(novo.estado, novo.id, 'sindico').estado.pessoas.length, 3);
     },
   },
 ];
@@ -8538,7 +8653,7 @@ function Categorias({ estado }) {
   const maximo = linhas[0][1];
   return html`<section class="cartao">
     <p class="titulo-grafico">Para onde foi o dinheiro em ${mesExtenso(fin.vigente)}</p>
-    <ul class="barras-h">${linhas.map(([nome, valor]) => html`<li key=${nome}><span>${nome}</span><span class="trilho"><span class="b-despesa" style=${`width:${Math.round((valor / maximo) * 100)}%`}></span></span><strong>${fmtReaisCurto(valor)}</strong></li>`)}</ul>
+    <ul class="barras-h">${linhas.map(([nome, valor]) => html`<li key=${nome}><span>${nome}</span><span class="trilho"><span class="b-despesa" style=${`width:${maximo ? Math.round((valor / maximo) * 100) : 0}%`}></span></span><strong>${fmtReaisCurto(valor)}</strong></li>`)}</ul>
   </section>`;
 }
 
@@ -8862,7 +8977,7 @@ function ResumoEmVigor({ estado }) {
   return html`<dl class="resumo">
     <dt>Modo</dt><dd>${NOMES_MODO[v.modo]}</dd>
     ${v.modo === 'fracao' && html`<dt>Orçamento mensal</dt><dd>${fmtReais(v.orcamento)}</dd>`}
-    ${Object.keys(NOMES_TIPO_UNIDADE).map((tipo) => {
+    ${tiposPresentes(fin).map((tipo) => {
       const u = unidadeDoTipo(fin, tipo);
       return html`<dt key=${`t-${tipo}`}>${NOMES_TIPO_UNIDADE[tipo]}</dt><dd key=${`v-${tipo}`}>${fmtReais(ordinariaDe(fin, v, u))} + fundo ${fmtReais(fundoDe(fin, v, u))}</dd>`;
     })}
@@ -8919,7 +9034,7 @@ function FormReajuste({ estado, executar, aoConcluir, inicial = {} }) {
       ${form.forma === 'percentual' && html`<${Campo} rotulo="Percentual (%)" dica="Use negativo para redução"><input id="taxa-pct" inputmode="decimal" value=${form.pct} onInput=${campo('pct')} placeholder="Ex.: 6" /><//>`}
       ${form.forma === 'valores' && form.modo === 'fixo' && html`
         <${Campo} rotulo="Apto tipo A (R$)"><input id="taxa-a" inputmode="decimal" value=${form.A} onInput=${campo('A')} placeholder=${fmtReais(base.ordinaria ? base.ordinaria.A : 0)} /><//>
-        <${Campo} rotulo="Cobertura (R$)"><input id="taxa-cobertura" inputmode="decimal" value=${form.cobertura} onInput=${campo('cobertura')} placeholder=${fmtReais(base.ordinaria ? base.ordinaria.cobertura : 0)} /><//>`}
+        ${tiposPresentes(fin).includes('cobertura') && html`<${Campo} rotulo="Cobertura (R$)"><input id="taxa-cobertura" inputmode="decimal" value=${form.cobertura} onInput=${campo('cobertura')} placeholder=${fmtReais(base.ordinaria ? base.ordinaria.cobertura : 0)} /><//>`}`}
       ${form.forma === 'valores' && form.modo === 'fracao' && html`<${Campo} rotulo="Orçamento mensal (R$)" dica="Rateado pela fração ideal de cada unidade"><input id="taxa-orcamento" inputmode="decimal" value=${form.orcamento} onInput=${campo('orcamento')} placeholder="Ex.: 22.120,00" /><//>`}
       ${comFundo && html`<${Campo} rotulo="Fundo de reserva (%)"><input id="taxa-fundo" inputmode="decimal" value=${form.fundoPct} onInput=${campo('fundoPct')} /><//>`}
       <${Campo} rotulo="Aprovado em" dica="Ata ou data da assembleia"><input id="taxa-ata" value=${form.aprovadoEm} onInput=${campo('aprovadoEm')} placeholder="Ex.: AGE de 15/10/2026, item 2" /><//>
@@ -11325,18 +11440,19 @@ function tipoEtiquetaAviso(c) {
 function personasMorador(estado) {
   if (estado.origem !== 'novo') return MORADORES_DEMO;
   const vistos = new Set();
-  return estado.pessoas.filter((p) => p.situacao !== 'pendente' && !vistos.has(p.unidade) && vistos.add(p.unidade)).slice(0, 6).map((p) => [p.unidade, p.nome.split(' ')[0]]);
+  return estado.pessoas.filter((p) => p.situacao === 'ativo' && !vistos.has(p.unidade) && vistos.add(p.unidade)).slice(0, 6).map((p) => [p.unidade, p.nome.split(' ')[0]]);
 }
 
 function TelaMorador(props) {
   const eu = props.estado.moradorAtual;
-  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao, enquetes: MEnquetes };
+  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao, enquetes: MEnquetes, convite: MConvite };
   const Conteudo = telas[props.rota.tela] || MInicio;
   const aba = ['documentos', 'encomendas', 'preferencias', 'avisos', 'prestacao', 'enquetes'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
   return html`<div class="celular">
     <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
     <div class="cel-pessoa" role="group" aria-label="Morador da demonstração">
       ${personasMorador(props.estado).map(([unidade, nome]) => html`<button type="button" key=${unidade} aria-pressed=${unidade === eu} onClick=${() => props.executar((e) => trocarMorador(e, unidade))}>${nome} · ${unidade}</button>`)}
+    ${props.estado.origem === 'novo' && html`<a class="btn-link convite-link" href="#morador.convite">Entrar pelo convite</a>`}
     </div>
     <div class="cel-conteudo"><${Conteudo} ...${props} eu=${eu} /></div>
     <nav class="cel-abas" aria-label="Navegação do morador">
@@ -11807,7 +11923,7 @@ function TelaSindico(props) {
   </div>`;
 }
 
-function SInicio({ estado, agora }) {
+function SInicio({ estado, agora, executar }) {
   const ind = indicadoresSindico(estado, agora);
   const pendentes = estado.reservas.filter((r) => r.status === 'pendente');
   const paradas = estado.encomendas.filter((e) => encomendaParada(e, agora));
@@ -11832,6 +11948,7 @@ function SInicio({ estado, agora }) {
   const semPendencias = !pendentes.length && !pendOperacao.length && !paradas.length && !alertas.length && !vendedoresPendentes.length && !pendCobranca.length;
   return html`<section>
     <h1>Olá, ${estado.condominio.sindico.nome.split(' ')[0]}</h1>
+    <${AprovacaoMoradores} estado=${estado} executar=${executar} />
     <${PainelFinanceiro} estado=${estado} agora=${agora} />
     <h2>Precisa da sua atenção</h2>
     ${semPendencias
@@ -13052,6 +13169,69 @@ function TelaImplantacao({ rota, rascunho, aoSalvarRascunho, aoAtivar }) {
   </section>`;
 }
 
+// ---- src/ui/convite.js ----
+
+// O que o morador vê ao ler o QR Code do convite, e a aprovação dos cadastros novos pelo síndico.
+function MConvite({ estado, executar }) {
+  const [form, setForm] = useState({ unidade: '', nome: '', celular: '', codigo: '' });
+  const [enviado, setEnviado] = useState(null);
+  const [erro, setErro] = useState(null);
+  const [resultado, setResultado] = useState(null);
+  const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.value });
+
+  function pedirCodigo() {
+    if (!form.unidade) { setErro('Escolha a sua unidade'); return; }
+    if (!form.nome.trim()) { setErro('Informe o seu nome'); return; }
+    if (!celularValido(form.celular)) { setErro('Informe um celular com DDD'); return; }
+    setErro(null);
+    setEnviado(codigoDoConvite(form.celular));
+  }
+
+  function confirmar() {
+    const r = executar((e) => confirmarConvite(e, form, new Date()));
+    setErro(r.erro || null);
+    if (!r.erro) setResultado(r.situacao);
+  }
+
+  if (resultado === 'ativo') return html`<section class="m-pagina"><h1 class="m-titulo">Tudo certo!</h1><p class="m-texto">Seu acesso ao apto ${form.unidade.toUpperCase()} está liberado. Bem-vindo ao ${estado.condominio.nome}.</p><a class="btn primario bloco" href="#morador.inicio">Ir para o início</a></section>`;
+  if (resultado === 'pendente') return html`<section class="m-pagina"><h1 class="m-titulo">Cadastro enviado</h1><p class="m-texto">Você não estava na lista enviada pelo síndico, então ele vai confirmar o seu cadastro no apto ${form.unidade.toUpperCase()}. Você recebe um aviso assim que for aprovado.</p><a class="btn secundario bloco" href="#morador.inicio">Voltar</a></section>`;
+  return html`<section class="m-pagina">
+    <h1 class="m-titulo">Entrar pelo convite</h1>
+    <p class="m-sub">${estado.condominio.nome} · confirme a sua unidade para começar a usar o app.</p>
+    <div class="pilha formulario">
+      <${Campo} rotulo="Sua unidade"><select id="convite-unidade" value=${form.unidade} onChange=${campo('unidade')}><option value="">Escolha</option>${estado.condominio.unidades.map((u) => html`<option key=${u} value=${u}>${u}</option>`)}</select><//>
+      <${Campo} rotulo="Seu nome"><input id="convite-nome" value=${form.nome} onInput=${campo('nome')} autocomplete="name" /><//>
+      <${Campo} rotulo="Seu celular" dica="Com DDD"><input id="convite-celular" inputmode="tel" value=${form.celular} onInput=${campo('celular')} autocomplete="tel" placeholder="(11) 90000-0000" /><//>
+      ${!enviado && html`<button type="button" class="btn primario bloco" data-acao="pedir-codigo" onClick=${pedirCodigo}>Receber código por SMS</button>`}
+      ${enviado && html`<div class="cartao pilha">
+        <small class="sub">SMS simulado para ${form.celular}: <strong data-codigo=${enviado}>Seu código CondoFácil é ${enviado}</strong></small>
+        <${Campo} rotulo="Código recebido"><input id="convite-codigo" inputmode="numeric" maxlength="6" value=${form.codigo} onInput=${campo('codigo')} /><//>
+        <button type="button" class="btn primario bloco" data-acao="confirmar-convite" onClick=${confirmar}>Confirmar e entrar</button>
+      </div>`}
+      <${Erro} texto=${erro} />
+    </div>
+  </section>`;
+}
+
+function AprovacaoMoradores({ estado, executar }) {
+  const [mensagem, setMensagem] = useState(null);
+  const pendentes = moradoresPendentes(estado);
+  if (!pendentes.length && !mensagem) return null;
+  const rodar = (acao, texto) => { const r = executar(acao); setMensagem(r.erro || texto); };
+  return html`<div class="cartao pilha">
+    <strong>Moradores aguardando aprovação</strong>
+    <small class="sub">Entraram pelo convite, mas não estavam na planilha da implantação.</small>
+    ${pendentes.map((p) => html`<div key=${p.id} class="linha-entre">
+      <span>${p.nome} · apto ${p.unidade}${p.celular ? ` · ${p.celular}` : ''}</span>
+      <span class="acoes">
+        <button type="button" class="btn primario" data-aprovar-morador=${p.id} onClick=${() => rodar((e) => aprovarMorador(e, p.id, 'sindico', new Date()), `${p.nome} aprovado.`)}>Aprovar</button>
+        <button type="button" class="btn secundario" onClick=${() => rodar((e) => recusarMorador(e, p.id, 'sindico'), `Cadastro de ${p.nome} recusado.`)}>Recusar</button>
+      </span>
+    </div>`)}
+    <${Sucesso} texto=${mensagem} />
+  </div>`;
+}
+
 // ---- src/ui/app.js ----
 
 const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
@@ -13155,7 +13335,7 @@ function App() {
   return html`
     <header class="barra-demo">
       <div class="marca"><span class="logo"><${Icone} nome="predio" tamanho=${20} /></span><strong class="marca-nome">CondoFácil</strong><span class="sub">${estado.condominio.nome} · ${estado.condominio.unidades.length} unidades</span></div>
-      <label class="seletor-condominio"><span class="so-leitor">Condomínio</span><select id="seletor-condominio" value=${estado.origem === 'novo' ? estado.condominio.id : 'demo'} onChange=${(ev) => trocarCondominio(ev.target.value)}>
+      <label class="seletor-condominio"><span class="so-leitor">Condomínio</span><select id="seletor-condominio" value=${rota.perfil === 'implantacao' ? 'novo' : estado.origem === 'novo' ? estado.condominio.id : 'demo'} onChange=${(ev) => trocarCondominio(ev.target.value)}>
         <option value="demo">Residencial Ipê Amarelo (demonstração)</option>
         ${Object.values(condominios.lista).map((c) => html`<option key=${c.condominio.id} value=${c.condominio.id}>${c.condominio.nome}</option>`)}
         <option value="novo">+ Novo condomínio</option>
@@ -13177,7 +13357,7 @@ function App() {
         ? html`<${TelaImplantacao} rota=${rota} rascunho=${condominios.rascunho} aoSalvarRascunho=${(r) => guardarCondominios({ rascunho: r })} aoAtivar=${ativarCondominio} />`
         : html`<${Tela} key=${`${rota.perfil}-${geracao}`} estado=${estado} rota=${rota} executar=${executar} agora=${new Date()} />`}
     </main>
-    ${rota.perfil !== 'implantacao' && html`<${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} executar=${executar} obterEstado=${() => estadoAtual.current} />`}
+    ${rota.perfil !== 'implantacao' && rota.tela !== 'convite' && html`<${SrAbel} estado=${estado} rota=${rota} agora=${new Date()} executar=${executar} obterEstado=${() => estadoAtual.current} />`}
     ${selo && html`<${Selo} key=${selo.chave} canal=${selo.canal} para=${selo.para} texto=${selo.texto} />`}
   `;
 }

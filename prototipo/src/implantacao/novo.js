@@ -17,7 +17,8 @@ export function condominioNovo(config, agora) {
   const sindico = { nome: c.sindico.nome.trim(), unidade: c.sindico.unidade || ids[0], email: c.sindico.email || '', celular: apenasDigitos(c.sindico.celular) };
   const moradores = [...(config.moradores || [])];
   if (sindico.unidade && !moradores.some((m) => m.nome === sindico.nome)) moradores.unshift({ unidade: sindico.unidade, nome: sindico.nome, email: sindico.email, celular: sindico.celular, vinculo: 'titular', responsavel: !moradores.some((m) => m.unidade === sindico.unidade && m.responsavel) });
-  const pessoas = moradores.map((m, n) => pessoaNova(m, n + 1, agora));
+  // Só o síndico já usa o app; quem veio da planilha está "convidado" até entrar pelo convite.
+  const pessoas = moradores.map((m, n) => pessoaNova(m, n + 1, agora, m.nome === sindico.nome && m.unidade === sindico.unidade ? 'ativo' : 'convidado'));
   const cob = config.cobranca;
   const valores = { A: Math.round(cob.valores.A), cobertura: Math.round(cob.valores.cobertura || cob.valores.A) };
   const fracoes = fracoesDasUnidades(unidades, valores);
