@@ -1,0 +1,12 @@
+{
+  "name": "condofacil-servidor",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node index.mjs",
+    "test": "node --test",
+    "sandbox": "node sandbox.mjs"
+  },
+  "dependencies": { "mysql2": "^3.11.0" }
+}
