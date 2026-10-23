@@ -2804,6 +2804,85 @@ function moradoresPendentes(estado) {
   return estado.pessoas.filter((p) => p.situacao === 'pendente');
 }
 
+// ---- src/conectado/acoes.js ----
+
+// Modo conectado: converte o que o servidor devolve do Asaas sandbox nas mesmas estruturas do modo simulado.
+const MSG_SEM_CPF = 'Sem CPF: não será emitida';
+
+function previaConectada(estado, competencia) {
+  const previa = previaCompetencia(estado, competencia);
+  return {
+    ...previa,
+    linhas: previa.linhas.map((l) => (!l.bloqueada && !l.responsavel.cpf ? { ...l, bloqueada: true, motivo: MSG_SEM_CPF } : l)),
+  };
+}
+
+function linhasParaAsaas(estado, competencia, apenas = null) {
+  const previa = previaConectada(estado, competencia);
+  const { multaPct, jurosPct } = estado.financeiro.parametros;
+  return previa.linhas.filter((l) => !l.bloqueada && (!apenas || apenas.includes(l.unidade))).map((l) => {
+    const pessoa = estado.pessoas.find((p) => p.unidade === l.unidade && p.nome === l.responsavel.nome);
+    return {
+      unidade: l.unidade,
+      responsavel: { nome: l.responsavel.nome, cpf: l.responsavel.cpf, email: pessoa ? pessoa.email : '', celular: pessoa ? pessoa.celular : '' },
+      valor: l.total,
+      vencimento: previa.vencimento,
+      descricao: `Taxa condominial de ${mesExtenso(competencia)} · apto ${l.unidade}`,
+      multaPct,
+      jurosPct,
+    };
+  });
+}
+
+function cobrancaDoAsaas(competencia, linha, c) {
+  return {
+    id: `CB-${competencia}-${linha.unidade}`, unidade: linha.unidade, competencia, vencimento: c.vencimento, itens: linha.itens, valor: c.valor,
+    status: 'aberta', pagaEm: null, valorPago: null, forma: null, baixaManual: null, eventosAsaas: [], regua: [], substituiu: null, acordo: null,
+    asaas: { id: c.asaasId, referencia: c.referencia, faturaUrl: c.faturaUrl, boletoUrl: c.boletoUrl, pixCopiaCola: c.pixCopiaCola, pixImagem: c.pixImagem },
+  };
+}
+
+function aplicarEmissao(estado, competencia, resultados, perfil, agora) {
+  if (!podeOperar(perfil)) return { estado, erro: SO_SINDICO };
+  const fin = estado.financeiro;
+  const previa = previaCompetencia(estado, competencia);
+  const existentes = new Set(fin.cobrancas.filter((c) => c.competencia === competencia && !c.acordo).map((c) => c.unidade));
+  const novas = resultados.filter((r) => r.ok && !existentes.has(r.unidade)).map((r) => cobrancaDoAsaas(competencia, previa.linhas.find((l) => l.unidade === r.unidade), r.cobranca));
+  // Falhas antigas das unidades reenviadas agora são substituídas pelo resultado novo.
+  const anteriores = ((fin.falhasAsaas || {})[competencia] || []).filter((f) => !resultados.some((r) => r.unidade === f.unidade));
+  const falhas = [...anteriores, ...resultados.filter((r) => !r.ok).map((r) => ({ unidade: r.unidade, erro: r.erro }))];
+  const emitidas = fin.emitidas.includes(competencia) ? fin.emitidas : [...fin.emitidas, competencia];
+  return {
+    estado: comFinanceiro(estado, {
+      cobrancas: [...fin.cobrancas, ...novas],
+      emitidas,
+      falhasAsaas: { ...(fin.falhasAsaas || {}), [competencia]: falhas },
+      auditoria: comAuditoria(estado, agora, 'Emissão no Asaas sandbox', `${mesExtenso(competencia)}: ${novas.length} cobranças${falhas.length ? ` · falharam: ${falhas.map((f) => f.unidade).join(', ')}` : ''}`),
+    }),
+    emitidas: novas.length,
+    falhas,
+    notificacao: novas.length ? { canal: 'Asaas sandbox', para: `${novas.length} responsáveis`, texto: `Cobranças de ${mesExtenso(competencia)} emitidas no Asaas sandbox: boleto, Pix e fatura` } : undefined,
+  };
+}
+
+function aplicarSituacoes(estado, cobrancasServidor, agora) {
+  let atual = estado;
+  let baixas = 0;
+  let notificacao;
+  for (const s of cobrancasServidor) {
+    if (s.situacao !== 'paga') continue;
+    const id = `CB-${s.competencia}-${s.unidade}`;
+    const c = atual.financeiro.cobrancas.find((x) => x.id === id);
+    if (!c || c.status !== 'aberta') continue;
+    const r = confirmarPagamentoAsaas(atual, id, `evt-${s.asaasId}`, s.forma || 'boleto', s.pagoEm ? new Date(`${s.pagoEm.slice(0, 10)}T12:00:00`) : agora);
+    if (r.erro) continue;
+    atual = r.estado;
+    baixas += 1;
+    notificacao = r.notificacao;
+  }
+  return { estado: atual, baixas, notificacao };
+}
+
 // ---- src/enquetes/regras.js ----
 
 // Enquetes: situação no instante, público, apuração (simples ou por fração ideal), quórum, evolução e lembretes.
@@ -7883,6 +7962,53 @@ const CASOS_IMPLANTACAO = [
   },
 ];
 
+// ---- src/casos/conectado.js ----
+
+function condominioConectado() {
+  const cfg = configTeste();
+  return condominioNovo({ ...cfg, id: 'cond-teste', moradores: [{ ...cfg.moradores[0], cpf: '52998224725' }, cfg.moradores[1]], asaas: { situacao: 'aprovada', ambiente: 'sandbox', real: true, walletId: 'wal_1' } }, AGORA_IMPLANTACAO);
+}
+
+const cobrancaServidor = (unidade, mais = {}) => ({ referencia: `cond-teste:2026-10:${unidade}`, condominioId: 'cond-teste', competencia: '2026-10', unidade, asaasId: `pay_${unidade}`, valor: 55000, vencimento: '2026-10-10', situacao: 'pendente', pagoEm: null, forma: null, faturaUrl: 'https://sandbox.asaas.com/i/x', boletoUrl: 'https://sandbox.asaas.com/b/x', pixCopiaCola: '000201', pixImagem: 'iVBOR', ...mais });
+
+const CASOS_CONECTADO = [
+  {
+    nome: 'conectado: prévia bloqueia quem não tem CPF e monta as linhas do Asaas',
+    rodar() {
+      const e = condominioConectado();
+      const comp = proximaCompetencia(e.financeiro);
+      const p = previaConectada(e, comp);
+      const linha = (u) => p.linhas.find((l) => l.unidade === u);
+      igual([linha('A101').bloqueada, linha('B201').motivo, linha('A102').motivo], [false, MSG_SEM_CPF, 'Sem responsável financeiro']);
+      const linhas = linhasParaAsaas(e, comp);
+      igual(linhas.map((l) => [l.unidade, l.valor, l.vencimento, l.responsavel.cpf, l.responsavel.email, l.multaPct]), [['A101', 55000, p.vencimento, '52998224725', 'maria@email.com', 2]]);
+      igual(linhasParaAsaas(e, comp, ['B201']), []);
+    },
+  },
+  {
+    nome: 'conectado: emissão parcial, reenvio sem duplicar e baixa pelo servidor',
+    rodar() {
+      const e = condominioConectado();
+      const r1 = aplicarEmissao(e, '2026-10', [{ unidade: 'A101', ok: true, cobranca: cobrancaServidor('A101') }, { unidade: 'B402', ok: false, erro: 'O CPF informado é inválido.' }], 'sindico', AGORA_IMPLANTACAO);
+      const fin1 = r1.estado.financeiro;
+      igual([r1.emitidas, fin1.emitidas, fin1.cobrancas.map((c) => c.asaas.referencia), fin1.falhasAsaas['2026-10']], [1, ['2026-10'], ['cond-teste:2026-10:A101'], [{ unidade: 'B402', erro: 'O CPF informado é inválido.' }]]);
+      const r2 = aplicarEmissao(r1.estado, '2026-10', [{ unidade: 'B402', ok: true, cobranca: cobrancaServidor('B402') }, { unidade: 'A101', ok: true, cobranca: cobrancaServidor('A101') }], 'sindico', AGORA_IMPLANTACAO);
+      igual([r2.estado.financeiro.cobrancas.length, r2.estado.financeiro.falhasAsaas['2026-10'], r2.estado.financeiro.emitidas], [2, [], ['2026-10']]);
+      igual(aplicarEmissao(e, '2026-10', [], 'morador', AGORA_IMPLANTACAO).erro, 'Somente o síndico pode fazer isso');
+      const pago = aplicarSituacoes(r2.estado, [cobrancaServidor('A101', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' }), cobrancaServidor('B402')], AGORA_IMPLANTACAO);
+      const a101 = pago.estado.financeiro.cobrancas.find((c) => c.unidade === 'A101');
+      igual([pago.baixas, a101.status, a101.forma, pago.estado.financeiro.saldo > 0, pago.notificacao.texto.startsWith('Pagamento recebido')], [1, 'paga', 'pix', true, true]);
+      igual(aplicarSituacoes(pago.estado, [cobrancaServidor('A101', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' })], AGORA_IMPLANTACAO).baixas, 0);
+    },
+  },
+  {
+    nome: 'conectado: só fala com o servidor no domínio do app ou na máquina local',
+    rodar() {
+      igual(['app.condofacil.cloud', 'localhost', '127.0.0.1', 'claude.ai', 'condofacil.cloud'].map(hostPermitido), [true, true, true, false, false]);
+    },
+  },
+];
+
 // ---- src/casos/assistente.js ----
 
 function contem(texto, trecho, contexto) {
@@ -8073,6 +8199,64 @@ function salvarCondominios(dados) {
   } catch {
     // Sem armazenamento: os condomínios criados valem só nesta aba.
   }
+}
+
+// ---- src/conectado/cliente.js ----
+// Conversa com o servidor do CondoFácil (app.condofacil.cloud). No claude.ai e em arquivo local nada disso roda: tudo fica simulado.
+const CONEXAO = { ativa: false, codigo: null };
+const CHAVE_PILOTO = 'condofacil-piloto-v1';
+const HOSTS_CONECTADOS = ['app.condofacil.cloud', 'localhost', '127.0.0.1'];
+
+function hostPermitido(hostname) {
+  return HOSTS_CONECTADOS.includes(hostname);
+}
+
+async function detectarServidor() {
+  if (typeof location === 'undefined' || !hostPermitido(location.hostname)) return false;
+  try {
+    const r = await fetch('/api/saude', { signal: AbortSignal.timeout(3000) });
+    return r.ok && (await r.json()).ok === true;
+  } catch {
+    return false;
+  }
+}
+
+function lerCodigoPiloto() {
+  try {
+    return localStorage.getItem(CHAVE_PILOTO);
+  } catch {
+    return null;
+  }
+}
+
+function guardarCodigoPiloto(codigo) {
+  try {
+    if (codigo) localStorage.setItem(CHAVE_PILOTO, codigo);
+    else localStorage.removeItem(CHAVE_PILOTO);
+  } catch {
+    // Sem armazenamento, o código vale só até recarregar a página.
+  }
+}
+
+async function chamarApi(metodo, caminho, corpo, codigo = CONEXAO.codigo) {
+  let r;
+  try {
+    r = await fetch(caminho, {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json', 'x-codigo-piloto': codigo || '' },
+      body: corpo === undefined ? undefined : JSON.stringify(corpo),
+      signal: AbortSignal.timeout(20000),
+    });
+  } catch {
+    throw new Error('Sem conexão com o servidor do CondoFácil. Confira a internet e tente de novo');
+  }
+  const dados = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(dados.erro || `O servidor respondeu ${r.status}`);
+  return dados;
+}
+
+function usaAsaasReal(estado) {
+  return CONEXAO.ativa && !!CONEXAO.codigo && estado.origem === 'novo' && !!(estado.condominio.asaas && estado.condominio.asaas.real);
 }
 
 // ---- src/ui/comum.js ----
@@ -13399,7 +13583,7 @@ function PainelPrecos({ plano, unidades, aoFechar }) {
 }
 
 function PainelTestes() {
-  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE, ...CASOS_IMPLANTACAO].map((caso) => {
+  const resultados = [...CASOS_DADOS, ...CASOS_REGRAS, ...CASOS_ACOES, ...CASOS_VENDAS, ...CASOS_COBRANCA_DADOS, ...CASOS_COBRANCA_REGRAS, ...CASOS_COBRANCA_ACOES, ...CASOS_ACORDOS, ...CASOS_NOTIFICACOES, ...CASOS_MANUTENCAO, ...CASOS_ESCALA, ...CASOS_COMPOSICAO, ...CASOS_INFRACOES, ...CASOS_ORCAMENTO, ...CASOS_FINANCEIRO, ...CASOS_ENQUETES, ...CASOS_ASSISTENTE, ...CASOS_IMPLANTACAO, ...CASOS_CONECTADO].map((caso) => {
     try {
       caso.rodar();
       return { nome: caso.nome, ok: true };
