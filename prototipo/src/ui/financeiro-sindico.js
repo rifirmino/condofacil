@@ -211,7 +211,8 @@ function CPrevia({ estado, executar }) {
       const resp = await chamarApi('POST', '/api/emissoes', { condominio: estado.condominio.id, competencia, linhas: linhasParaAsaas(estado, competencia, apenas) });
       const r = executar((e) => aplicarEmissao(e, competencia, resp.resultados, 'sindico', new Date()));
       setErro(r.erro || null);
-      if (!r.erro) setMensagem(`${resp.resultados.filter((x) => x.ok).length} cobranças emitidas no Asaas sandbox${r.falhas.length ? ` · ${r.falhas.length} com falha` : ''}.`);
+      const certas = resp.resultados.filter((x) => x.ok).length;
+      if (!r.erro) setMensagem(`${certas} ${certas === 1 ? 'cobrança emitida' : 'cobranças emitidas'} no Asaas sandbox${r.falhas.length ? ` · ${r.falhas.length} com falha` : ''}.`);
     } catch (e) {
       setErro(e.message);
     }
