@@ -1,6 +1,12 @@
 // Cliente mínimo da API v3 do Asaas. A URL vem do ambiente (sandbox na Hostinger, Asaas falso nos testes).
 export const MSG_ASAAS_FORA = 'Não foi possível falar com o Asaas agora. Nada foi emitido; tente de novo';
 
+// No .env da Hostinger um valor começando com "$" pode virar nome de variável: a chave pode ser cadastrada sem o "$".
+export function normalizarChaveAsaas(valor) {
+  const v = String(valor || '').trim().replace(/^['"]|['"]$/g, '');
+  return v.startsWith('aact_') ? `$${v}` : v;
+}
+
 export class ErroAsaas extends Error {
   constructor(status, mensagem) {
     super(mensagem);

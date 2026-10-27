@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { criarRotas } from '../rotas.mjs';
+import { criarRotas, MSG_CHAVE_RECUSADA } from '../rotas.mjs';
 import { bancoEmMemoria } from '../banco.mjs';
 import { clienteAsaas, MSG_ASAAS_FORA } from '../asaas.mjs';
 import { decifrar } from '../cifra.mjs';
@@ -129,4 +129,16 @@ test('Asaas fora do ar: emissão devolve 502 com a mensagem padrão', async () =
   const r = await t.chamar('POST', '/api/emissoes', { condominio: 'cond-teste', competencia: '2026-11', linhas: [linha('A101', CPF_OK)] });
   assert.deepEqual([r.status, r.corpo.erro], [502, MSG_ASAAS_FORA]);
   assert.equal((await t.banco.listarCobrancas('cond-teste')).length, 0);
+});
+
+test('chave da API recusada pelo Asaas vira mensagem clara', async () => {
+  const t = await montar();
+  try {
+    t.falso.contas.length = 0;
+    const r = await t.rotas.tratar({ metodo: 'POST', caminho: '/api/condominios', consulta: {}, cabecalhos: { 'x-codigo-piloto': 'piloto' }, corpo: DADOS_CONDOMINIO, ip: 'x', agora: new Date() });
+    assert.equal(r.status, 200);
+    const recusada = criarRotas({ banco: bancoEmMemoria(), asaas: (chave) => clienteAsaas({ url: t.falso.url, chave: 'chave-errada' }), config: { chaveRaiz: 'chave-errada', tokenWebhook: 'tok', chaveCripto: CHAVE_CRIPTO, codigoPiloto: 'piloto', urlPublica: 'https://app.teste' } });
+    const r2 = await recusada.tratar({ metodo: 'POST', caminho: '/api/condominios', consulta: {}, cabecalhos: { 'x-codigo-piloto': 'piloto' }, corpo: { ...DADOS_CONDOMINIO, id: 'outro' }, ip: 'y', agora: new Date() });
+    assert.deepEqual([r2.status, r2.corpo.erro], [502, MSG_CHAVE_RECUSADA]);
+  } finally { await t.fechar(); }
 });

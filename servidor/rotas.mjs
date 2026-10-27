@@ -4,6 +4,7 @@ import { ErroAsaas, MSG_ASAAS_FORA } from './asaas.mjs';
 
 // Handlers da API: funções de (pedido, dependências) que devolvem { status, corpo }, testáveis sem rede.
 const LIMITE_POR_MINUTO = 60;
+export const MSG_CHAVE_RECUSADA = 'O Asaas recusou a chave da API do servidor. Confira a variável ASAAS_API_KEY no hPanel (pode ser cadastrada sem o $ do começo)';
 const PAGO = new Set(['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH']);
 const FORMAS = { PIX: 'pix', CREDIT_CARD: 'cartao' };
 const ABERTAS = new Set(['GET /api/saude', 'POST /api/webhook/asaas']);
@@ -113,7 +114,7 @@ export function criarRotas({ banco, asaas, config }) {
       try {
         resultados.push({ unidade: l.unidade, ok: true, cobranca: await emitirLinha(s.cliente, corpo.condominio, corpo.competencia, l) });
       } catch (e) {
-        if (!(e instanceof ErroAsaas)) throw e;
+        if (!(e instanceof ErroAsaas) || e.status === 401) throw e;
         resultados.push({ unidade: l.unidade, ok: false, erro: e.mensagem, fora: e.status >= 502 });
       }
     }
@@ -163,6 +164,7 @@ export function criarRotas({ banco, asaas, config }) {
     try {
       return await rota(pedido);
     } catch (e) {
+      if (e instanceof ErroAsaas && e.status === 401) return falha(502, MSG_CHAVE_RECUSADA);
       if (e instanceof ErroAsaas) return falha(e.status >= 502 ? 502 : 400, e.status >= 502 ? MSG_ASAAS_FORA : e.mensagem);
       throw e;
     }

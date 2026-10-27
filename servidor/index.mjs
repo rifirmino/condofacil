@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { criarServidor } from './http.mjs';
 import { criarRotas } from './rotas.mjs';
-import { clienteAsaas } from './asaas.mjs';
+import { clienteAsaas, normalizarChaveAsaas } from './asaas.mjs';
 import { bancoEmMemoria, bancoMysql } from './banco.mjs';
 
 // Ponto de entrada na Hostinger: valida o ambiente sem nunca mostrar valores, prepara o banco e sobe o HTTP.
@@ -19,8 +19,10 @@ function exigir(nome, valido = (v) => !!v) {
 }
 
 const urlAsaas = exigir('ASAAS_URL', (v) => /sandbox|127\.0\.0\.1|localhost/.test(v || ''));
+const chaveRaiz = normalizarChaveAsaas(exigir('ASAAS_API_KEY'));
+console.log(`ASAAS_API_KEY: ${chaveRaiz.length} caracteres, ${/^\$aact_hmlg_/.test(chaveRaiz) ? 'formato do sandbox' : /^\$aact_prod_/.test(chaveRaiz) ? 'ATENÇÃO: chave de produção' : 'formato desconhecido (confira no hPanel)'}`);
 const config = {
-  chaveRaiz: exigir('ASAAS_API_KEY'),
+  chaveRaiz,
   tokenWebhook: exigir('ASAAS_WEBHOOK_TOKEN', (v) => (v || '').length >= 16),
   chaveCripto: exigir('CHAVE_CRIPTO', (v) => Buffer.from(v || '', 'base64').length === 32),
   codigoPiloto: exigir('CODIGO_PILOTO', (v) => (v || '').length >= 6),
