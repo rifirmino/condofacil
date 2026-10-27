@@ -42,7 +42,7 @@ export function condominioNovo(config, agora) {
     enquetes: [],
     proximaEnquete: 1,
     condominio: {
-      id: config.id || `cond-${identificador}-${agora.getTime().toString(36)}`, nome: c.nome.trim(), identificador, cnpj: apenasDigitos(c.cnpj), cep: apenasDigitos(c.cep), endereco: c.endereco || '', cidade: c.cidade || '', uf: c.uf || '',
+      id: config.id || `cond-${identificador}-${agora.getTime().toString(36)}`, nome: c.nome.trim(), identificador, cnpj: apenasDigitos(c.cnpj), cep: apenasDigitos(c.cep), endereco: c.endereco || '', bairro: c.bairro || '', cidade: c.cidade || '', uf: c.uf || '',
       sindico, unidades: ids, unidadesInfo: Object.fromEntries(unidades.map((u) => [u.id, { bloco: u.bloco, andar: u.andar, tipo: u.tipo }])),
       asaas: config.asaas || { situacao: 'pendente', ambiente: 'sandbox' }, criadoEm: agora.toISOString(),
     },

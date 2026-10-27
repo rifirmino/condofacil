@@ -1,5 +1,5 @@
 import { html, useState, useEffect } from '../vendor.js';
-import { PASSOS_IMPLANTACAO, CONTATO_COMERCIAL, MODELO_CSV_MORADORES, AREAS_MODELO, NOMES_VINCULO_MORADOR, UFS, validarCondominio, gerarUnidades, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, mensagemWhatsAppConvite, fmtCpf, apenasDigitos } from '../implantacao/regras.js';
+import { PASSOS_IMPLANTACAO, CONTATO_COMERCIAL, MODELO_CSV_MORADORES, AREAS_MODELO, NOMES_VINCULO_MORADOR, UFS, validarCondominio, gerarUnidades, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, mensagemWhatsAppConvite, fmtCpf, apenasDigitos, sugestaoPrimeiroAndar, enderecoDoViaCep } from '../implantacao/regras.js';
 import { CONEXAO, chamarApi } from '../conectado/cliente.js';
 import { condominioNovo } from '../implantacao/novo.js';
 import { PLANOS, mensalidade } from '../planos.js';
@@ -46,7 +46,7 @@ export function QrCodeReal({ texto, tamanho = 220 }) {
 export function rascunhoPadrao() {
   return {
     condominio: { nome: '', cnpj: '', cep: '', endereco: '', cidade: '', uf: 'SP', sindico: { nome: '', unidade: '', email: '', celular: '' }, plano: 'intermediario' },
-    geracao: { modo: 'gerador', blocos: '', andares: '4', porAndar: '4', coberturaUltimo: false, csv: '' },
+    geracao: { modo: 'gerador', blocos: '', andares: '4', porAndar: '4', somar: '100', primeiro: ['101', '102', '103', '104'], coberturaUltimo: false, csv: '' },
     unidades: [],
     csvMoradores: '',
     moradores: [],
@@ -101,12 +101,30 @@ function PassoCondominio({ r, mudar }) {
   const c = r.condominio;
   const campo = (chave) => (ev) => mudar({ condominio: { ...c, [chave]: ev.target.value } });
   const sindico = (chave) => (ev) => mudar({ condominio: { ...c, sindico: { ...c.sindico, [chave]: ev.target.value } } });
+  const [buscando, setBuscando] = useState(false);
+  // CEP completo → endereço pelo ViaCEP. Sem resposta (offline, CEP inexistente, claude.ai), os campos seguem livres.
+  async function mudarCep(ev) {
+    const cep = ev.target.value;
+    mudar({ condominio: { ...c, cep } });
+    const digitos = apenasDigitos(cep);
+    if (digitos.length !== 8) return;
+    setBuscando(true);
+    try {
+      const r2 = await fetch(`https://viacep.com.br/ws/${digitos}/json/`, { signal: AbortSignal.timeout(5000) });
+      const achado = enderecoDoViaCep(await r2.json());
+      if (achado) mudar((atual) => (apenasDigitos(atual.condominio.cep) === digitos ? { condominio: { ...atual.condominio, ...achado } } : {}));
+    } catch {
+      // Sem internet ou bloqueado: o síndico digita o endereço.
+    }
+    setBuscando(false);
+  }
   return html`<div class="pilha formulario">
     <${Campo} rotulo="Nome do condomínio"><input id="impl-nome" value=${c.nome} onInput=${campo('nome')} placeholder="Ex.: Residencial Jardim das Flores" /><//>
     <div class="edicao-anuncio">
       <${Campo} rotulo="CNPJ" dica="Opcional nesta etapa"><input id="impl-cnpj" inputmode="numeric" value=${c.cnpj} onInput=${campo('cnpj')} placeholder="00.000.000/0000-00" /><//>
-      <${Campo} rotulo="CEP"><input id="impl-cep" inputmode="numeric" value=${c.cep} onInput=${campo('cep')} placeholder="00000-000" /><//>
-      <${Campo} rotulo="Endereço"><input id="impl-endereco" value=${c.endereco} onInput=${campo('endereco')} placeholder="Rua e número" /><//>
+      <${Campo} rotulo="CEP" dica=${buscando ? 'Buscando o endereço…' : 'Preenche o endereço sozinho'}><input id="impl-cep" inputmode="numeric" value=${c.cep} onInput=${mudarCep} placeholder="00000-000" /><//>
+      <${Campo} rotulo="Endereço"><input id="impl-endereco" value=${c.endereco} onInput=${campo('endereco')} placeholder="Rua" /><//>
+      <${Campo} rotulo="Bairro"><input id="impl-bairro-condominio" value=${c.bairro || ''} onInput=${campo('bairro')} /><//>
       <${Campo} rotulo="Cidade"><input id="impl-cidade" value=${c.cidade} onInput=${campo('cidade')} /><//>
       <${Campo} rotulo="UF"><select id="impl-uf" value=${c.uf} onChange=${campo('uf')}>${UFS.map((u) => html`<option key=${u} value=${u}>${u}</option>`)}</select><//>
       <${Campo} rotulo="Plano"><select id="impl-plano" value=${c.plano} onChange=${campo('plano')}>${PLANOS.map((p) => html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}</select><//>
@@ -121,13 +139,42 @@ function PassoCondominio({ r, mudar }) {
   </div>`;
 }
 
+// Rascunhos antigos não têm os números do 1º andar nem a soma: completa com a sugestão.
+function geracaoCompleta(g) {
+  const somar = g.somar ?? '100';
+  const sugestao = sugestaoPrimeiroAndar(g.porAndar, Number(somar) || 100).map(String);
+  const primeiro = sugestao.map((s, i) => (g.primeiro && g.primeiro[i] !== undefined ? g.primeiro[i] : s));
+  return { ...g, somar, primeiro };
+}
+
+function GradeUnidades({ unidades }) {
+  const blocos = [...new Set(unidades.map((u) => u.bloco || ''))];
+  return html`<div class="grade-unidades">${blocos.map((b) => {
+    const doBloco = unidades.filter((u) => (u.bloco || '') === b);
+    const andares = [...new Set(doBloco.map((u) => u.andar))].sort((x, y) => y - x);
+    return html`<div key=${b} class="pilha">
+      ${b && html`<strong>Bloco ${b}</strong>`}
+      ${andares.slice(0, 40).map((a) => html`<div key=${a} class="linha-andar"><span class="sub">${a}º andar</span>
+        <span class="lista-unidades">${doBloco.filter((u) => u.andar === a).map((u) => html`<span key=${u.id} class=${`etq-turno ${u.tipo === 'cobertura' ? 't-tarde' : 't-folga'}`}>${u.id}</span>`)}</span></div>`)}
+    </div>`;
+  })}</div>`;
+}
+
 function PassoUnidades({ r, mudar }) {
-  const g = r.geracao;
+  const g = geracaoCompleta(r.geracao);
   const [erro, setErro] = useState(null);
-  const campo = (chave) => (ev) => mudar({ geracao: { ...g, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value } });
+  const valor = (ev) => (ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value);
+  const campo = (chave) => (ev) => mudar({ geracao: { ...g, [chave]: valor(ev) } });
+  // Mudar a soma troca os números do 1º andar que ainda estão na sugestão anterior (101 → 11 ao passar de 100 para 10).
+  function mudarSomar(ev) {
+    const anterior = sugestaoPrimeiroAndar(g.porAndar, Number(g.somar) || 100).map(String);
+    const nova = sugestaoPrimeiroAndar(g.porAndar, Number(ev.target.value) || 100).map(String);
+    mudar({ geracao: { ...g, somar: ev.target.value, primeiro: g.primeiro.map((p, i) => (p === anterior[i] ? nova[i] : p)) } });
+  }
+  const mudarPrimeiro = (i) => (ev) => mudar({ geracao: { ...g, primeiro: g.primeiro.map((p, j) => (j === i ? ev.target.value : p)) } });
   function gerar() {
     const res = g.modo === 'gerador'
-      ? gerarUnidades({ blocos: g.blocos.split(/[\s,;]+/).filter(Boolean), andares: Number(g.andares), porAndar: Number(g.porAndar), coberturaUltimo: g.coberturaUltimo })
+      ? gerarUnidades({ blocos: g.blocos.split(/[\s,;]+/).filter(Boolean), andares: Number(g.andares), primeiroAndar: g.primeiro, somar: Number(g.somar), coberturaUltimo: g.coberturaUltimo })
       : lerCsvUnidades(g.csv);
     setErro(res.erro || null);
     if (!res.erro) mudar({ unidades: res.unidades });
@@ -140,14 +187,19 @@ function PassoUnidades({ r, mudar }) {
           <${Campo} rotulo="Blocos" dica="Ex.: A, B. Deixe vazio se não houver"><input id="impl-blocos" value=${g.blocos} onInput=${campo('blocos')} /><//>
           <${Campo} rotulo="Andares"><input id="impl-andares" type="number" min="1" max="40" value=${g.andares} onInput=${campo('andares')} /><//>
           <${Campo} rotulo="Apartamentos por andar"><input id="impl-por-andar" type="number" min="1" max="20" value=${g.porAndar} onInput=${campo('porAndar')} /><//>
+          <${Campo} rotulo="Somar a cada andar" dica="Ex.: 10 (11 → 21 → 31) ou 100 (101 → 201)"><input id="impl-somar" type="number" min="1" value=${g.somar} onInput=${mudarSomar} /><//>
         </div>
+        <fieldset class="primeiro-andar"><legend>Números do 1º andar (ou térreo)</legend>
+          <div class="lista-unidades">${g.primeiro.map((p, i) => html`<input key=${i} id=${`impl-primeiro-${i}`} aria-label=${`Apartamento ${i + 1} do 1º andar`} inputmode="numeric" value=${p} onInput=${mudarPrimeiro(i)} />`)}</div>
+          <small class="sub">Os demais andares somam ${g.somar || '?'} a cada andar. O bloco vai depois do número: ${g.primeiro[0] || '11'}A, ${g.primeiro[0] || '11'}B.</small>
+        </fieldset>
         <label class="check"><input id="impl-cobertura" type="checkbox" checked=${g.coberturaUltimo} onChange=${campo('coberturaUltimo')} /><span>O último andar é de coberturas</span></label>`
-      : html`<${Campo} rotulo="Planilha de unidades" dica="Colunas: unidade;bloco;tipo (padrão ou cobertura)"><textarea id="impl-csv-unidades" rows="6" value=${g.csv} onInput=${campo('csv')} placeholder="unidade;bloco;tipo\n101;;padrão\n801;;cobertura"></textarea><//>`}
+      : html`<${Campo} rotulo="Planilha de unidades" dica="Colunas: unidade;bloco;tipo (padrão ou cobertura);andar (opcional). Com bloco, a unidade vira 11A, 11B"><textarea id="impl-csv-unidades" rows="6" value=${g.csv} onInput=${campo('csv')} placeholder="unidade;bloco;tipo\n11;A;padrão\n11;B;padrão"></textarea><//>`}
     <button type="button" class="btn secundario" data-acao="gerar-unidades" onClick=${gerar}>${g.modo === 'gerador' ? 'Gerar unidades' : 'Ler planilha'}</button>
     <${Erro} texto=${erro} />
     ${r.unidades.length > 0 && html`<div class="cartao pilha">
       <strong>${r.unidades.length} unidades${coberturas ? ` · ${coberturas} coberturas` : ''}</strong>
-      <div class="lista-unidades">${r.unidades.slice(0, 60).map((u) => html`<span key=${u.id} class=${`etq-turno ${u.tipo === 'cobertura' ? 't-tarde' : 't-folga'}`}>${u.id}</span>`)}${r.unidades.length > 60 ? html`<small class="sub">e mais ${r.unidades.length - 60}</small>` : ''}</div>
+      <${GradeUnidades} unidades=${r.unidades} />
     </div>`}
   </div>`;
 }
@@ -223,7 +275,8 @@ function SubcontaReal({ r, mudar }) {
   async function criar() {
     const cnpj = apenasDigitos(a.cnpj || c.cnpj);
     if (cnpj.length !== 14) { setErro('Informe o CNPJ do condomínio (14 dígitos)'); return; }
-    if (!c.cep || !c.endereco || !a.numero || !a.bairro) { setErro('Preencha CEP e endereço (passo Condomínio), número e bairro'); return; }
+    const bairro = a.bairro ?? c.bairro;
+    if (!c.cep || !c.endereco || !a.numero || !bairro) { setErro('Preencha CEP e endereço (passo Condomínio), número e bairro'); return; }
     // Protege contra colar a chave da API (ou outro texto longo) no campo do número do endereço.
     if (!/^[0-9A-Za-z\s\-/]{1,10}$/.test(String(a.numero).trim())) { setErro('Em Número, informe só o número do endereço do prédio (ex.: 1000). A chave do Asaas não vai aqui: ela fica no painel da Hostinger'); return; }
     if (!c.sindico.email || !c.sindico.celular) { setErro('Informe o e-mail e o celular do síndico no passo Condomínio'); return; }
@@ -231,7 +284,7 @@ function SubcontaReal({ r, mudar }) {
     setEnviando(true);
     setErro(null);
     try {
-      const resp = await chamarApi('POST', '/api/condominios', { id, nome: c.nome, cnpj, email: c.sindico.email, celular: apenasDigitos(c.sindico.celular), cep: apenasDigitos(c.cep), endereco: c.endereco, numero: a.numero, bairro: a.bairro, rendaMensal: arrecadacaoPrevista(r) || 100000 });
+      const resp = await chamarApi('POST', '/api/condominios', { id, nome: c.nome, cnpj, email: c.sindico.email, celular: apenasDigitos(c.sindico.celular), cep: apenasDigitos(c.cep), endereco: c.endereco, numero: a.numero, bairro, rendaMensal: arrecadacaoPrevista(r) || 100000 });
       mudar({ idCondominio: id, asaas: { ...a, cnpj, situacao: 'aprovada', ambiente: 'sandbox', real: true, walletId: resp.walletId, contaPrincipal: resp.situacao === 'conta-principal' } });
     } catch (e) {
       setErro(e.message);
@@ -244,7 +297,7 @@ function SubcontaReal({ r, mudar }) {
     <div class="edicao-anuncio">
       <${Campo} rotulo="CNPJ do condomínio"><input id="impl-asaas-cnpj" inputmode="numeric" value=${a.cnpj || c.cnpj} onInput=${campo('cnpj')} /><//>
       <${Campo} rotulo="Número" dica="Do endereço do prédio"><input id="impl-numero" inputmode="numeric" maxlength="10" value=${a.numero || ''} onInput=${campo('numero')} placeholder="Ex.: 1000" /><//>
-      <${Campo} rotulo="Bairro"><input id="impl-bairro" value=${a.bairro || ''} onInput=${campo('bairro')} placeholder="Ex.: Centro" /><//>
+      <${Campo} rotulo="Bairro"><input id="impl-bairro" value=${a.bairro ?? (c.bairro || '')} onInput=${campo('bairro')} placeholder="Ex.: Centro" /><//>
     </div>
     ${a.real
       ? a.contaPrincipal
@@ -334,7 +387,8 @@ export function TelaImplantacao({ rota, rascunho, aoSalvarRascunho, aoAtivar }) 
   const passo = PASSOS_UI[rota.tela] ? rota.tela : 'condominio';
   const indice = PASSOS_IMPLANTACAO.findIndex(([id]) => id === passo);
   const Passo = PASSOS_UI[passo];
-  const mudar = (mudanca) => setR((atual) => ({ ...atual, ...mudanca }));
+  // Aceita a mudança pronta ou uma função do rascunho atual (respostas que chegam depois, como a do CEP).
+  const mudar = (mudanca) => setR((atual) => ({ ...atual, ...(typeof mudanca === 'function' ? mudanca(atual) : mudanca) }));
 
   function avancar() {
     const falha = validarPasso(passo, r);

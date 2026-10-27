@@ -16,6 +16,7 @@ import { MBlocoInfracoes, MDetalheInfracao, CartaoInfracaoInicio } from './infra
 import { areaPorId, statusDia, horariosDaArea, comunicadosDaUnidade, avisoCancelamento, encomendaParada, STATUS_ATIVOS } from '../regras.js';
 import { solicitarReserva, cancelarReserva, marcarLido, reagir, abrirOcorrencia, avaliarOcorrencia, euTambem } from '../acoes.js';
 import { isoDia, nomeMes, somarMes, diferencaDias, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
+import { MDados } from './moradores.js';
 import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, QrFalso, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
 const ABAS_MORADOR = [['inicio', 'Início', 'casa'], ['financeiro', 'Financeiro', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['vendas', 'Vendas', 'loja'], ['mais', 'Mais', 'menu']];
@@ -51,9 +52,9 @@ function personasMorador(estado) {
 
 export function TelaMorador(props) {
   const eu = props.estado.moradorAtual;
-  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao, enquetes: MEnquetes, convite: MConvite };
+  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao, enquetes: MEnquetes, convite: MConvite, dados: MDados };
   const Conteudo = telas[props.rota.tela] || MInicio;
-  const aba = ['documentos', 'encomendas', 'preferencias', 'avisos', 'prestacao', 'enquetes'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
+  const aba = ['documentos', 'encomendas', 'preferencias', 'avisos', 'prestacao', 'enquetes', 'dados'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
   return html`<div class="celular">
     <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
     <div class="cel-pessoa" role="group" aria-label="Morador da demonstração">
@@ -426,6 +427,7 @@ function MPrestacao({ estado, rota }) {
 function MMais() {
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Mais</h1>
+    <a class="cartao link com-icone" href="#morador.dados"><${QuadroIcone} nome="pessoa" /><span><strong>Meus dados</strong><span class="sub">Nome, CPF, contatos e quem mora no apartamento</span></span></a>
     <a class="cartao link com-icone" href="#morador.avisos"><${QuadroIcone} nome="megafone" /><span><strong>Avisos</strong><span class="sub">Comunicados do síndico e confirmação de leitura</span></span></a>
     <a class="cartao link com-icone" href="#morador.encomendas"><${QuadroIcone} nome="pacote" /><span><strong>Encomendas</strong><span class="sub">Na portaria e histórico de retiradas</span></span></a>
     <a class="cartao link com-icone" href="#morador.enquetes"><${QuadroIcone} nome="enquete" /><span><strong>Enquetes</strong><span class="sub">Responda e veja os resultados</span></span></a>

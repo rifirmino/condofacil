@@ -1,6 +1,7 @@
 import { html, useState } from '../vendor.js';
 import { confirmarConvite, codigoDoConvite, aprovarMorador, recusarMorador, moradoresPendentes } from '../implantacao/acoes.js';
 import { celularValido } from '../implantacao/regras.js';
+import { outrosDaUnidade } from '../moradores/acoes.js';
 import { Campo, Erro, Sucesso } from './comum.js';
 
 // O que o morador vê ao ler o QR Code do convite, e a aprovação dos cadastros novos pelo síndico.
@@ -25,7 +26,7 @@ export function MConvite({ estado, executar }) {
     if (!r.erro) setResultado(r.situacao);
   }
 
-  if (resultado === 'ativo') return html`<section class="m-pagina"><h1 class="m-titulo">Tudo certo!</h1><p class="m-texto">Seu acesso ao apto ${form.unidade.toUpperCase()} está liberado. Bem-vindo ao ${estado.condominio.nome}.</p><a class="btn primario bloco" href="#morador.inicio">Ir para o início</a></section>`;
+  if (resultado === 'ativo') return html`<section class="m-pagina"><h1 class="m-titulo">Tudo certo!</h1><p class="m-texto">Seu acesso ao apto ${form.unidade.toUpperCase()} está liberado. Bem-vindo ao ${estado.condominio.nome}. Agora complete o seu cadastro.</p><a class="btn primario bloco" data-acao="completar-cadastro" href="#morador.dados">Completar meu cadastro</a><a class="btn secundario bloco" href="#morador.inicio">Depois</a></section>`;
   if (resultado === 'pendente') return html`<section class="m-pagina"><h1 class="m-titulo">Cadastro enviado</h1><p class="m-texto">Você não estava na lista enviada pelo síndico, então ele vai confirmar o seu cadastro no apto ${form.unidade.toUpperCase()}. Você recebe um aviso assim que for aprovado.</p><a class="btn secundario bloco" href="#morador.inicio">Voltar</a></section>`;
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Entrar pelo convite</h1>
@@ -53,13 +54,19 @@ export function AprovacaoMoradores({ estado, executar }) {
   return html`<div class="cartao pilha">
     <strong>Moradores aguardando aprovação</strong>
     <small class="sub">Entraram pelo convite, mas não estavam na planilha da implantação.</small>
-    ${pendentes.map((p) => html`<div key=${p.id} class="linha-entre">
-      <span>${p.nome} · apto ${p.unidade}${p.celular ? ` · ${p.celular}` : ''}</span>
-      <span class="acoes">
-        <button type="button" class="btn primario" data-aprovar-morador=${p.id} onClick=${() => rodar((e) => aprovarMorador(e, p.id, 'sindico', new Date()), `${p.nome} aprovado.`)}>Aprovar</button>
-        <button type="button" class="btn secundario" onClick=${() => rodar((e) => recusarMorador(e, p.id, 'sindico'), `Cadastro de ${p.nome} recusado.`)}>Recusar</button>
-      </span>
-    </div>`)}
+    ${pendentes.map((p) => {
+      const outros = outrosDaUnidade(estado, p);
+      const nomes = outros.map((o) => o.nome).join(', ');
+      return html`<div key=${p.id} class="pilha aprovacao-morador">
+        <span><strong>${p.nome}</strong> · apto ${p.unidade}${p.celular ? ` · ${p.celular}` : ''}</span>
+        ${outros.length > 0 && html`<small class="sub">Já cadastrado no apto ${p.unidade}: ${outros.map((o) => `${o.nome} (${o.situacao === 'ativo' ? 'usa o app' : o.situacao || 'morador'})`).join(', ')}</small>`}
+        <span class="acoes">
+          <button type="button" class="btn primario" data-aprovar-morador=${p.id} onClick=${() => rodar((e) => aprovarMorador(e, p.id, 'sindico', new Date()), `${p.nome} aprovado.`)}>${outros.length ? 'Aprovar como mais um morador' : 'Aprovar'}</button>
+          ${outros.length > 0 && html`<button type="button" class="btn secundario" data-substituir-morador=${p.id} onClick=${() => rodar((e) => aprovarMorador(e, p.id, 'sindico', new Date(), 'substituir'), `${p.nome} aprovado no lugar de ${nomes}.`)}>Aprovar substituindo ${nomes}</button>`}
+          <button type="button" class="btn secundario" onClick=${() => rodar((e) => recusarMorador(e, p.id, 'sindico'), `Cadastro de ${p.nome} recusado.`)}>Recusar</button>
+        </span>
+      </div>`;
+    })}
     <${Sucesso} texto=${mensagem} />
   </div>`;
 }

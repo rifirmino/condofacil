@@ -635,3 +635,16 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .conectar-piloto input { max-width: 160px; padding: 6px 8px; }
 .erro-conexao { color: #fff; background: #b4443a; border-radius: 6px; padding: 2px 8px; font-size: 13px; }
 .pix-real { display: block; width: 160px; height: 160px; image-rendering: pixelated; margin: 0 auto; }
+.primeiro-andar { border: 1px solid var(--borda, #d5dedb); border-radius: 8px; padding: 10px 12px; }
+.primeiro-andar legend { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 0 4px; }
+.primeiro-andar input { width: 72px; }
+.grade-unidades { display: flex; flex-wrap: wrap; gap: 18px; }
+.linha-andar { display: flex; gap: 10px; align-items: center; }
+.linha-andar > .sub { min-width: 64px; }
+.linha-residente { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+@media (max-width: 480px) { .linha-residente { grid-template-columns: minmax(0, 1fr); } }
+.aprovacao-morador { border-top: 1px solid var(--borda, #d5dedb); padding-top: 10px; }
+.primeiro-andar input, .linha-residente input { font-size: 15px; padding: 10px 12px; border: 1px solid var(--borda); border-radius: var(--raio); background: var(--sup); min-height: 44px; }
+.primeiro-andar input:focus, .linha-residente input:focus { border-color: var(--laranja); outline: none; box-shadow: 0 0 0 2px var(--laranja-tinta); }
+.primeiro-andar .lista-unidades { gap: 8px; }
+.resp-financeiro { display: inline-flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }

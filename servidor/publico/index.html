@@ -647,6 +647,19 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .conectar-piloto input { max-width: 160px; padding: 6px 8px; }
 .erro-conexao { color: #fff; background: #b4443a; border-radius: 6px; padding: 2px 8px; font-size: 13px; }
 .pix-real { display: block; width: 160px; height: 160px; image-rendering: pixelated; margin: 0 auto; }
+.primeiro-andar { border: 1px solid var(--borda, #d5dedb); border-radius: 8px; padding: 10px 12px; }
+.primeiro-andar legend { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 0 4px; }
+.primeiro-andar input { width: 72px; }
+.grade-unidades { display: flex; flex-wrap: wrap; gap: 18px; }
+.linha-andar { display: flex; gap: 10px; align-items: center; }
+.linha-andar > .sub { min-width: 64px; }
+.linha-residente { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+@media (max-width: 480px) { .linha-residente { grid-template-columns: minmax(0, 1fr); } }
+.aprovacao-morador { border-top: 1px solid var(--borda, #d5dedb); padding-top: 10px; }
+.primeiro-andar input, .linha-residente input { font-size: 15px; padding: 10px 12px; border: 1px solid var(--borda); border-radius: var(--raio); background: var(--sup); min-height: 44px; }
+.primeiro-andar input:focus, .linha-residente input:focus { border-color: var(--laranja); outline: none; box-shadow: 0 0 0 2px var(--laranja-tinta); }
+.primeiro-andar .lista-unidades { gap: 8px; }
+.resp-financeiro { display: inline-flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 
 </style>
 <div id="app"></div>
@@ -1869,6 +1882,12 @@ function validarCondominio(dados) {
   return null;
 }
 
+// Resposta do ViaCEP (viacep.com.br/ws/<cep>/json/) no formato do cadastro; CEP inexistente vem com "erro".
+function enderecoDoViaCep(json) {
+  if (!json || json.erro || !json.localidade) return null;
+  return { endereco: json.logradouro || '', bairro: json.bairro || '', cidade: json.localidade, uf: json.uf || '' };
+}
+
 // CPF com os dois dígitos verificadores; 11 dígitos iguais não valem.
 function cpfValido(cpf) {
   const d = apenasDigitos(cpf);
@@ -1895,22 +1914,42 @@ function celularValido(celular) {
 }
 
 // Unidades como "101", "102"… e, com blocos, "A101". O último andar pode ser todo de coberturas.
-function gerarUnidades({ blocos = [], andares, porAndar, coberturaUltimo = false }) {
+// Sugestão dos números do 1º andar: somar 100 → 101, 102…; somar 10 → 11, 12…
+function sugestaoPrimeiroAndar(porAndar, somar = 100) {
+  return Array.from({ length: Math.max(0, Number(porAndar) || 0) }, (_, i) => Number(somar) + i + 1);
+}
+
+// Números do 1º andar (ou térreo) somados a cada andar; o bloco vai depois do número (11A, 24B).
+function gerarUnidades({ blocos = [], andares, porAndar, primeiroAndar, somar = 100, coberturaUltimo = false }) {
   const a = Number(andares);
-  const p = Number(porAndar);
+  const s = Number(somar);
+  const primeiro = (primeiroAndar || sugestaoPrimeiroAndar(porAndar, s)).map((n) => (String(n).trim() === '' ? NaN : Number(String(n).trim())));
   if (!Number.isInteger(a) || a < 1 || a > 40) return { erro: 'Informe de 1 a 40 andares' };
-  if (!Number.isInteger(p) || p < 1 || p > 20) return { erro: 'Informe de 1 a 20 apartamentos por andar' };
+  if (primeiro.length < 1 || primeiro.length > 20) return { erro: 'Informe de 1 a 20 apartamentos por andar' };
+  if (primeiro.some((n) => !Number.isInteger(n) || n < 0)) return { erro: 'Preencha os números do 1º andar' };
+  if (new Set(primeiro).size !== primeiro.length) return { erro: 'Há números repetidos no 1º andar' };
+  if (a > 1 && (!Number.isInteger(s) || s < 1)) return { erro: 'Informe quanto somar a cada andar' };
   const nomes = blocos.map((b) => String(b).trim().toUpperCase()).filter(Boolean);
   if (new Set(nomes).size !== nomes.length) return { erro: 'Blocos repetidos' };
   const listaBlocos = nomes.length ? nomes : [''];
-  if (listaBlocos.length * a * p > LIMITE_UNIDADES) return { erro: `No máximo ${LIMITE_UNIDADES} unidades` };
+  if (listaBlocos.length * a * primeiro.length > LIMITE_UNIDADES) return { erro: `No máximo ${LIMITE_UNIDADES} unidades` };
   const unidades = [];
   for (const bloco of listaBlocos) {
     for (let andar = 1; andar <= a; andar++) {
-      for (let n = 1; n <= p; n++) unidades.push({ id: `${bloco}${andar}${String(n).padStart(2, '0')}`, bloco: bloco || null, andar, tipo: coberturaUltimo && andar === a && a > 1 ? 'cobertura' : 'A' });
+      for (const n of primeiro) unidades.push({ id: `${n + s * (andar - 1)}${bloco}`, bloco: bloco || null, andar, tipo: coberturaUltimo && andar === a && a > 1 ? 'cobertura' : 'A' });
     }
   }
+  const repetida = unidades.find((u, i) => unidades.findIndex((x) => x.id === u.id) !== i);
+  if (repetida) return { erro: `A unidade ${repetida.id} se repete entre andares: aumente o valor a somar` };
   return { unidades };
+}
+
+// Andar pelo número: 2 dígitos → a dezena (21 → 2º); 3 ou mais → tudo menos os 2 últimos (1204 → 12º).
+function andarDoNumero(id) {
+  const d = (String(id).match(/\d+/) || [''])[0];
+  if (d.length >= 3) return Number(d.slice(0, -2)) || 1;
+  if (d.length === 2) return Number(d[0]) || 1;
+  return 1;
 }
 
 function dividirLinha(linha, sep) {
@@ -1940,12 +1979,15 @@ function lerCsvUnidades(texto) {
   const corpo = /unidade/i.test(linhas[0]) ? linhas.slice(1) : linhas;
   const unidades = [];
   for (const [n, linha] of corpo.entries()) {
-    const [id, bloco, tipo] = dividirLinha(linha, sep);
-    const limpo = String(id || '').toUpperCase().replace(/\s+/g, '');
-    if (!limpo) return { erro: `Linha ${n + 1}: informe a unidade` };
+    const [id, bloco, tipo, andarInformado] = dividirLinha(linha, sep);
+    const numero = String(id || '').toUpperCase().replace(/\s+/g, '');
+    const b = String(bloco || '').toUpperCase().replace(/\s+/g, '');
+    if (!numero) return { erro: `Linha ${n + 1}: informe a unidade` };
+    // Com bloco, a unidade é número + bloco (11A, 11B): o mesmo número em blocos diferentes não se repete.
+    const limpo = b && !numero.endsWith(b) ? `${numero}${b}` : numero;
     if (unidades.some((u) => u.id === limpo)) return { erro: `Linha ${n + 1}: unidade ${limpo} repetida` };
-    const andar = Number((limpo.match(/(\d+)\d\d$/) || [])[1]) || 1;
-    unidades.push({ id: limpo, bloco: bloco ? bloco.toUpperCase() : null, andar, tipo: /cobertura/i.test(tipo || '') ? 'cobertura' : 'A' });
+    const andar = Number(andarInformado) > 0 ? Number(andarInformado) : andarDoNumero(numero);
+    unidades.push({ id: limpo, bloco: b || null, andar, tipo: /cobertura/i.test(tipo || '') ? 'cobertura' : 'A' });
   }
   if (unidades.length > LIMITE_UNIDADES) return { erro: `No máximo ${LIMITE_UNIDADES} unidades` };
   return { unidades };
@@ -2040,7 +2082,7 @@ function condominioNovo(config, agora) {
     enquetes: [],
     proximaEnquete: 1,
     condominio: {
-      id: config.id || `cond-${identificador}-${agora.getTime().toString(36)}`, nome: c.nome.trim(), identificador, cnpj: apenasDigitos(c.cnpj), cep: apenasDigitos(c.cep), endereco: c.endereco || '', cidade: c.cidade || '', uf: c.uf || '',
+      id: config.id || `cond-${identificador}-${agora.getTime().toString(36)}`, nome: c.nome.trim(), identificador, cnpj: apenasDigitos(c.cnpj), cep: apenasDigitos(c.cep), endereco: c.endereco || '', bairro: c.bairro || '', cidade: c.cidade || '', uf: c.uf || '',
       sindico, unidades: ids, unidadesInfo: Object.fromEntries(unidades.map((u) => [u.id, { bloco: u.bloco, andar: u.andar, tipo: u.tipo }])),
       asaas: config.asaas || { situacao: 'pendente', ambiente: 'sandbox' }, criadoEm: agora.toISOString(),
     },
@@ -2746,6 +2788,73 @@ function arquivarComJustificativa(estado, id, motivo, perfil, agora) {
   return { estado: comEntrada(estado, id, { arquivada: true, motivoArquivamento: texto }, { em: agora.toISOString(), status: null, texto: `Arquivada: ${texto}`, autor: 'Síndico' }) };
 }
 
+// ---- src/moradores/acoes.js ----
+
+// Cadastro dos moradores: o morador cuida dos próprios dados e de quem mora com ele; o síndico, do responsável financeiro.
+const SO_SINDICO_CADASTRO = 'Somente o síndico pode fazer isso';
+const MAX_RESIDENTES = 15;
+
+function erroCadastro(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function ehSindico(estado, pessoa) {
+  const s = estado.condominio.sindico;
+  return !!s && pessoa.nome === s.nome && pessoa.unidade === s.unidade;
+}
+
+// As outras pessoas da unidade, menos o síndico: quem sai quando a aprovação substitui.
+function outrosDaUnidade(estado, pessoa) {
+  return estado.pessoas.filter((p) => p.unidade === pessoa.unidade && p.id !== pessoa.id && !ehSindico(estado, p));
+}
+
+function residentesDaUnidade(estado, unidade) {
+  return (estado.residentes || {})[unidade] || [];
+}
+
+function atualizarMeusDados(estado, idPessoa, { nome, cpf, celular, email }) {
+  const p = estado.pessoas.find((x) => x.id === idPessoa);
+  if (!p) return erroCadastro(estado, 'Cadastro não encontrado');
+  const n = String(nome || '').trim();
+  if (!n) return erroCadastro(estado, 'Informe o seu nome');
+  if (String(cpf || '').trim() && !cpfValido(cpf)) return erroCadastro(estado, 'CPF inválido');
+  if (String(celular || '').trim() && !celularValido(celular)) return erroCadastro(estado, 'Celular inválido: use DDD + número');
+  if (String(email || '').trim() && !emailValido(email)) return erroCadastro(estado, 'E-mail inválido');
+  return { estado: { ...estado, pessoas: trocarItem(estado.pessoas, idPessoa, { nome: n, cpf: apenasDigitos(cpf), celular: apenasDigitos(celular), email: String(email || '').trim() }) } };
+}
+
+function salvarResidentes(estado, unidade, lista) {
+  const limpa = lista.map((r) => ({ nome: String(r.nome || '').trim(), telefone: String(r.telefone || '').trim() })).filter((r) => r.nome || r.telefone);
+  if (limpa.some((r) => !r.nome)) return erroCadastro(estado, 'Informe o nome de cada pessoa');
+  if (limpa.some((r) => r.telefone && !celularValido(r.telefone))) return erroCadastro(estado, 'Telefone inválido: use DDD + número');
+  if (limpa.length > MAX_RESIDENTES) return erroCadastro(estado, `No máximo ${MAX_RESIDENTES} pessoas por apartamento`);
+  const residentes = { ...(estado.residentes || {}), [unidade]: limpa.map((r) => ({ nome: r.nome, telefone: apenasDigitos(r.telefone) })) };
+  return { estado: { ...estado, residentes } };
+}
+
+function definirResponsavel(estado, unidade, { nome, cpf, relacao }, perfil) {
+  if (perfil !== 'sindico') return erroCadastro(estado, SO_SINDICO_CADASTRO);
+  const fin = estado.financeiro;
+  if (!fin.unidades[unidade]) return erroCadastro(estado, 'Unidade não encontrada');
+  const n = String(nome || '').trim();
+  if (!n) return erroCadastro(estado, 'Informe o nome do responsável financeiro');
+  if (!cpfValido(cpf)) return erroCadastro(estado, 'Informe um CPF válido');
+  const atual = fin.unidades[unidade].responsavel || {};
+  const responsavel = { ...atual, nome: n, relacao: NOMES_RELACAO[relacao] ? relacao : atual.relacao || 'titular', cpf: apenasDigitos(cpf), documento: `CPF ${fmtCpf(cpf)}`, canais: atual.canais || ['App', 'E-mail', 'WhatsApp'] };
+  return {
+    estado: { ...estado, financeiro: { ...fin, unidades: { ...fin.unidades, [unidade]: { ...fin.unidades[unidade], responsavel } } } },
+    notificacao: { canal: 'App', para: n, texto: `Você é o responsável financeiro do apto ${unidade}: as cobranças passam a sair no seu nome` },
+  };
+}
+
+function removerPessoa(estado, id, perfil) {
+  if (perfil !== 'sindico') return erroCadastro(estado, SO_SINDICO_CADASTRO);
+  const p = estado.pessoas.find((x) => x.id === id);
+  if (!p) return erroCadastro(estado, 'Cadastro não encontrado');
+  if (ehSindico(estado, p)) return erroCadastro(estado, 'O síndico não pode ser removido por aqui');
+  return { estado: { ...estado, pessoas: estado.pessoas.filter((x) => x.id !== id), pessoaAtual: estado.pessoaAtual === id ? null : estado.pessoaAtual } };
+}
+
 // ---- src/implantacao/acoes.js ----
 
 // Primeiro acesso pelo convite (QR Code): quem está na planilha passa a ativo; quem não está aguarda o síndico aprovar.
@@ -2776,7 +2885,7 @@ function confirmarConvite(estado, { unidade, nome, celular, codigo }, agora) {
     if (existente.situacao === 'pendente') return { estado, id: existente.id, situacao: 'pendente' };
     const ativo = { situacao: 'ativo', celular: existente.celular || cel, acessoEm: agora.toISOString() };
     return {
-      estado: { ...estado, pessoas: trocarItem(estado.pessoas, existente.id, ativo), moradorAtual: u },
+      estado: { ...estado, pessoas: trocarItem(estado.pessoas, existente.id, ativo), moradorAtual: u, pessoaAtual: existente.id },
       id: existente.id,
       situacao: 'ativo',
       notificacao: { canal: 'App', para: estado.condominio.sindico ? estado.condominio.sindico.nome : 'Síndico', texto: `${existente.nome} (apto ${u}) entrou no app pelo convite` },
@@ -2792,12 +2901,23 @@ function confirmarConvite(estado, { unidade, nome, celular, codigo }, agora) {
   };
 }
 
-function aprovarMorador(estado, id, perfil, agora) {
+// modo 'adicional' = mais um morador; 'substituir' = as outras pessoas da unidade (menos o síndico) saem, e a
+// responsabilidade financeira de quem saiu passa para quem entrou, sem CPF (o síndico completa em Moradores).
+function aprovarMorador(estado, id, perfil, agora, modo = 'adicional') {
   if (perfil !== 'sindico') return erroConvite(estado, 'Somente o síndico pode fazer isso');
   const p = estado.pessoas.find((x) => x.id === id);
   if (!p || p.situacao !== 'pendente') return erroConvite(estado, 'Este cadastro não está aguardando aprovação');
+  const saem = modo === 'substituir' ? outrosDaUnidade(estado, p) : [];
+  let novo = { ...estado, pessoas: trocarItem(estado.pessoas, id, { situacao: 'ativo', acessoEm: agora.toISOString() }).filter((x) => !saem.includes(x)) };
+  const fin = estado.financeiro;
+  const resp = fin.unidades[p.unidade] && fin.unidades[p.unidade].responsavel;
+  if (resp && saem.some((x) => x.nome === resp.nome)) {
+    const responsavel = { ...resp, nome: p.nome, cpf: null, documento: 'CPF a informar pelo síndico' };
+    novo = { ...novo, financeiro: { ...fin, unidades: { ...fin.unidades, [p.unidade]: { ...fin.unidades[p.unidade], responsavel } } } };
+  }
   return {
-    estado: { ...estado, pessoas: trocarItem(estado.pessoas, id, { situacao: 'ativo', acessoEm: agora.toISOString() }) },
+    estado: novo,
+    saiu: saem.map((x) => x.nome),
     notificacao: { canal: 'App + WhatsApp', para: p.nome, texto: `Seu acesso ao apto ${p.unidade} foi aprovado. Bem-vindo ao CondoFácil!` },
   };
 }
@@ -4730,8 +4850,10 @@ function lerPreco(texto) {
   return Number.isFinite(valor) ? Math.round(valor * 100) : NaN;
 }
 
+// Quem está usando o app naquela unidade: a pessoa atual (convite ou troca), depois a primeira ativa.
 function pessoaDaUnidade(estado, unidade) {
-  return estado.pessoas.find((p) => p.unidade === unidade);
+  const daUnidade = estado.pessoas.filter((p) => p.unidade === unidade);
+  return daUnidade.find((p) => p.id === estado.pessoaAtual) || daUnidade.find((p) => !p.situacao || p.situacao === 'ativo') || daUnidade[0];
 }
 
 function nomeVizinho(estado, unidade) {
@@ -4898,7 +5020,8 @@ function textoLimpo(texto) {
 function trocarMorador(estado, unidade) {
   const disponivel = estado.origem === 'novo' ? estado.pessoas.some((p) => p.unidade === unidade && p.situacao === 'ativo') : MORADORES_DEMO.some(([u]) => u === unidade);
   if (!disponivel) return erroVenda(estado, 'Morador indisponível na demonstração');
-  return { estado: { ...estado, moradorAtual: unidade, sacola: [] } };
+  const pessoa = estado.pessoas.find((p) => p.unidade === unidade && (!p.situacao || p.situacao === 'ativo'));
+  return { estado: { ...estado, moradorAtual: unidade, pessoaAtual: pessoa ? pessoa.id : null, sacola: [] } };
 }
 
 function alternarOfertas(estado, unidade) {
@@ -7838,13 +7961,13 @@ const CASOS_ENQUETES = [
 // ---- src/casos/implantacao.js ----
 
 const AGORA_IMPLANTACAO = new Date(2026, 9, 23, 10, 0);
-const CSV_TESTE = 'unidade;nome;email;celular;vinculo;responsavel\nA101;Maria Silva;maria@email.com;11987654321;titular;sim\nA102;João Souza;joao@email;119;locatário;não\nZ999;Pedro;;;;\nA101;Carlos Lima;carlos@email.com;11955554444;inquilino;sim';
+const CSV_TESTE = 'unidade;nome;email;celular;vinculo;responsavel\n101A;Maria Silva;maria@email.com;11987654321;titular;sim\n102A;João Souza;joao@email;119;locatário;não\nZ999;Pedro;;;;\n101A;Carlos Lima;carlos@email.com;11955554444;inquilino;sim';
 
 function configTeste() {
   const { unidades } = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
-  const { validas } = lerCsvMoradores('A101;Maria Silva;maria@email.com;11987654321;titular;sim\nB201;Rui Costa;rui@email.com;11944443333;proprietario;sim', unidades.map((u) => u.id));
+  const { validas } = lerCsvMoradores('101A;Maria Silva;maria@email.com;11987654321;titular;sim\n201B;Rui Costa;rui@email.com;11944443333;proprietario;sim', unidades.map((u) => u.id));
   return {
-    condominio: { nome: 'Residencial Teste', cnpj: '12.345.678/0001-90', cep: '01310-100', endereco: 'Av. Paulista, 1000', cidade: 'São Paulo', uf: 'SP', sindico: { nome: 'Helena Prado', unidade: 'B402', email: 'helena@email.com', celular: '11999998888' }, plano: 'intermediario' },
+    condominio: { nome: 'Residencial Teste', cnpj: '12.345.678/0001-90', cep: '01310-100', endereco: 'Av. Paulista, 1000', cidade: 'São Paulo', uf: 'SP', sindico: { nome: 'Helena Prado', unidade: '402B', email: 'helena@email.com', celular: '11999998888' }, plano: 'intermediario' },
     unidades,
     moradores: validas,
     cobranca: { diaVencimento: 10, multaPct: 2, jurosPct: 1, fundoPct: 10, modo: 'fixo', valores: { A: 50000, cobertura: 75000 }, orcamento: 0 },
@@ -7858,18 +7981,18 @@ const CASOS_IMPLANTACAO = [
     nome: 'implantação: CPF do responsável na planilha',
     rodar() {
       igual([cpfValido('529.982.247-25'), cpfValido('52998224724'), cpfValido('11111111111'), cpfValido('123'), fmtCpf('52998224725')], [true, false, false, false, '529.982.247-25']);
-      const l = lerCsvMoradores('A101;Maria;;;titular;sim;529.982.247-25\nA102;João;;;titular;sim;123\nA201;Ana;;;titular;sim', ['A101', 'A102', 'A201']);
+      const l = lerCsvMoradores('101A;Maria;;;titular;sim;529.982.247-25\n102A;João;;;titular;sim;123\n201A;Ana;;;titular;sim', ['101A', '102A', '201A']);
       igual([l.linhas[0].dados.cpf, l.linhas[1].erros, l.linhas[2].dados.cpf, l.linhas[2].erros], ['52998224725', ['CPF inválido'], '', []]);
       const cfg = configTeste();
       const e = condominioNovo({ ...cfg, moradores: [{ ...cfg.moradores[0], cpf: '52998224725' }, cfg.moradores[1]] }, AGORA_IMPLANTACAO);
-      igual([e.financeiro.unidades.A101.responsavel.cpf, e.financeiro.unidades.B201.responsavel.cpf], ['52998224725', null]);
+      igual([e.financeiro.unidades['101A'].responsavel.cpf, e.financeiro.unidades['201B'].responsavel.cpf], ['52998224725', null]);
     },
   },
   {
     nome: 'implantação: gerador e planilha de unidades',
     rodar() {
       const g = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
-      igual([g.unidades.length, g.unidades[0].id, g.unidades.at(-1).id, g.unidades.filter((u) => u.tipo === 'cobertura').length], [16, 'A101', 'B402', 4]);
+      igual([g.unidades.length, g.unidades[0].id, g.unidades.at(-1).id, g.unidades.filter((u) => u.tipo === 'cobertura').length], [16, '101A', '402B', 4]);
       igual(gerarUnidades({ andares: 8, porAndar: 4 }).unidades.map((u) => u.id).slice(0, 5), ['101', '102', '103', '104', '201']);
       igual([gerarUnidades({ andares: 0, porAndar: 2 }).erro, gerarUnidades({ andares: 3, porAndar: 21 }).erro, gerarUnidades({ blocos: ['A', 'a'], andares: 2, porAndar: 2 }).erro, gerarUnidades({ blocos: Array.from({ length: 30 }, (_, i) => `B${i}`), andares: 40, porAndar: 1 }).erro], ['Informe de 1 a 40 andares', 'Informe de 1 a 20 apartamentos por andar', 'Blocos repetidos', 'No máximo 1000 unidades']);
       const csv = lerCsvUnidades('unidade,bloco,tipo\n101,,\n1201,,cobertura');
@@ -7878,13 +8001,34 @@ const CASOS_IMPLANTACAO = [
     },
   },
   {
+    nome: 'implantação: endereço pelo CEP (ViaCEP)',
+    rodar() {
+      igual(enderecoDoViaCep({ cep: '01310-100', logradouro: 'Avenida Paulista', bairro: 'Bela Vista', localidade: 'São Paulo', uf: 'SP' }), { endereco: 'Avenida Paulista', bairro: 'Bela Vista', cidade: 'São Paulo', uf: 'SP' });
+      igual([enderecoDoViaCep({ erro: 'true' }), enderecoDoViaCep(null), enderecoDoViaCep({ localidade: 'Santo André', uf: 'SP' }).endereco], [null, null, '']);
+    },
+  },
+  {
+    nome: 'implantação: 1º andar digitado, soma por andar e bloco depois do número',
+    rodar() {
+      const g = gerarUnidades({ blocos: ['A', 'B'], andares: 4, primeiroAndar: [11, 12, 13, 14], somar: 10 });
+      const ids = g.unidades.map((u) => u.id);
+      igual([ids.length, ids.slice(0, 5), ids.slice(-4), g.unidades.find((u) => u.id === '31B').andar], [32, ['11A', '12A', '13A', '14A', '21A'], ['41B', '42B', '43B', '44B'], 3]);
+      igual([gerarUnidades({ andares: 2, primeiroAndar: [11, 11], somar: 10 }).erro, gerarUnidades({ andares: 2, primeiroAndar: [1, 11], somar: 10 }).erro, gerarUnidades({ andares: 2, primeiroAndar: ['', 12], somar: 10 }).erro], ['Há números repetidos no 1º andar', 'A unidade 11 se repete entre andares: aumente o valor a somar', 'Preencha os números do 1º andar']);
+      igual([sugestaoPrimeiroAndar(4, 10), sugestaoPrimeiroAndar(2, 100)], [[11, 12, 13, 14], [101, 102]]);
+      const planilha = ['unidade;bloco;tipo', ...['A', 'B'].flatMap((b) => [11, 12, 13, 14, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44].map((n) => `${n};${b};PADRAO`))].join('\n');
+      const csv = lerCsvUnidades(planilha);
+      igual([csv.erro, csv.unidades.length, csv.unidades[16].id, csv.unidades.find((u) => u.id === '24A').andar], [undefined, 32, '11B', 2]);
+      igual([andarDoNumero('11A'), andarDoNumero('1204'), andarDoNumero('7'), lerCsvUnidades('11A;A\n11;A').erro, lerCsvUnidades('T1;;;0\nG2;;padrão;5').unidades.map((u) => u.andar)], [1, 12, 1, 'Linha 2: unidade 11A repetida', [1, 5]]);
+    },
+  },
+  {
     nome: 'implantação: planilha de moradores com erros por linha',
     rodar() {
-      const r = lerCsvMoradores(CSV_TESTE, ['A101', 'A102']);
-      igual(r.linhas.map((l) => l.erros), [[], ['E-mail inválido', 'Celular inválido'], ['Unidade Z999 não existe'], ['A unidade A101 já tem responsável financeiro']]);
+      const r = lerCsvMoradores(CSV_TESTE, ['101A', '102A']);
+      igual(r.linhas.map((l) => l.erros), [[], ['E-mail inválido', 'Celular inválido'], ['Unidade Z999 não existe'], ['A unidade 101A já tem responsável financeiro']]);
       igual([r.validas.length, r.totalErros, r.linhas[1].dados.vinculo, r.linhas[0].numero], [1, 3, 'inquilino', 2]);
-      igual(lerCsvMoradores('"A101","Silva, Maria","",""', ['A101']).validas[0].nome, 'Silva, Maria');
-      igual(lerCsvMoradores('A101\tAna\t\t\tsocio', ['A101']).linhas[0].erros, ['Vínculo "socio" desconhecido']);
+      igual(lerCsvMoradores('"101A","Silva, Maria","",""', ['101A']).validas[0].nome, 'Silva, Maria');
+      igual(lerCsvMoradores('101A\tAna\t\t\tsocio', ['101A']).linhas[0].erros, ['Vínculo "socio" desconhecido']);
     },
   },
   {
@@ -7893,7 +8037,7 @@ const CASOS_IMPLANTACAO = [
       const { unidades } = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
       const f = fracoesDasUnidades(unidades, { A: 50000, cobertura: 75000 });
       const soma = Object.values(f).reduce((s, x) => s + x, 0);
-      igual([Math.abs(soma - 1) < 1e-9, f.A102 < f.A401, Math.round((f.A401 / f.A102) * 10) / 10], [true, true, 1.5]);
+      igual([Math.abs(soma - 1) < 1e-9, f['102A'] < f['401A'], Math.round((f['401A'] / f['102A']) * 10) / 10], [true, true, 1.5]);
       igual([identificadorCondominio('Residencial Ipê Amarelo'), linkConvite('residencial-teste')], ['residencial-ipe-amarelo', 'https://condofacil.cloud/c/residencial-teste']);
       const base = configTeste().condominio;
       igual([validarCondominio({ ...base, nome: ' ' }), validarCondominio({ ...base, cnpj: '123' }), validarCondominio({ ...base, sindico: { nome: '' } }), validarCondominio(base)], ['Informe o nome do condomínio', 'O CNPJ deve ter 14 dígitos', 'Informe o nome do síndico', null]);
@@ -7904,12 +8048,12 @@ const CASOS_IMPLANTACAO = [
     nome: 'implantação: condomínio novo nasce válido e vazio',
     rodar() {
       const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
-      igual([e.origem, e.condominio.nome, e.condominio.unidades.length, e.pessoas.map((p) => p.nome), e.moradorAtual], ['novo', 'Residencial Teste', 16, ['Helena Prado', 'Maria Silva', 'Rui Costa'], 'B402']);
-      igual([e.financeiro.unidades.A101.responsavel.nome, e.financeiro.unidades.B402.responsavel.nome, e.financeiro.unidades.A102.responsavel], ['Maria Silva', 'Helena Prado', null]);
+      igual([e.origem, e.condominio.nome, e.condominio.unidades.length, e.pessoas.map((p) => p.nome), e.moradorAtual], ['novo', 'Residencial Teste', 16, ['Helena Prado', 'Maria Silva', 'Rui Costa'], '402B']);
+      igual([e.financeiro.unidades['101A'].responsavel.nome, e.financeiro.unidades['402B'].responsavel.nome, e.financeiro.unidades['102A'].responsavel], ['Maria Silva', 'Helena Prado', null]);
       igual([e.areas.map((a) => a.id), e.financeiro.cobrancas.length, e.financeiro.saldo], [['salao', 'academia'], 0, 0]);
       igual([primeiraNaoEmitida(e.financeiro), proximaCompetencia(e.financeiro), versaoVigente(e.financeiro).id], ['2026-10', '2026-10', 'CV-001']);
       const previa = previaCompetencia(e, '2026-10');
-      igual([previa.linhas.length, previa.linhas.find((l) => l.unidade === 'A101').total, previa.linhas.find((l) => l.unidade === 'A401').total, previa.linhas.filter((l) => l.bloqueada).length], [16, 55000, 82500, 13]);
+      igual([previa.linhas.length, previa.linhas.find((l) => l.unidade === '101A').total, previa.linhas.find((l) => l.unidade === '401A').total, previa.linhas.filter((l) => l.bloqueada).length], [16, 55000, 82500, 13]);
       const emitido = emitirCompetencia(e, '2026-10', 'sindico', AGORA_IMPLANTACAO);
       igual([emitido.emitidas, emitido.estado.financeiro.emitidas, primeiraNaoEmitida(emitido.estado.financeiro)], [3, ['2026-10'], '2026-11']);
     },
@@ -7948,7 +8092,7 @@ const CASOS_IMPLANTACAO = [
       const vivo = balanceteVivo(e, hoje);
       igual([saldoFinal(vivo), mesesDaPrestacao(e, hoje)], [0, ['2026-10']]);
       igual(fluxoProjetado(e, hoje, 0).serie.length, 91);
-      igual([destinatarios(e, { tipo: 'andar', valor: '4' }).length, comunicadosDaUnidade(e, 'A101'), enquetesDaUnidade(e, 'A101', agora).pendentes], [4, [], []]);
+      igual([destinatarios(e, { tipo: 'andar', valor: '4' }).length, comunicadosDaUnidade(e, '101A'), enquetesDaUnidade(e, '101A', agora).pendentes], [4, [], []]);
       igual(horariosDaArea(e, 'academia', '2026-10-24', agora).length, 17);
       for (const perfil of ['sindico', 'morador', 'portaria', 'zelador', 'conselho']) igual(typeof contextoAbel(e, perfil, agora), 'string', perfil);
       igual(responderAbel(e, 'morador', 'Tenho encomenda na portaria?', agora).texto.includes('Nenhuma encomenda'), true);
@@ -7960,16 +8104,56 @@ const CASOS_IMPLANTACAO = [
       const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
       igual(e.pessoas.map((p) => p.situacao), ['ativo', 'convidado', 'convidado']);
       const cod = codigoDoConvite('11987654321');
-      igual(confirmarConvite(e, { unidade: 'A101', nome: 'Maria Silva', celular: '11987654321', codigo: '000000' }, AGORA_IMPLANTACAO).erro, 'Código inválido. Confira o SMS');
+      igual(confirmarConvite(e, { unidade: '101A', nome: 'Maria Silva', celular: '11987654321', codigo: '000000' }, AGORA_IMPLANTACAO).erro, 'Código inválido. Confira o SMS');
       igual(confirmarConvite(e, { unidade: 'Z1', nome: 'x', celular: '11987654321', codigo: cod }, AGORA_IMPLANTACAO).erro, 'Escolha a sua unidade');
-      const maria = confirmarConvite(e, { unidade: 'a101', nome: 'maria silva', celular: '(11) 98765-4321', codigo: cod }, AGORA_IMPLANTACAO);
-      igual([maria.situacao, maria.estado.pessoas[1].situacao, maria.estado.moradorAtual, indicadoresSindico(maria.estado, AGORA_IMPLANTACAO).adesao.com], ['ativo', 'ativo', 'A101', 2]);
-      const novo = confirmarConvite(maria.estado, { unidade: 'A202', nome: 'Paulo Reis', celular: '11911112222', codigo: codigoDoConvite('11911112222') }, AGORA_IMPLANTACAO);
-      igual([novo.situacao, moradoresPendentes(novo.estado).map((p) => p.nome), novo.notificacao.texto], ['pendente', ['Paulo Reis'], 'Novo morador no apto A202: Paulo Reis. Aprove no Início']);
+      const maria = confirmarConvite(e, { unidade: '101a', nome: 'maria silva', celular: '(11) 98765-4321', codigo: cod }, AGORA_IMPLANTACAO);
+      igual([maria.situacao, maria.estado.pessoas[1].situacao, maria.estado.moradorAtual, indicadoresSindico(maria.estado, AGORA_IMPLANTACAO).adesao.com], ['ativo', 'ativo', '101A', 2]);
+      const novo = confirmarConvite(maria.estado, { unidade: '202A', nome: 'Paulo Reis', celular: '11911112222', codigo: codigoDoConvite('11911112222') }, AGORA_IMPLANTACAO);
+      igual([novo.situacao, moradoresPendentes(novo.estado).map((p) => p.nome), novo.notificacao.texto], ['pendente', ['Paulo Reis'], 'Novo morador no apto 202A: Paulo Reis. Aprove no Início']);
       igual(aprovarMorador(novo.estado, novo.id, 'morador', AGORA_IMPLANTACAO).erro, 'Somente o síndico pode fazer isso');
       const ok = aprovarMorador(novo.estado, novo.id, 'sindico', AGORA_IMPLANTACAO).estado;
       igual([moradoresPendentes(ok).length, indicadoresSindico(ok, AGORA_IMPLANTACAO).adesao.com], [0, 3]);
       igual(recusarMorador(novo.estado, novo.id, 'sindico').estado.pessoas.length, 3);
+    },
+  },
+  {
+    nome: 'moradores: convite com outro nome, substituir na aprovação e pessoa atual no app',
+    rodar() {
+      const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
+      // Planilha: Maria Silva no 101A; pelo convite entra Ricardo, que não estava na planilha.
+      const pedido = confirmarConvite(e, { unidade: '101A', nome: 'Ricardo Firmino', celular: '11925913118', codigo: codigoDoConvite('11925913118') }, AGORA_IMPLANTACAO);
+      const ricardo = pedido.estado.pessoas.find((p) => p.id === pedido.id);
+      igual([pedido.situacao, outrosDaUnidade(pedido.estado, ricardo).map((p) => p.nome)], ['pendente', ['Maria Silva']]);
+      const adicional = aprovarMorador(pedido.estado, pedido.id, 'sindico', AGORA_IMPLANTACAO);
+      igual([adicional.estado.pessoas.filter((p) => p.unidade === '101A').length, adicional.saiu], [2, []]);
+      const sub = aprovarMorador(pedido.estado, pedido.id, 'sindico', AGORA_IMPLANTACAO, 'substituir');
+      const resp = sub.estado.financeiro.unidades['101A'].responsavel;
+      igual([sub.saiu, sub.estado.pessoas.filter((p) => p.unidade === '101A').map((p) => p.nome), resp.nome, resp.cpf], [['Maria Silva'], ['Ricardo Firmino'], 'Ricardo Firmino', null]);
+      // O síndico nunca sai numa substituição.
+      const naUnidadeDoSindico = confirmarConvite(e, { unidade: '402B', nome: 'Outra Pessoa', celular: '11900001111', codigo: codigoDoConvite('11900001111') }, AGORA_IMPLANTACAO);
+      igual(aprovarMorador(naUnidadeDoSindico.estado, naUnidadeDoSindico.id, 'sindico', AGORA_IMPLANTACAO, 'substituir').saiu, []);
+      // Com duas pessoas ativas no 101A, o app mostra quem entrou pelo convite.
+      const ativos = { ...adicional.estado, pessoas: adicional.estado.pessoas.map((p) => (p.unidade === '101A' ? { ...p, situacao: 'ativo' } : p)) };
+      const entrou = confirmarConvite(ativos, { unidade: '101A', nome: 'Ricardo Firmino', celular: '11925913118', codigo: codigoDoConvite('11925913118') }, AGORA_IMPLANTACAO);
+      igual([pessoaDaUnidade(entrou.estado, '101A').nome, pessoaDaUnidade({ ...entrou.estado, pessoaAtual: null }, '101A').nome], ['Ricardo Firmino', 'Maria Silva']);
+    },
+  },
+  {
+    nome: 'moradores: meus dados, quem mora no apartamento, responsável financeiro e remoção',
+    rodar() {
+      const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
+      const maria = e.pessoas.find((p) => p.nome === 'Maria Silva');
+      const r = atualizarMeusDados(e, maria.id, { nome: ' Maria S. Souza ', cpf: '529.982.247-25', celular: '(11) 98765-4321', email: 'maria@novo.com' });
+      igual(r.estado.pessoas.find((p) => p.id === maria.id), { ...maria, nome: 'Maria S. Souza', cpf: '52998224725', celular: '11987654321', email: 'maria@novo.com' });
+      igual([atualizarMeusDados(e, maria.id, { nome: '' }).erro, atualizarMeusDados(e, maria.id, { nome: 'M', cpf: '123' }).erro, atualizarMeusDados(e, maria.id, { nome: 'M', celular: '119' }).erro, atualizarMeusDados(e, 'x', { nome: 'M' }).erro], ['Informe o seu nome', 'CPF inválido', 'Celular inválido: use DDD + número', 'Cadastro não encontrado']);
+      const casa = salvarResidentes(e, '101A', [{ nome: 'João Silva', telefone: '' }, { nome: ' Ana Silva ', telefone: '(11) 91234-5678' }, { nome: '', telefone: '' }]);
+      igual(residentesDaUnidade(casa.estado, '101A'), [{ nome: 'João Silva', telefone: '' }, { nome: 'Ana Silva', telefone: '11912345678' }]);
+      igual([residentesDaUnidade(e, '101A'), salvarResidentes(e, '101A', [{ nome: '', telefone: '11912345678' }]).erro, salvarResidentes(e, '101A', [{ nome: 'X', telefone: '12' }]).erro], [[], 'Informe o nome de cada pessoa', 'Telefone inválido: use DDD + número']);
+      const def = definirResponsavel(e, '102A', { nome: 'Carlos Lima', cpf: '529.982.247-25', relacao: 'inquilino' }, 'sindico');
+      igual(def.estado.financeiro.unidades['102A'].responsavel, { nome: 'Carlos Lima', relacao: 'inquilino', cpf: '52998224725', documento: 'CPF 529.982.247-25', canais: ['App', 'E-mail', 'WhatsApp'] });
+      igual([definirResponsavel(e, '102A', { nome: 'X', cpf: '1' }, 'sindico').erro, definirResponsavel(e, '102A', { nome: 'X', cpf: '52998224725' }, 'morador').erro], ['Informe um CPF válido', 'Somente o síndico pode fazer isso']);
+      const helena = e.pessoas.find((p) => p.nome === 'Helena Prado');
+      igual([removerPessoa(e, maria.id, 'sindico').estado.pessoas.length, removerPessoa(e, helena.id, 'sindico').erro, removerPessoa(e, maria.id, 'morador').erro], [e.pessoas.length - 1, 'O síndico não pode ser removido por aqui', 'Somente o síndico pode fazer isso']);
     },
   },
 ];
@@ -7991,26 +8175,26 @@ const CASOS_CONECTADO = [
       const comp = proximaCompetencia(e.financeiro);
       const p = previaConectada(e, comp);
       const linha = (u) => p.linhas.find((l) => l.unidade === u);
-      igual([linha('A101').bloqueada, linha('B201').motivo, linha('A102').motivo], [false, MSG_SEM_CPF, 'Sem responsável financeiro']);
+      igual([linha('101A').bloqueada, linha('201B').motivo, linha('102A').motivo], [false, MSG_SEM_CPF, 'Sem responsável financeiro']);
       const linhas = linhasParaAsaas(e, comp);
-      igual(linhas.map((l) => [l.unidade, l.valor, l.vencimento, l.responsavel.cpf, l.responsavel.email, l.multaPct]), [['A101', 55000, p.vencimento, '52998224725', 'maria@email.com', 2]]);
-      igual(linhasParaAsaas(e, comp, ['B201']), []);
+      igual(linhas.map((l) => [l.unidade, l.valor, l.vencimento, l.responsavel.cpf, l.responsavel.email, l.multaPct]), [['101A', 55000, p.vencimento, '52998224725', 'maria@email.com', 2]]);
+      igual(linhasParaAsaas(e, comp, ['201B']), []);
     },
   },
   {
     nome: 'conectado: emissão parcial, reenvio sem duplicar e baixa pelo servidor',
     rodar() {
       const e = condominioConectado();
-      const r1 = aplicarEmissao(e, '2026-10', [{ unidade: 'A101', ok: true, cobranca: cobrancaServidor('A101') }, { unidade: 'B402', ok: false, erro: 'O CPF informado é inválido.' }], 'sindico', AGORA_IMPLANTACAO);
+      const r1 = aplicarEmissao(e, '2026-10', [{ unidade: '101A', ok: true, cobranca: cobrancaServidor('101A') }, { unidade: '402B', ok: false, erro: 'O CPF informado é inválido.' }], 'sindico', AGORA_IMPLANTACAO);
       const fin1 = r1.estado.financeiro;
-      igual([r1.emitidas, fin1.emitidas, fin1.cobrancas.map((c) => c.asaas.referencia), fin1.falhasAsaas['2026-10']], [1, ['2026-10'], ['cond-teste:2026-10:A101'], [{ unidade: 'B402', erro: 'O CPF informado é inválido.' }]]);
-      const r2 = aplicarEmissao(r1.estado, '2026-10', [{ unidade: 'B402', ok: true, cobranca: cobrancaServidor('B402') }, { unidade: 'A101', ok: true, cobranca: cobrancaServidor('A101') }], 'sindico', AGORA_IMPLANTACAO);
+      igual([r1.emitidas, fin1.emitidas, fin1.cobrancas.map((c) => c.asaas.referencia), fin1.falhasAsaas['2026-10']], [1, ['2026-10'], ['cond-teste:2026-10:101A'], [{ unidade: '402B', erro: 'O CPF informado é inválido.' }]]);
+      const r2 = aplicarEmissao(r1.estado, '2026-10', [{ unidade: '402B', ok: true, cobranca: cobrancaServidor('402B') }, { unidade: '101A', ok: true, cobranca: cobrancaServidor('101A') }], 'sindico', AGORA_IMPLANTACAO);
       igual([r2.estado.financeiro.cobrancas.length, r2.estado.financeiro.falhasAsaas['2026-10'], r2.estado.financeiro.emitidas], [2, [], ['2026-10']]);
       igual(aplicarEmissao(e, '2026-10', [], 'morador', AGORA_IMPLANTACAO).erro, 'Somente o síndico pode fazer isso');
-      const pago = aplicarSituacoes(r2.estado, [cobrancaServidor('A101', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' }), cobrancaServidor('B402')], AGORA_IMPLANTACAO);
-      const a101 = pago.estado.financeiro.cobrancas.find((c) => c.unidade === 'A101');
+      const pago = aplicarSituacoes(r2.estado, [cobrancaServidor('101A', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' }), cobrancaServidor('402B')], AGORA_IMPLANTACAO);
+      const a101 = pago.estado.financeiro.cobrancas.find((c) => c.unidade === '101A');
       igual([pago.baixas, a101.status, a101.forma, pago.estado.financeiro.saldo > 0, pago.notificacao.texto.startsWith('Pagamento recebido')], [1, 'paga', 'pix', true, true]);
-      igual(aplicarSituacoes(pago.estado, [cobrancaServidor('A101', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' })], AGORA_IMPLANTACAO).baixas, 0);
+      igual(aplicarSituacoes(pago.estado, [cobrancaServidor('101A', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' })], AGORA_IMPLANTACAO).baixas, 0);
     },
   },
   {
@@ -11715,9 +11899,9 @@ function personasMorador(estado) {
 
 function TelaMorador(props) {
   const eu = props.estado.moradorAtual;
-  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao, enquetes: MEnquetes, convite: MConvite };
+  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao, enquetes: MEnquetes, convite: MConvite, dados: MDados };
   const Conteudo = telas[props.rota.tela] || MInicio;
-  const aba = ['documentos', 'encomendas', 'preferencias', 'avisos', 'prestacao', 'enquetes'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
+  const aba = ['documentos', 'encomendas', 'preferencias', 'avisos', 'prestacao', 'enquetes', 'dados'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
   return html`<div class="celular">
     <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
     <div class="cel-pessoa" role="group" aria-label="Morador da demonstração">
@@ -12090,6 +12274,7 @@ function MPrestacao({ estado, rota }) {
 function MMais() {
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Mais</h1>
+    <a class="cartao link com-icone" href="#morador.dados"><${QuadroIcone} nome="pessoa" /><span><strong>Meus dados</strong><span class="sub">Nome, CPF, contatos e quem mora no apartamento</span></span></a>
     <a class="cartao link com-icone" href="#morador.avisos"><${QuadroIcone} nome="megafone" /><span><strong>Avisos</strong><span class="sub">Comunicados do síndico e confirmação de leitura</span></span></a>
     <a class="cartao link com-icone" href="#morador.encomendas"><${QuadroIcone} nome="pacote" /><span><strong>Encomendas</strong><span class="sub">Na portaria e histórico de retiradas</span></span></a>
     <a class="cartao link com-icone" href="#morador.enquetes"><${QuadroIcone} nome="enquete" /><span><strong>Enquetes</strong><span class="sub">Responda e veja os resultados</span></span></a>
@@ -12157,7 +12342,7 @@ function MPreferencias({ estado, executar, eu }) {
 
 // ---- src/ui/sindico.js ----
 
-const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['financeiro', 'Financeiro', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['enquetes', 'Enquetes', 'enquete'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
+const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['moradores', 'Moradores', 'pessoa'], ['cobranca', 'Cobrança', 'cifrao'], ['financeiro', 'Financeiro', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['enquetes', 'Enquetes', 'enquete'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
 const EM_BREVE = [['Estoque, checklist e rondas', 'Avançado']];
 const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
 const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
@@ -12182,7 +12367,7 @@ function tipoEtiquetaComunicado(c) {
 
 function TelaSindico(props) {
   const tela = MENU_SINDICO.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'inicio';
-  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, enquetes: SEnquetes, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, financeiro: SFinanceiro, manutencao: SManutencao, escala: SEscala }[tela];
+  const Conteudo = { inicio: SInicio, moradores: SMoradores, reservas: SReservas, comunicados: SComunicados, enquetes: SEnquetes, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, financeiro: SFinanceiro, manutencao: SManutencao, escala: SEscala }[tela];
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
       <p class="painel-usuario"><strong>${props.estado.condominio.sindico.nome}</strong><small>Síndico · apto ${props.estado.condominio.sindico.unidade}</small></p>
@@ -13168,7 +13353,7 @@ function QrCodeReal({ texto, tamanho = 220 }) {
 function rascunhoPadrao() {
   return {
     condominio: { nome: '', cnpj: '', cep: '', endereco: '', cidade: '', uf: 'SP', sindico: { nome: '', unidade: '', email: '', celular: '' }, plano: 'intermediario' },
-    geracao: { modo: 'gerador', blocos: '', andares: '4', porAndar: '4', coberturaUltimo: false, csv: '' },
+    geracao: { modo: 'gerador', blocos: '', andares: '4', porAndar: '4', somar: '100', primeiro: ['101', '102', '103', '104'], coberturaUltimo: false, csv: '' },
     unidades: [],
     csvMoradores: '',
     moradores: [],
@@ -13223,12 +13408,30 @@ function PassoCondominio({ r, mudar }) {
   const c = r.condominio;
   const campo = (chave) => (ev) => mudar({ condominio: { ...c, [chave]: ev.target.value } });
   const sindico = (chave) => (ev) => mudar({ condominio: { ...c, sindico: { ...c.sindico, [chave]: ev.target.value } } });
+  const [buscando, setBuscando] = useState(false);
+  // CEP completo → endereço pelo ViaCEP. Sem resposta (offline, CEP inexistente, claude.ai), os campos seguem livres.
+  async function mudarCep(ev) {
+    const cep = ev.target.value;
+    mudar({ condominio: { ...c, cep } });
+    const digitos = apenasDigitos(cep);
+    if (digitos.length !== 8) return;
+    setBuscando(true);
+    try {
+      const r2 = await fetch(`https://viacep.com.br/ws/${digitos}/json/`, { signal: AbortSignal.timeout(5000) });
+      const achado = enderecoDoViaCep(await r2.json());
+      if (achado) mudar((atual) => (apenasDigitos(atual.condominio.cep) === digitos ? { condominio: { ...atual.condominio, ...achado } } : {}));
+    } catch {
+      // Sem internet ou bloqueado: o síndico digita o endereço.
+    }
+    setBuscando(false);
+  }
   return html`<div class="pilha formulario">
     <${Campo} rotulo="Nome do condomínio"><input id="impl-nome" value=${c.nome} onInput=${campo('nome')} placeholder="Ex.: Residencial Jardim das Flores" /><//>
     <div class="edicao-anuncio">
       <${Campo} rotulo="CNPJ" dica="Opcional nesta etapa"><input id="impl-cnpj" inputmode="numeric" value=${c.cnpj} onInput=${campo('cnpj')} placeholder="00.000.000/0000-00" /><//>
-      <${Campo} rotulo="CEP"><input id="impl-cep" inputmode="numeric" value=${c.cep} onInput=${campo('cep')} placeholder="00000-000" /><//>
-      <${Campo} rotulo="Endereço"><input id="impl-endereco" value=${c.endereco} onInput=${campo('endereco')} placeholder="Rua e número" /><//>
+      <${Campo} rotulo="CEP" dica=${buscando ? 'Buscando o endereço…' : 'Preenche o endereço sozinho'}><input id="impl-cep" inputmode="numeric" value=${c.cep} onInput=${mudarCep} placeholder="00000-000" /><//>
+      <${Campo} rotulo="Endereço"><input id="impl-endereco" value=${c.endereco} onInput=${campo('endereco')} placeholder="Rua" /><//>
+      <${Campo} rotulo="Bairro"><input id="impl-bairro-condominio" value=${c.bairro || ''} onInput=${campo('bairro')} /><//>
       <${Campo} rotulo="Cidade"><input id="impl-cidade" value=${c.cidade} onInput=${campo('cidade')} /><//>
       <${Campo} rotulo="UF"><select id="impl-uf" value=${c.uf} onChange=${campo('uf')}>${UFS.map((u) => html`<option key=${u} value=${u}>${u}</option>`)}</select><//>
       <${Campo} rotulo="Plano"><select id="impl-plano" value=${c.plano} onChange=${campo('plano')}>${PLANOS.map((p) => html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}</select><//>
@@ -13243,13 +13446,42 @@ function PassoCondominio({ r, mudar }) {
   </div>`;
 }
 
+// Rascunhos antigos não têm os números do 1º andar nem a soma: completa com a sugestão.
+function geracaoCompleta(g) {
+  const somar = g.somar ?? '100';
+  const sugestao = sugestaoPrimeiroAndar(g.porAndar, Number(somar) || 100).map(String);
+  const primeiro = sugestao.map((s, i) => (g.primeiro && g.primeiro[i] !== undefined ? g.primeiro[i] : s));
+  return { ...g, somar, primeiro };
+}
+
+function GradeUnidades({ unidades }) {
+  const blocos = [...new Set(unidades.map((u) => u.bloco || ''))];
+  return html`<div class="grade-unidades">${blocos.map((b) => {
+    const doBloco = unidades.filter((u) => (u.bloco || '') === b);
+    const andares = [...new Set(doBloco.map((u) => u.andar))].sort((x, y) => y - x);
+    return html`<div key=${b} class="pilha">
+      ${b && html`<strong>Bloco ${b}</strong>`}
+      ${andares.slice(0, 40).map((a) => html`<div key=${a} class="linha-andar"><span class="sub">${a}º andar</span>
+        <span class="lista-unidades">${doBloco.filter((u) => u.andar === a).map((u) => html`<span key=${u.id} class=${`etq-turno ${u.tipo === 'cobertura' ? 't-tarde' : 't-folga'}`}>${u.id}</span>`)}</span></div>`)}
+    </div>`;
+  })}</div>`;
+}
+
 function PassoUnidades({ r, mudar }) {
-  const g = r.geracao;
+  const g = geracaoCompleta(r.geracao);
   const [erro, setErro] = useState(null);
-  const campo = (chave) => (ev) => mudar({ geracao: { ...g, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value } });
+  const valor = (ev) => (ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value);
+  const campo = (chave) => (ev) => mudar({ geracao: { ...g, [chave]: valor(ev) } });
+  // Mudar a soma troca os números do 1º andar que ainda estão na sugestão anterior (101 → 11 ao passar de 100 para 10).
+  function mudarSomar(ev) {
+    const anterior = sugestaoPrimeiroAndar(g.porAndar, Number(g.somar) || 100).map(String);
+    const nova = sugestaoPrimeiroAndar(g.porAndar, Number(ev.target.value) || 100).map(String);
+    mudar({ geracao: { ...g, somar: ev.target.value, primeiro: g.primeiro.map((p, i) => (p === anterior[i] ? nova[i] : p)) } });
+  }
+  const mudarPrimeiro = (i) => (ev) => mudar({ geracao: { ...g, primeiro: g.primeiro.map((p, j) => (j === i ? ev.target.value : p)) } });
   function gerar() {
     const res = g.modo === 'gerador'
-      ? gerarUnidades({ blocos: g.blocos.split(/[\s,;]+/).filter(Boolean), andares: Number(g.andares), porAndar: Number(g.porAndar), coberturaUltimo: g.coberturaUltimo })
+      ? gerarUnidades({ blocos: g.blocos.split(/[\s,;]+/).filter(Boolean), andares: Number(g.andares), primeiroAndar: g.primeiro, somar: Number(g.somar), coberturaUltimo: g.coberturaUltimo })
       : lerCsvUnidades(g.csv);
     setErro(res.erro || null);
     if (!res.erro) mudar({ unidades: res.unidades });
@@ -13262,14 +13494,19 @@ function PassoUnidades({ r, mudar }) {
           <${Campo} rotulo="Blocos" dica="Ex.: A, B. Deixe vazio se não houver"><input id="impl-blocos" value=${g.blocos} onInput=${campo('blocos')} /><//>
           <${Campo} rotulo="Andares"><input id="impl-andares" type="number" min="1" max="40" value=${g.andares} onInput=${campo('andares')} /><//>
           <${Campo} rotulo="Apartamentos por andar"><input id="impl-por-andar" type="number" min="1" max="20" value=${g.porAndar} onInput=${campo('porAndar')} /><//>
+          <${Campo} rotulo="Somar a cada andar" dica="Ex.: 10 (11 → 21 → 31) ou 100 (101 → 201)"><input id="impl-somar" type="number" min="1" value=${g.somar} onInput=${mudarSomar} /><//>
         </div>
+        <fieldset class="primeiro-andar"><legend>Números do 1º andar (ou térreo)</legend>
+          <div class="lista-unidades">${g.primeiro.map((p, i) => html`<input key=${i} id=${`impl-primeiro-${i}`} aria-label=${`Apartamento ${i + 1} do 1º andar`} inputmode="numeric" value=${p} onInput=${mudarPrimeiro(i)} />`)}</div>
+          <small class="sub">Os demais andares somam ${g.somar || '?'} a cada andar. O bloco vai depois do número: ${g.primeiro[0] || '11'}A, ${g.primeiro[0] || '11'}B.</small>
+        </fieldset>
         <label class="check"><input id="impl-cobertura" type="checkbox" checked=${g.coberturaUltimo} onChange=${campo('coberturaUltimo')} /><span>O último andar é de coberturas</span></label>`
-      : html`<${Campo} rotulo="Planilha de unidades" dica="Colunas: unidade;bloco;tipo (padrão ou cobertura)"><textarea id="impl-csv-unidades" rows="6" value=${g.csv} onInput=${campo('csv')} placeholder="unidade;bloco;tipo\n101;;padrão\n801;;cobertura"></textarea><//>`}
+      : html`<${Campo} rotulo="Planilha de unidades" dica="Colunas: unidade;bloco;tipo (padrão ou cobertura);andar (opcional). Com bloco, a unidade vira 11A, 11B"><textarea id="impl-csv-unidades" rows="6" value=${g.csv} onInput=${campo('csv')} placeholder="unidade;bloco;tipo\n11;A;padrão\n11;B;padrão"></textarea><//>`}
     <button type="button" class="btn secundario" data-acao="gerar-unidades" onClick=${gerar}>${g.modo === 'gerador' ? 'Gerar unidades' : 'Ler planilha'}</button>
     <${Erro} texto=${erro} />
     ${r.unidades.length > 0 && html`<div class="cartao pilha">
       <strong>${r.unidades.length} unidades${coberturas ? ` · ${coberturas} coberturas` : ''}</strong>
-      <div class="lista-unidades">${r.unidades.slice(0, 60).map((u) => html`<span key=${u.id} class=${`etq-turno ${u.tipo === 'cobertura' ? 't-tarde' : 't-folga'}`}>${u.id}</span>`)}${r.unidades.length > 60 ? html`<small class="sub">e mais ${r.unidades.length - 60}</small>` : ''}</div>
+      <${GradeUnidades} unidades=${r.unidades} />
     </div>`}
   </div>`;
 }
@@ -13345,7 +13582,8 @@ function SubcontaReal({ r, mudar }) {
   async function criar() {
     const cnpj = apenasDigitos(a.cnpj || c.cnpj);
     if (cnpj.length !== 14) { setErro('Informe o CNPJ do condomínio (14 dígitos)'); return; }
-    if (!c.cep || !c.endereco || !a.numero || !a.bairro) { setErro('Preencha CEP e endereço (passo Condomínio), número e bairro'); return; }
+    const bairro = a.bairro ?? c.bairro;
+    if (!c.cep || !c.endereco || !a.numero || !bairro) { setErro('Preencha CEP e endereço (passo Condomínio), número e bairro'); return; }
     // Protege contra colar a chave da API (ou outro texto longo) no campo do número do endereço.
     if (!/^[0-9A-Za-z\s\-/]{1,10}$/.test(String(a.numero).trim())) { setErro('Em Número, informe só o número do endereço do prédio (ex.: 1000). A chave do Asaas não vai aqui: ela fica no painel da Hostinger'); return; }
     if (!c.sindico.email || !c.sindico.celular) { setErro('Informe o e-mail e o celular do síndico no passo Condomínio'); return; }
@@ -13353,7 +13591,7 @@ function SubcontaReal({ r, mudar }) {
     setEnviando(true);
     setErro(null);
     try {
-      const resp = await chamarApi('POST', '/api/condominios', { id, nome: c.nome, cnpj, email: c.sindico.email, celular: apenasDigitos(c.sindico.celular), cep: apenasDigitos(c.cep), endereco: c.endereco, numero: a.numero, bairro: a.bairro, rendaMensal: arrecadacaoPrevista(r) || 100000 });
+      const resp = await chamarApi('POST', '/api/condominios', { id, nome: c.nome, cnpj, email: c.sindico.email, celular: apenasDigitos(c.sindico.celular), cep: apenasDigitos(c.cep), endereco: c.endereco, numero: a.numero, bairro, rendaMensal: arrecadacaoPrevista(r) || 100000 });
       mudar({ idCondominio: id, asaas: { ...a, cnpj, situacao: 'aprovada', ambiente: 'sandbox', real: true, walletId: resp.walletId, contaPrincipal: resp.situacao === 'conta-principal' } });
     } catch (e) {
       setErro(e.message);
@@ -13366,7 +13604,7 @@ function SubcontaReal({ r, mudar }) {
     <div class="edicao-anuncio">
       <${Campo} rotulo="CNPJ do condomínio"><input id="impl-asaas-cnpj" inputmode="numeric" value=${a.cnpj || c.cnpj} onInput=${campo('cnpj')} /><//>
       <${Campo} rotulo="Número" dica="Do endereço do prédio"><input id="impl-numero" inputmode="numeric" maxlength="10" value=${a.numero || ''} onInput=${campo('numero')} placeholder="Ex.: 1000" /><//>
-      <${Campo} rotulo="Bairro"><input id="impl-bairro" value=${a.bairro || ''} onInput=${campo('bairro')} placeholder="Ex.: Centro" /><//>
+      <${Campo} rotulo="Bairro"><input id="impl-bairro" value=${a.bairro ?? (c.bairro || '')} onInput=${campo('bairro')} placeholder="Ex.: Centro" /><//>
     </div>
     ${a.real
       ? a.contaPrincipal
@@ -13456,7 +13694,8 @@ function TelaImplantacao({ rota, rascunho, aoSalvarRascunho, aoAtivar }) {
   const passo = PASSOS_UI[rota.tela] ? rota.tela : 'condominio';
   const indice = PASSOS_IMPLANTACAO.findIndex(([id]) => id === passo);
   const Passo = PASSOS_UI[passo];
-  const mudar = (mudanca) => setR((atual) => ({ ...atual, ...mudanca }));
+  // Aceita a mudança pronta ou uma função do rascunho atual (respostas que chegam depois, como a do CEP).
+  const mudar = (mudanca) => setR((atual) => ({ ...atual, ...(typeof mudanca === 'function' ? mudanca(atual) : mudanca) }));
 
   function avancar() {
     const falha = validarPasso(passo, r);
@@ -13492,6 +13731,147 @@ function TelaImplantacao({ rota, rascunho, aoSalvarRascunho, aoAtivar }) {
   </section>`;
 }
 
+// ---- src/ui/moradores.js ----
+
+// Meus dados (morador, só a própria unidade) e Moradores (síndico, todas as unidades e o responsável financeiro).
+const NOMES_SITUACAO_PESSOA = { ativo: ['ok', 'usa o app'], convidado: ['neutro', 'convidado'], pendente: ['alerta', 'aguardando aprovação'] };
+
+// Na demonstração o documento vem pronto (mascarado); no condomínio implantado, o CPF do cadastro.
+function documentoDoResponsavel(resp) {
+  if (resp.cpf) return `CPF ${fmtCpf(resp.cpf)}`;
+  return resp.documento && !/a informar|implantação/.test(resp.documento) ? resp.documento : 'sem CPF';
+}
+
+function fmtTelefone(t) {
+  const d = String(t || '');
+  return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : d;
+}
+
+function EditorResidentes({ estado, unidade, executar }) {
+  const [lista, setLista] = useState(() => {
+    const atuais = residentesDaUnidade(estado, unidade).map((r) => ({ nome: r.nome, telefone: fmtTelefone(r.telefone) }));
+    return atuais.length ? atuais : [{ nome: '', telefone: '' }];
+  });
+  const [erro, setErro] = useState(null);
+  const [ok, setOk] = useState(null);
+  const mudar = (i, chave) => (ev) => setLista(lista.map((r, j) => (j === i ? { ...r, [chave]: ev.target.value } : r)));
+  function salvar() {
+    const r = executar((e) => salvarResidentes(e, unidade, lista));
+    setErro(r.erro || null);
+    setOk(r.erro ? null : 'Lista salva.');
+  }
+  return html`<div class="pilha">
+    ${lista.map((r, i) => html`<div key=${i} class="linha-residente">
+      <input id=${`residente-nome-${i}`} aria-label=${`Nome da pessoa ${i + 1}`} placeholder="Nome" value=${r.nome} onInput=${mudar(i, 'nome')} />
+      <input id=${`residente-telefone-${i}`} aria-label=${`Telefone da pessoa ${i + 1} (opcional)`} placeholder="Telefone (opcional)" inputmode="tel" value=${r.telefone} onInput=${mudar(i, 'telefone')} />
+      <button type="button" class="btn-link" onClick=${() => setLista(lista.filter((_, j) => j !== i))}>Remover</button>
+    </div>`)}
+    <div class="acoes">
+      <button type="button" class="btn secundario" onClick=${() => setLista([...lista, { nome: '', telefone: '' }])}>Adicionar pessoa</button>
+      <button type="button" class="btn primario" data-acao="salvar-residentes" onClick=${salvar}>Salvar lista</button>
+    </div>
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${ok} />
+  </div>`;
+}
+
+function MDados({ estado, eu, executar }) {
+  const pessoa = pessoaDaUnidade(estado, eu);
+  const [form, setForm] = useState(() => ({ nome: pessoa ? pessoa.nome : '', cpf: pessoa && pessoa.cpf ? fmtCpf(pessoa.cpf) : '', celular: pessoa ? fmtTelefone(pessoa.celular) : '', email: pessoa ? pessoa.email || '' : '' }));
+  const [erro, setErro] = useState(null);
+  const [ok, setOk] = useState(null);
+  if (!pessoa) return html`<section class="m-pagina"><${Vazio} texto="Nenhum cadastro nesta unidade." /></section>`;
+  const resp = estado.financeiro.unidades[eu] && estado.financeiro.unidades[eu].responsavel;
+  const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.value });
+  function salvar() {
+    const r = executar((e) => atualizarMeusDados(e, pessoa.id, form));
+    setErro(r.erro || null);
+    setOk(r.erro ? null : 'Seus dados foram atualizados.');
+  }
+  return html`<section class="m-pagina">
+    <a class="voltar" href="#morador.mais">‹ Mais</a>
+    <h1 class="m-titulo">Meus dados</h1>
+    <p class="m-sub">Apto ${eu} · só você e o síndico veem estes dados.</p>
+    <div class="pilha formulario">
+      <${Campo} rotulo="Nome"><input id="dados-nome" value=${form.nome} onInput=${campo('nome')} autocomplete="name" /><//>
+      <${Campo} rotulo="CPF"><input id="dados-cpf" inputmode="numeric" value=${form.cpf} onInput=${campo('cpf')} placeholder="000.000.000-00" /><//>
+      <${Campo} rotulo="Celular" dica="Com DDD"><input id="dados-celular" inputmode="tel" value=${form.celular} onInput=${campo('celular')} autocomplete="tel" /><//>
+      <${Campo} rotulo="E-mail"><input id="dados-email" type="email" value=${form.email} onInput=${campo('email')} autocomplete="email" /><//>
+      <button type="button" class="btn primario bloco" data-acao="salvar-meus-dados" onClick=${salvar}>Salvar meus dados</button>
+      <${Erro} texto=${erro} />
+      <${Sucesso} texto=${ok} />
+    </div>
+    <h2>Quem mora no apartamento</h2>
+    <small class="m-ajuda">Nome de cada morador; o telefone é opcional. Ajuda a portaria a saber quem é do apartamento.</small>
+    <${EditorResidentes} estado=${estado} unidade=${eu} executar=${executar} />
+    <h2>Responsável financeiro</h2>
+    <div class="cartao"><strong>${resp ? resp.nome : 'Ainda não definido'}</strong><small class="sub">Definido pelo síndico. Para mudar, fale com ele.</small></div>
+  </section>`;
+}
+
+function FormResponsavel({ estado, unidade, executar, aoFechar }) {
+  const atual = estado.financeiro.unidades[unidade].responsavel || {};
+  const [form, setForm] = useState({ nome: atual.nome || '', cpf: atual.cpf ? fmtCpf(atual.cpf) : '', relacao: atual.relacao || 'titular' });
+  const [erro, setErro] = useState(null);
+  const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.value });
+  function salvar() {
+    const r = executar((e) => definirResponsavel(e, unidade, form, 'sindico'));
+    if (r.erro) setErro(r.erro);
+    else aoFechar();
+  }
+  const nomes = estado.pessoas.filter((p) => p.unidade === unidade).map((p) => p.nome);
+  return html`<div class="cartao pilha formulario">
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Nome do responsável"><input id=${`resp-nome-${unidade}`} list=${`resp-nomes-${unidade}`} value=${form.nome} onInput=${campo('nome')} /><datalist id=${`resp-nomes-${unidade}`}>${nomes.map((n) => html`<option key=${n} value=${n} />`)}</datalist><//>
+      <${Campo} rotulo="CPF"><input id=${`resp-cpf-${unidade}`} inputmode="numeric" value=${form.cpf} onInput=${campo('cpf')} placeholder="000.000.000-00" /><//>
+      <${Campo} rotulo="Relação"><select id=${`resp-relacao-${unidade}`} value=${form.relacao} onChange=${campo('relacao')}>${Object.entries(NOMES_RELACAO).map(([k, n]) => html`<option key=${k} value=${k}>${n}</option>`)}</select><//>
+    </div>
+    <div class="acoes">
+      <button type="button" class="btn secundario" onClick=${aoFechar}>Cancelar</button>
+      <button type="button" class="btn primario" data-acao="salvar-responsavel" onClick=${salvar}>Salvar responsável</button>
+    </div>
+    <${Erro} texto=${erro} />
+  </div>`;
+}
+
+function SMoradores({ estado, executar }) {
+  const [busca, setBusca] = useState('');
+  const [editando, setEditando] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const termo = busca.trim().toLowerCase();
+  const unidades = estado.condominio.unidades.filter((u) => !termo || u.toLowerCase().includes(termo) || estado.pessoas.some((p) => p.unidade === u && p.nome.toLowerCase().includes(termo)));
+  function remover(p) {
+    const r = executar((e) => removerPessoa(e, p.id, 'sindico'));
+    setMensagem(r.erro || `${p.nome} removido do apto ${p.unidade}.`);
+  }
+  return html`<section class="pilha">
+    <h1>Moradores</h1>
+    <p class="sub">Quem mora em cada unidade, a situação no app e o responsável financeiro, que só o síndico define.</p>
+    <${Campo} rotulo="Buscar por unidade ou nome"><input id="busca-moradores" value=${busca} onInput=${(ev) => setBusca(ev.target.value)} /><//>
+    <${Sucesso} texto=${mensagem} />
+    ${unidades.length === 0 && html`<${Vazio} texto="Nenhuma unidade encontrada." />`}
+    ${unidades.slice(0, 80).map((u) => {
+      const pessoas = estado.pessoas.filter((p) => p.unidade === u);
+      const residentes = residentesDaUnidade(estado, u);
+      const resp = estado.financeiro.unidades[u] && estado.financeiro.unidades[u].responsavel;
+      return html`<div key=${u} class="cartao pilha" data-unidade-moradores=${u}>
+        <div class="linha-entre"><strong>Apto ${u}</strong>
+          <span class="sub resp-financeiro"><span>Responsável financeiro: ${resp ? `${resp.nome} · ${documentoDoResponsavel(resp)}` : 'não definido'}</span>
+            <button type="button" class="btn-link" data-definir-responsavel=${u} onClick=${() => setEditando(editando === u ? null : u)}>${resp ? 'Alterar' : 'Definir'}</button></span>
+        </div>
+        ${editando === u && html`<${FormResponsavel} estado=${estado} unidade=${u} executar=${executar} aoFechar=${() => setEditando(null)} />`}
+        ${pessoas.length === 0 ? html`<small class="sub">Ninguém cadastrado. Quem mora aqui pode entrar pelo QR Code do convite.</small>` : html`<ul class="itens-sacola">${pessoas.map((p) => {
+          const [tipo, rotulo] = NOMES_SITUACAO_PESSOA[p.situacao] || ['ok', 'usa o app'];
+          return html`<li key=${p.id}><span>${p.nome}${ehSindico(estado, p) ? ' (síndico)' : ''} <${Etiqueta} tipo=${tipo}>${rotulo}<//><small class="sub">${[p.celular && fmtTelefone(p.celular), p.email, p.cpf && `CPF ${fmtCpf(p.cpf)}`].filter(Boolean).join(' · ')}</small></span>
+            ${!ehSindico(estado, p) && html`<button type="button" class="btn-link" data-remover-pessoa=${p.id} onClick=${() => remover(p)}>Remover</button>`}</li>`;
+        })}</ul>`}
+        ${residentes.length > 0 && html`<small class="sub">Também moram: ${residentes.map((r) => (r.telefone ? `${r.nome} (${fmtTelefone(r.telefone)})` : r.nome)).join(', ')}</small>`}
+      </div>`;
+    })}
+    ${unidades.length > 80 && html`<small class="sub">Mostrando 80 de ${unidades.length} unidades: use a busca.</small>`}
+  </section>`;
+}
+
 // ---- src/ui/convite.js ----
 
 // O que o morador vê ao ler o QR Code do convite, e a aprovação dos cadastros novos pelo síndico.
@@ -13516,7 +13896,7 @@ function MConvite({ estado, executar }) {
     if (!r.erro) setResultado(r.situacao);
   }
 
-  if (resultado === 'ativo') return html`<section class="m-pagina"><h1 class="m-titulo">Tudo certo!</h1><p class="m-texto">Seu acesso ao apto ${form.unidade.toUpperCase()} está liberado. Bem-vindo ao ${estado.condominio.nome}.</p><a class="btn primario bloco" href="#morador.inicio">Ir para o início</a></section>`;
+  if (resultado === 'ativo') return html`<section class="m-pagina"><h1 class="m-titulo">Tudo certo!</h1><p class="m-texto">Seu acesso ao apto ${form.unidade.toUpperCase()} está liberado. Bem-vindo ao ${estado.condominio.nome}. Agora complete o seu cadastro.</p><a class="btn primario bloco" data-acao="completar-cadastro" href="#morador.dados">Completar meu cadastro</a><a class="btn secundario bloco" href="#morador.inicio">Depois</a></section>`;
   if (resultado === 'pendente') return html`<section class="m-pagina"><h1 class="m-titulo">Cadastro enviado</h1><p class="m-texto">Você não estava na lista enviada pelo síndico, então ele vai confirmar o seu cadastro no apto ${form.unidade.toUpperCase()}. Você recebe um aviso assim que for aprovado.</p><a class="btn secundario bloco" href="#morador.inicio">Voltar</a></section>`;
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Entrar pelo convite</h1>
@@ -13544,13 +13924,19 @@ function AprovacaoMoradores({ estado, executar }) {
   return html`<div class="cartao pilha">
     <strong>Moradores aguardando aprovação</strong>
     <small class="sub">Entraram pelo convite, mas não estavam na planilha da implantação.</small>
-    ${pendentes.map((p) => html`<div key=${p.id} class="linha-entre">
-      <span>${p.nome} · apto ${p.unidade}${p.celular ? ` · ${p.celular}` : ''}</span>
-      <span class="acoes">
-        <button type="button" class="btn primario" data-aprovar-morador=${p.id} onClick=${() => rodar((e) => aprovarMorador(e, p.id, 'sindico', new Date()), `${p.nome} aprovado.`)}>Aprovar</button>
-        <button type="button" class="btn secundario" onClick=${() => rodar((e) => recusarMorador(e, p.id, 'sindico'), `Cadastro de ${p.nome} recusado.`)}>Recusar</button>
-      </span>
-    </div>`)}
+    ${pendentes.map((p) => {
+      const outros = outrosDaUnidade(estado, p);
+      const nomes = outros.map((o) => o.nome).join(', ');
+      return html`<div key=${p.id} class="pilha aprovacao-morador">
+        <span><strong>${p.nome}</strong> · apto ${p.unidade}${p.celular ? ` · ${p.celular}` : ''}</span>
+        ${outros.length > 0 && html`<small class="sub">Já cadastrado no apto ${p.unidade}: ${outros.map((o) => `${o.nome} (${o.situacao === 'ativo' ? 'usa o app' : o.situacao || 'morador'})`).join(', ')}</small>`}
+        <span class="acoes">
+          <button type="button" class="btn primario" data-aprovar-morador=${p.id} onClick=${() => rodar((e) => aprovarMorador(e, p.id, 'sindico', new Date()), `${p.nome} aprovado.`)}>${outros.length ? 'Aprovar como mais um morador' : 'Aprovar'}</button>
+          ${outros.length > 0 && html`<button type="button" class="btn secundario" data-substituir-morador=${p.id} onClick=${() => rodar((e) => aprovarMorador(e, p.id, 'sindico', new Date(), 'substituir'), `${p.nome} aprovado no lugar de ${nomes}.`)}>Aprovar substituindo ${nomes}</button>`}
+          <button type="button" class="btn secundario" onClick=${() => rodar((e) => recusarMorador(e, p.id, 'sindico'), `Cadastro de ${p.nome} recusado.`)}>Recusar</button>
+        </span>
+      </div>`;
+    })}
     <${Sucesso} texto=${mensagem} />
   </div>`;
 }

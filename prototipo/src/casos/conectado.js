@@ -20,26 +20,26 @@ export const CASOS_CONECTADO = [
       const comp = proximaCompetencia(e.financeiro);
       const p = previaConectada(e, comp);
       const linha = (u) => p.linhas.find((l) => l.unidade === u);
-      igual([linha('A101').bloqueada, linha('B201').motivo, linha('A102').motivo], [false, MSG_SEM_CPF, 'Sem responsável financeiro']);
+      igual([linha('101A').bloqueada, linha('201B').motivo, linha('102A').motivo], [false, MSG_SEM_CPF, 'Sem responsável financeiro']);
       const linhas = linhasParaAsaas(e, comp);
-      igual(linhas.map((l) => [l.unidade, l.valor, l.vencimento, l.responsavel.cpf, l.responsavel.email, l.multaPct]), [['A101', 55000, p.vencimento, '52998224725', 'maria@email.com', 2]]);
-      igual(linhasParaAsaas(e, comp, ['B201']), []);
+      igual(linhas.map((l) => [l.unidade, l.valor, l.vencimento, l.responsavel.cpf, l.responsavel.email, l.multaPct]), [['101A', 55000, p.vencimento, '52998224725', 'maria@email.com', 2]]);
+      igual(linhasParaAsaas(e, comp, ['201B']), []);
     },
   },
   {
     nome: 'conectado: emissão parcial, reenvio sem duplicar e baixa pelo servidor',
     rodar() {
       const e = condominioConectado();
-      const r1 = aplicarEmissao(e, '2026-10', [{ unidade: 'A101', ok: true, cobranca: cobrancaServidor('A101') }, { unidade: 'B402', ok: false, erro: 'O CPF informado é inválido.' }], 'sindico', AGORA_IMPLANTACAO);
+      const r1 = aplicarEmissao(e, '2026-10', [{ unidade: '101A', ok: true, cobranca: cobrancaServidor('101A') }, { unidade: '402B', ok: false, erro: 'O CPF informado é inválido.' }], 'sindico', AGORA_IMPLANTACAO);
       const fin1 = r1.estado.financeiro;
-      igual([r1.emitidas, fin1.emitidas, fin1.cobrancas.map((c) => c.asaas.referencia), fin1.falhasAsaas['2026-10']], [1, ['2026-10'], ['cond-teste:2026-10:A101'], [{ unidade: 'B402', erro: 'O CPF informado é inválido.' }]]);
-      const r2 = aplicarEmissao(r1.estado, '2026-10', [{ unidade: 'B402', ok: true, cobranca: cobrancaServidor('B402') }, { unidade: 'A101', ok: true, cobranca: cobrancaServidor('A101') }], 'sindico', AGORA_IMPLANTACAO);
+      igual([r1.emitidas, fin1.emitidas, fin1.cobrancas.map((c) => c.asaas.referencia), fin1.falhasAsaas['2026-10']], [1, ['2026-10'], ['cond-teste:2026-10:101A'], [{ unidade: '402B', erro: 'O CPF informado é inválido.' }]]);
+      const r2 = aplicarEmissao(r1.estado, '2026-10', [{ unidade: '402B', ok: true, cobranca: cobrancaServidor('402B') }, { unidade: '101A', ok: true, cobranca: cobrancaServidor('101A') }], 'sindico', AGORA_IMPLANTACAO);
       igual([r2.estado.financeiro.cobrancas.length, r2.estado.financeiro.falhasAsaas['2026-10'], r2.estado.financeiro.emitidas], [2, [], ['2026-10']]);
       igual(aplicarEmissao(e, '2026-10', [], 'morador', AGORA_IMPLANTACAO).erro, 'Somente o síndico pode fazer isso');
-      const pago = aplicarSituacoes(r2.estado, [cobrancaServidor('A101', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' }), cobrancaServidor('B402')], AGORA_IMPLANTACAO);
-      const a101 = pago.estado.financeiro.cobrancas.find((c) => c.unidade === 'A101');
+      const pago = aplicarSituacoes(r2.estado, [cobrancaServidor('101A', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' }), cobrancaServidor('402B')], AGORA_IMPLANTACAO);
+      const a101 = pago.estado.financeiro.cobrancas.find((c) => c.unidade === '101A');
       igual([pago.baixas, a101.status, a101.forma, pago.estado.financeiro.saldo > 0, pago.notificacao.texto.startsWith('Pagamento recebido')], [1, 'paga', 'pix', true, true]);
-      igual(aplicarSituacoes(pago.estado, [cobrancaServidor('A101', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' })], AGORA_IMPLANTACAO).baixas, 0);
+      igual(aplicarSituacoes(pago.estado, [cobrancaServidor('101A', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' })], AGORA_IMPLANTACAO).baixas, 0);
     },
   },
   {
