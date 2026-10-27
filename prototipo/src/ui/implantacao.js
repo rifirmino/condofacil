@@ -224,6 +224,8 @@ function SubcontaReal({ r, mudar }) {
     const cnpj = apenasDigitos(a.cnpj || c.cnpj);
     if (cnpj.length !== 14) { setErro('Informe o CNPJ do condomínio (14 dígitos)'); return; }
     if (!c.cep || !c.endereco || !a.numero || !a.bairro) { setErro('Preencha CEP e endereço (passo Condomínio), número e bairro'); return; }
+    // Protege contra colar a chave da API (ou outro texto longo) no campo do número do endereço.
+    if (!/^[0-9A-Za-z\s\-/]{1,10}$/.test(String(a.numero).trim())) { setErro('Em Número, informe só o número do endereço do prédio (ex.: 1000). A chave do Asaas não vai aqui: ela fica no painel da Hostinger'); return; }
     if (!c.sindico.email || !c.sindico.celular) { setErro('Informe o e-mail e o celular do síndico no passo Condomínio'); return; }
     const id = r.idCondominio || `cond-${identificadorCondominio(c.nome)}-${Date.now().toString(36)}`;
     setEnviando(true);
@@ -241,8 +243,8 @@ function SubcontaReal({ r, mudar }) {
     <p class="sub">Asaas sandbox conectado: a subconta é criada de verdade no ambiente de testes (dinheiro de mentira).</p>
     <div class="edicao-anuncio">
       <${Campo} rotulo="CNPJ do condomínio"><input id="impl-asaas-cnpj" inputmode="numeric" value=${a.cnpj || c.cnpj} onInput=${campo('cnpj')} /><//>
-      <${Campo} rotulo="Número"><input id="impl-numero" value=${a.numero || ''} onInput=${campo('numero')} /><//>
-      <${Campo} rotulo="Bairro"><input id="impl-bairro" value=${a.bairro || ''} onInput=${campo('bairro')} /><//>
+      <${Campo} rotulo="Número" dica="Do endereço do prédio"><input id="impl-numero" inputmode="numeric" maxlength="10" value=${a.numero || ''} onInput=${campo('numero')} placeholder="Ex.: 1000" /><//>
+      <${Campo} rotulo="Bairro"><input id="impl-bairro" value=${a.bairro || ''} onInput=${campo('bairro')} placeholder="Ex.: Centro" /><//>
     </div>
     ${a.real
       ? html`<p class="sucesso">Subconta aprovada no Asaas sandbox (carteira ${a.walletId}). As cobranças vão sair por ela.</p>`
