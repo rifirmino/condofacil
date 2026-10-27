@@ -1,5 +1,5 @@
 import { html, useState, useEffect } from '../vendor.js';
-import { PASSOS_IMPLANTACAO, CONTATO_COMERCIAL, MODELO_CSV_MORADORES, AREAS_MODELO, NOMES_VINCULO_MORADOR, UFS, validarCondominio, gerarUnidades, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, mensagemWhatsAppConvite, fmtCpf, apenasDigitos } from '../implantacao/regras.js';
+import { PASSOS_IMPLANTACAO, CONTATO_COMERCIAL, MODELO_CSV_MORADORES, AREAS_MODELO, NOMES_VINCULO_MORADOR, UFS, validarCondominio, gerarUnidades, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, mensagemWhatsAppConvite, fmtCpf, apenasDigitos, sugestaoPrimeiroAndar } from '../implantacao/regras.js';
 import { CONEXAO, chamarApi } from '../conectado/cliente.js';
 import { condominioNovo } from '../implantacao/novo.js';
 import { PLANOS, mensalidade } from '../planos.js';
@@ -46,7 +46,7 @@ export function QrCodeReal({ texto, tamanho = 220 }) {
 export function rascunhoPadrao() {
   return {
     condominio: { nome: '', cnpj: '', cep: '', endereco: '', cidade: '', uf: 'SP', sindico: { nome: '', unidade: '', email: '', celular: '' }, plano: 'intermediario' },
-    geracao: { modo: 'gerador', blocos: '', andares: '4', porAndar: '4', coberturaUltimo: false, csv: '' },
+    geracao: { modo: 'gerador', blocos: '', andares: '4', porAndar: '4', somar: '100', primeiro: ['101', '102', '103', '104'], coberturaUltimo: false, csv: '' },
     unidades: [],
     csvMoradores: '',
     moradores: [],
@@ -121,13 +121,42 @@ function PassoCondominio({ r, mudar }) {
   </div>`;
 }
 
+// Rascunhos antigos não têm os números do 1º andar nem a soma: completa com a sugestão.
+function geracaoCompleta(g) {
+  const somar = g.somar ?? '100';
+  const sugestao = sugestaoPrimeiroAndar(g.porAndar, Number(somar) || 100).map(String);
+  const primeiro = sugestao.map((s, i) => (g.primeiro && g.primeiro[i] !== undefined ? g.primeiro[i] : s));
+  return { ...g, somar, primeiro };
+}
+
+function GradeUnidades({ unidades }) {
+  const blocos = [...new Set(unidades.map((u) => u.bloco || ''))];
+  return html`<div class="grade-unidades">${blocos.map((b) => {
+    const doBloco = unidades.filter((u) => (u.bloco || '') === b);
+    const andares = [...new Set(doBloco.map((u) => u.andar))].sort((x, y) => y - x);
+    return html`<div key=${b} class="pilha">
+      ${b && html`<strong>Bloco ${b}</strong>`}
+      ${andares.slice(0, 40).map((a) => html`<div key=${a} class="linha-andar"><span class="sub">${a}º andar</span>
+        <span class="lista-unidades">${doBloco.filter((u) => u.andar === a).map((u) => html`<span key=${u.id} class=${`etq-turno ${u.tipo === 'cobertura' ? 't-tarde' : 't-folga'}`}>${u.id}</span>`)}</span></div>`)}
+    </div>`;
+  })}</div>`;
+}
+
 function PassoUnidades({ r, mudar }) {
-  const g = r.geracao;
+  const g = geracaoCompleta(r.geracao);
   const [erro, setErro] = useState(null);
-  const campo = (chave) => (ev) => mudar({ geracao: { ...g, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value } });
+  const valor = (ev) => (ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value);
+  const campo = (chave) => (ev) => mudar({ geracao: { ...g, [chave]: valor(ev) } });
+  // Mudar a soma troca os números do 1º andar que ainda estão na sugestão anterior (101 → 11 ao passar de 100 para 10).
+  function mudarSomar(ev) {
+    const anterior = sugestaoPrimeiroAndar(g.porAndar, Number(g.somar) || 100).map(String);
+    const nova = sugestaoPrimeiroAndar(g.porAndar, Number(ev.target.value) || 100).map(String);
+    mudar({ geracao: { ...g, somar: ev.target.value, primeiro: g.primeiro.map((p, i) => (p === anterior[i] ? nova[i] : p)) } });
+  }
+  const mudarPrimeiro = (i) => (ev) => mudar({ geracao: { ...g, primeiro: g.primeiro.map((p, j) => (j === i ? ev.target.value : p)) } });
   function gerar() {
     const res = g.modo === 'gerador'
-      ? gerarUnidades({ blocos: g.blocos.split(/[\s,;]+/).filter(Boolean), andares: Number(g.andares), porAndar: Number(g.porAndar), coberturaUltimo: g.coberturaUltimo })
+      ? gerarUnidades({ blocos: g.blocos.split(/[\s,;]+/).filter(Boolean), andares: Number(g.andares), primeiroAndar: g.primeiro, somar: Number(g.somar), coberturaUltimo: g.coberturaUltimo })
       : lerCsvUnidades(g.csv);
     setErro(res.erro || null);
     if (!res.erro) mudar({ unidades: res.unidades });
@@ -140,14 +169,19 @@ function PassoUnidades({ r, mudar }) {
           <${Campo} rotulo="Blocos" dica="Ex.: A, B. Deixe vazio se não houver"><input id="impl-blocos" value=${g.blocos} onInput=${campo('blocos')} /><//>
           <${Campo} rotulo="Andares"><input id="impl-andares" type="number" min="1" max="40" value=${g.andares} onInput=${campo('andares')} /><//>
           <${Campo} rotulo="Apartamentos por andar"><input id="impl-por-andar" type="number" min="1" max="20" value=${g.porAndar} onInput=${campo('porAndar')} /><//>
+          <${Campo} rotulo="Somar a cada andar" dica="Ex.: 10 (11 → 21 → 31) ou 100 (101 → 201)"><input id="impl-somar" type="number" min="1" value=${g.somar} onInput=${mudarSomar} /><//>
         </div>
+        <fieldset class="primeiro-andar"><legend>Números do 1º andar (ou térreo)</legend>
+          <div class="lista-unidades">${g.primeiro.map((p, i) => html`<input key=${i} id=${`impl-primeiro-${i}`} aria-label=${`Apartamento ${i + 1} do 1º andar`} inputmode="numeric" value=${p} onInput=${mudarPrimeiro(i)} />`)}</div>
+          <small class="sub">Os demais andares somam ${g.somar || '?'} a cada andar. O bloco vai depois do número: ${g.primeiro[0] || '11'}A, ${g.primeiro[0] || '11'}B.</small>
+        </fieldset>
         <label class="check"><input id="impl-cobertura" type="checkbox" checked=${g.coberturaUltimo} onChange=${campo('coberturaUltimo')} /><span>O último andar é de coberturas</span></label>`
-      : html`<${Campo} rotulo="Planilha de unidades" dica="Colunas: unidade;bloco;tipo (padrão ou cobertura)"><textarea id="impl-csv-unidades" rows="6" value=${g.csv} onInput=${campo('csv')} placeholder="unidade;bloco;tipo\n101;;padrão\n801;;cobertura"></textarea><//>`}
+      : html`<${Campo} rotulo="Planilha de unidades" dica="Colunas: unidade;bloco;tipo (padrão ou cobertura);andar (opcional). Com bloco, a unidade vira 11A, 11B"><textarea id="impl-csv-unidades" rows="6" value=${g.csv} onInput=${campo('csv')} placeholder="unidade;bloco;tipo\n11;A;padrão\n11;B;padrão"></textarea><//>`}
     <button type="button" class="btn secundario" data-acao="gerar-unidades" onClick=${gerar}>${g.modo === 'gerador' ? 'Gerar unidades' : 'Ler planilha'}</button>
     <${Erro} texto=${erro} />
     ${r.unidades.length > 0 && html`<div class="cartao pilha">
       <strong>${r.unidades.length} unidades${coberturas ? ` · ${coberturas} coberturas` : ''}</strong>
-      <div class="lista-unidades">${r.unidades.slice(0, 60).map((u) => html`<span key=${u.id} class=${`etq-turno ${u.tipo === 'cobertura' ? 't-tarde' : 't-folga'}`}>${u.id}</span>`)}${r.unidades.length > 60 ? html`<small class="sub">e mais ${r.unidades.length - 60}</small>` : ''}</div>
+      <${GradeUnidades} unidades=${r.unidades} />
     </div>`}
   </div>`;
 }

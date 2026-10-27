@@ -647,6 +647,12 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .conectar-piloto input { max-width: 160px; padding: 6px 8px; }
 .erro-conexao { color: #fff; background: #b4443a; border-radius: 6px; padding: 2px 8px; font-size: 13px; }
 .pix-real { display: block; width: 160px; height: 160px; image-rendering: pixelated; margin: 0 auto; }
+.primeiro-andar { border: 1px solid var(--borda, #d5dedb); border-radius: 8px; padding: 10px 12px; }
+.primeiro-andar legend { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 0 4px; }
+.primeiro-andar input { width: 72px; }
+.grade-unidades { display: flex; flex-wrap: wrap; gap: 18px; }
+.linha-andar { display: flex; gap: 10px; align-items: center; }
+.linha-andar > .sub { min-width: 64px; }
 
 </style>
 <div id="app"></div>
@@ -1895,22 +1901,42 @@ function celularValido(celular) {
 }
 
 // Unidades como "101", "102"… e, com blocos, "A101". O último andar pode ser todo de coberturas.
-function gerarUnidades({ blocos = [], andares, porAndar, coberturaUltimo = false }) {
+// Sugestão dos números do 1º andar: somar 100 → 101, 102…; somar 10 → 11, 12…
+function sugestaoPrimeiroAndar(porAndar, somar = 100) {
+  return Array.from({ length: Math.max(0, Number(porAndar) || 0) }, (_, i) => Number(somar) + i + 1);
+}
+
+// Números do 1º andar (ou térreo) somados a cada andar; o bloco vai depois do número (11A, 24B).
+function gerarUnidades({ blocos = [], andares, porAndar, primeiroAndar, somar = 100, coberturaUltimo = false }) {
   const a = Number(andares);
-  const p = Number(porAndar);
+  const s = Number(somar);
+  const primeiro = (primeiroAndar || sugestaoPrimeiroAndar(porAndar, s)).map((n) => (String(n).trim() === '' ? NaN : Number(String(n).trim())));
   if (!Number.isInteger(a) || a < 1 || a > 40) return { erro: 'Informe de 1 a 40 andares' };
-  if (!Number.isInteger(p) || p < 1 || p > 20) return { erro: 'Informe de 1 a 20 apartamentos por andar' };
+  if (primeiro.length < 1 || primeiro.length > 20) return { erro: 'Informe de 1 a 20 apartamentos por andar' };
+  if (primeiro.some((n) => !Number.isInteger(n) || n < 0)) return { erro: 'Preencha os números do 1º andar' };
+  if (new Set(primeiro).size !== primeiro.length) return { erro: 'Há números repetidos no 1º andar' };
+  if (a > 1 && (!Number.isInteger(s) || s < 1)) return { erro: 'Informe quanto somar a cada andar' };
   const nomes = blocos.map((b) => String(b).trim().toUpperCase()).filter(Boolean);
   if (new Set(nomes).size !== nomes.length) return { erro: 'Blocos repetidos' };
   const listaBlocos = nomes.length ? nomes : [''];
-  if (listaBlocos.length * a * p > LIMITE_UNIDADES) return { erro: `No máximo ${LIMITE_UNIDADES} unidades` };
+  if (listaBlocos.length * a * primeiro.length > LIMITE_UNIDADES) return { erro: `No máximo ${LIMITE_UNIDADES} unidades` };
   const unidades = [];
   for (const bloco of listaBlocos) {
     for (let andar = 1; andar <= a; andar++) {
-      for (let n = 1; n <= p; n++) unidades.push({ id: `${bloco}${andar}${String(n).padStart(2, '0')}`, bloco: bloco || null, andar, tipo: coberturaUltimo && andar === a && a > 1 ? 'cobertura' : 'A' });
+      for (const n of primeiro) unidades.push({ id: `${n + s * (andar - 1)}${bloco}`, bloco: bloco || null, andar, tipo: coberturaUltimo && andar === a && a > 1 ? 'cobertura' : 'A' });
     }
   }
+  const repetida = unidades.find((u, i) => unidades.findIndex((x) => x.id === u.id) !== i);
+  if (repetida) return { erro: `A unidade ${repetida.id} se repete entre andares: aumente o valor a somar` };
   return { unidades };
+}
+
+// Andar pelo número: 2 dígitos → a dezena (21 → 2º); 3 ou mais → tudo menos os 2 últimos (1204 → 12º).
+function andarDoNumero(id) {
+  const d = (String(id).match(/\d+/) || [''])[0];
+  if (d.length >= 3) return Number(d.slice(0, -2)) || 1;
+  if (d.length === 2) return Number(d[0]) || 1;
+  return 1;
 }
 
 function dividirLinha(linha, sep) {
@@ -1940,12 +1966,15 @@ function lerCsvUnidades(texto) {
   const corpo = /unidade/i.test(linhas[0]) ? linhas.slice(1) : linhas;
   const unidades = [];
   for (const [n, linha] of corpo.entries()) {
-    const [id, bloco, tipo] = dividirLinha(linha, sep);
-    const limpo = String(id || '').toUpperCase().replace(/\s+/g, '');
-    if (!limpo) return { erro: `Linha ${n + 1}: informe a unidade` };
+    const [id, bloco, tipo, andarInformado] = dividirLinha(linha, sep);
+    const numero = String(id || '').toUpperCase().replace(/\s+/g, '');
+    const b = String(bloco || '').toUpperCase().replace(/\s+/g, '');
+    if (!numero) return { erro: `Linha ${n + 1}: informe a unidade` };
+    // Com bloco, a unidade é número + bloco (11A, 11B): o mesmo número em blocos diferentes não se repete.
+    const limpo = b && !numero.endsWith(b) ? `${numero}${b}` : numero;
     if (unidades.some((u) => u.id === limpo)) return { erro: `Linha ${n + 1}: unidade ${limpo} repetida` };
-    const andar = Number((limpo.match(/(\d+)\d\d$/) || [])[1]) || 1;
-    unidades.push({ id: limpo, bloco: bloco ? bloco.toUpperCase() : null, andar, tipo: /cobertura/i.test(tipo || '') ? 'cobertura' : 'A' });
+    const andar = Number(andarInformado) > 0 ? Number(andarInformado) : andarDoNumero(numero);
+    unidades.push({ id: limpo, bloco: b || null, andar, tipo: /cobertura/i.test(tipo || '') ? 'cobertura' : 'A' });
   }
   if (unidades.length > LIMITE_UNIDADES) return { erro: `No máximo ${LIMITE_UNIDADES} unidades` };
   return { unidades };
@@ -7838,13 +7867,13 @@ const CASOS_ENQUETES = [
 // ---- src/casos/implantacao.js ----
 
 const AGORA_IMPLANTACAO = new Date(2026, 9, 23, 10, 0);
-const CSV_TESTE = 'unidade;nome;email;celular;vinculo;responsavel\nA101;Maria Silva;maria@email.com;11987654321;titular;sim\nA102;João Souza;joao@email;119;locatário;não\nZ999;Pedro;;;;\nA101;Carlos Lima;carlos@email.com;11955554444;inquilino;sim';
+const CSV_TESTE = 'unidade;nome;email;celular;vinculo;responsavel\n101A;Maria Silva;maria@email.com;11987654321;titular;sim\n102A;João Souza;joao@email;119;locatário;não\nZ999;Pedro;;;;\n101A;Carlos Lima;carlos@email.com;11955554444;inquilino;sim';
 
 function configTeste() {
   const { unidades } = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
-  const { validas } = lerCsvMoradores('A101;Maria Silva;maria@email.com;11987654321;titular;sim\nB201;Rui Costa;rui@email.com;11944443333;proprietario;sim', unidades.map((u) => u.id));
+  const { validas } = lerCsvMoradores('101A;Maria Silva;maria@email.com;11987654321;titular;sim\n201B;Rui Costa;rui@email.com;11944443333;proprietario;sim', unidades.map((u) => u.id));
   return {
-    condominio: { nome: 'Residencial Teste', cnpj: '12.345.678/0001-90', cep: '01310-100', endereco: 'Av. Paulista, 1000', cidade: 'São Paulo', uf: 'SP', sindico: { nome: 'Helena Prado', unidade: 'B402', email: 'helena@email.com', celular: '11999998888' }, plano: 'intermediario' },
+    condominio: { nome: 'Residencial Teste', cnpj: '12.345.678/0001-90', cep: '01310-100', endereco: 'Av. Paulista, 1000', cidade: 'São Paulo', uf: 'SP', sindico: { nome: 'Helena Prado', unidade: '402B', email: 'helena@email.com', celular: '11999998888' }, plano: 'intermediario' },
     unidades,
     moradores: validas,
     cobranca: { diaVencimento: 10, multaPct: 2, jurosPct: 1, fundoPct: 10, modo: 'fixo', valores: { A: 50000, cobertura: 75000 }, orcamento: 0 },
@@ -7858,18 +7887,18 @@ const CASOS_IMPLANTACAO = [
     nome: 'implantação: CPF do responsável na planilha',
     rodar() {
       igual([cpfValido('529.982.247-25'), cpfValido('52998224724'), cpfValido('11111111111'), cpfValido('123'), fmtCpf('52998224725')], [true, false, false, false, '529.982.247-25']);
-      const l = lerCsvMoradores('A101;Maria;;;titular;sim;529.982.247-25\nA102;João;;;titular;sim;123\nA201;Ana;;;titular;sim', ['A101', 'A102', 'A201']);
+      const l = lerCsvMoradores('101A;Maria;;;titular;sim;529.982.247-25\n102A;João;;;titular;sim;123\n201A;Ana;;;titular;sim', ['101A', '102A', '201A']);
       igual([l.linhas[0].dados.cpf, l.linhas[1].erros, l.linhas[2].dados.cpf, l.linhas[2].erros], ['52998224725', ['CPF inválido'], '', []]);
       const cfg = configTeste();
       const e = condominioNovo({ ...cfg, moradores: [{ ...cfg.moradores[0], cpf: '52998224725' }, cfg.moradores[1]] }, AGORA_IMPLANTACAO);
-      igual([e.financeiro.unidades.A101.responsavel.cpf, e.financeiro.unidades.B201.responsavel.cpf], ['52998224725', null]);
+      igual([e.financeiro.unidades['101A'].responsavel.cpf, e.financeiro.unidades['201B'].responsavel.cpf], ['52998224725', null]);
     },
   },
   {
     nome: 'implantação: gerador e planilha de unidades',
     rodar() {
       const g = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
-      igual([g.unidades.length, g.unidades[0].id, g.unidades.at(-1).id, g.unidades.filter((u) => u.tipo === 'cobertura').length], [16, 'A101', 'B402', 4]);
+      igual([g.unidades.length, g.unidades[0].id, g.unidades.at(-1).id, g.unidades.filter((u) => u.tipo === 'cobertura').length], [16, '101A', '402B', 4]);
       igual(gerarUnidades({ andares: 8, porAndar: 4 }).unidades.map((u) => u.id).slice(0, 5), ['101', '102', '103', '104', '201']);
       igual([gerarUnidades({ andares: 0, porAndar: 2 }).erro, gerarUnidades({ andares: 3, porAndar: 21 }).erro, gerarUnidades({ blocos: ['A', 'a'], andares: 2, porAndar: 2 }).erro, gerarUnidades({ blocos: Array.from({ length: 30 }, (_, i) => `B${i}`), andares: 40, porAndar: 1 }).erro], ['Informe de 1 a 40 andares', 'Informe de 1 a 20 apartamentos por andar', 'Blocos repetidos', 'No máximo 1000 unidades']);
       const csv = lerCsvUnidades('unidade,bloco,tipo\n101,,\n1201,,cobertura');
@@ -7878,13 +7907,27 @@ const CASOS_IMPLANTACAO = [
     },
   },
   {
+    nome: 'implantação: 1º andar digitado, soma por andar e bloco depois do número',
+    rodar() {
+      const g = gerarUnidades({ blocos: ['A', 'B'], andares: 4, primeiroAndar: [11, 12, 13, 14], somar: 10 });
+      const ids = g.unidades.map((u) => u.id);
+      igual([ids.length, ids.slice(0, 5), ids.slice(-4), g.unidades.find((u) => u.id === '31B').andar], [32, ['11A', '12A', '13A', '14A', '21A'], ['41B', '42B', '43B', '44B'], 3]);
+      igual([gerarUnidades({ andares: 2, primeiroAndar: [11, 11], somar: 10 }).erro, gerarUnidades({ andares: 2, primeiroAndar: [1, 11], somar: 10 }).erro, gerarUnidades({ andares: 2, primeiroAndar: ['', 12], somar: 10 }).erro], ['Há números repetidos no 1º andar', 'A unidade 11 se repete entre andares: aumente o valor a somar', 'Preencha os números do 1º andar']);
+      igual([sugestaoPrimeiroAndar(4, 10), sugestaoPrimeiroAndar(2, 100)], [[11, 12, 13, 14], [101, 102]]);
+      const planilha = ['unidade;bloco;tipo', ...['A', 'B'].flatMap((b) => [11, 12, 13, 14, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44].map((n) => `${n};${b};PADRAO`))].join('\n');
+      const csv = lerCsvUnidades(planilha);
+      igual([csv.erro, csv.unidades.length, csv.unidades[16].id, csv.unidades.find((u) => u.id === '24A').andar], [undefined, 32, '11B', 2]);
+      igual([andarDoNumero('11A'), andarDoNumero('1204'), andarDoNumero('7'), lerCsvUnidades('11A;A\n11;A').erro, lerCsvUnidades('T1;;;0\nG2;;padrão;5').unidades.map((u) => u.andar)], [1, 12, 1, 'Linha 2: unidade 11A repetida', [1, 5]]);
+    },
+  },
+  {
     nome: 'implantação: planilha de moradores com erros por linha',
     rodar() {
-      const r = lerCsvMoradores(CSV_TESTE, ['A101', 'A102']);
-      igual(r.linhas.map((l) => l.erros), [[], ['E-mail inválido', 'Celular inválido'], ['Unidade Z999 não existe'], ['A unidade A101 já tem responsável financeiro']]);
+      const r = lerCsvMoradores(CSV_TESTE, ['101A', '102A']);
+      igual(r.linhas.map((l) => l.erros), [[], ['E-mail inválido', 'Celular inválido'], ['Unidade Z999 não existe'], ['A unidade 101A já tem responsável financeiro']]);
       igual([r.validas.length, r.totalErros, r.linhas[1].dados.vinculo, r.linhas[0].numero], [1, 3, 'inquilino', 2]);
-      igual(lerCsvMoradores('"A101","Silva, Maria","",""', ['A101']).validas[0].nome, 'Silva, Maria');
-      igual(lerCsvMoradores('A101\tAna\t\t\tsocio', ['A101']).linhas[0].erros, ['Vínculo "socio" desconhecido']);
+      igual(lerCsvMoradores('"101A","Silva, Maria","",""', ['101A']).validas[0].nome, 'Silva, Maria');
+      igual(lerCsvMoradores('101A\tAna\t\t\tsocio', ['101A']).linhas[0].erros, ['Vínculo "socio" desconhecido']);
     },
   },
   {
@@ -7893,7 +7936,7 @@ const CASOS_IMPLANTACAO = [
       const { unidades } = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
       const f = fracoesDasUnidades(unidades, { A: 50000, cobertura: 75000 });
       const soma = Object.values(f).reduce((s, x) => s + x, 0);
-      igual([Math.abs(soma - 1) < 1e-9, f.A102 < f.A401, Math.round((f.A401 / f.A102) * 10) / 10], [true, true, 1.5]);
+      igual([Math.abs(soma - 1) < 1e-9, f['102A'] < f['401A'], Math.round((f['401A'] / f['102A']) * 10) / 10], [true, true, 1.5]);
       igual([identificadorCondominio('Residencial Ipê Amarelo'), linkConvite('residencial-teste')], ['residencial-ipe-amarelo', 'https://condofacil.cloud/c/residencial-teste']);
       const base = configTeste().condominio;
       igual([validarCondominio({ ...base, nome: ' ' }), validarCondominio({ ...base, cnpj: '123' }), validarCondominio({ ...base, sindico: { nome: '' } }), validarCondominio(base)], ['Informe o nome do condomínio', 'O CNPJ deve ter 14 dígitos', 'Informe o nome do síndico', null]);
@@ -7904,12 +7947,12 @@ const CASOS_IMPLANTACAO = [
     nome: 'implantação: condomínio novo nasce válido e vazio',
     rodar() {
       const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
-      igual([e.origem, e.condominio.nome, e.condominio.unidades.length, e.pessoas.map((p) => p.nome), e.moradorAtual], ['novo', 'Residencial Teste', 16, ['Helena Prado', 'Maria Silva', 'Rui Costa'], 'B402']);
-      igual([e.financeiro.unidades.A101.responsavel.nome, e.financeiro.unidades.B402.responsavel.nome, e.financeiro.unidades.A102.responsavel], ['Maria Silva', 'Helena Prado', null]);
+      igual([e.origem, e.condominio.nome, e.condominio.unidades.length, e.pessoas.map((p) => p.nome), e.moradorAtual], ['novo', 'Residencial Teste', 16, ['Helena Prado', 'Maria Silva', 'Rui Costa'], '402B']);
+      igual([e.financeiro.unidades['101A'].responsavel.nome, e.financeiro.unidades['402B'].responsavel.nome, e.financeiro.unidades['102A'].responsavel], ['Maria Silva', 'Helena Prado', null]);
       igual([e.areas.map((a) => a.id), e.financeiro.cobrancas.length, e.financeiro.saldo], [['salao', 'academia'], 0, 0]);
       igual([primeiraNaoEmitida(e.financeiro), proximaCompetencia(e.financeiro), versaoVigente(e.financeiro).id], ['2026-10', '2026-10', 'CV-001']);
       const previa = previaCompetencia(e, '2026-10');
-      igual([previa.linhas.length, previa.linhas.find((l) => l.unidade === 'A101').total, previa.linhas.find((l) => l.unidade === 'A401').total, previa.linhas.filter((l) => l.bloqueada).length], [16, 55000, 82500, 13]);
+      igual([previa.linhas.length, previa.linhas.find((l) => l.unidade === '101A').total, previa.linhas.find((l) => l.unidade === '401A').total, previa.linhas.filter((l) => l.bloqueada).length], [16, 55000, 82500, 13]);
       const emitido = emitirCompetencia(e, '2026-10', 'sindico', AGORA_IMPLANTACAO);
       igual([emitido.emitidas, emitido.estado.financeiro.emitidas, primeiraNaoEmitida(emitido.estado.financeiro)], [3, ['2026-10'], '2026-11']);
     },
@@ -7948,7 +7991,7 @@ const CASOS_IMPLANTACAO = [
       const vivo = balanceteVivo(e, hoje);
       igual([saldoFinal(vivo), mesesDaPrestacao(e, hoje)], [0, ['2026-10']]);
       igual(fluxoProjetado(e, hoje, 0).serie.length, 91);
-      igual([destinatarios(e, { tipo: 'andar', valor: '4' }).length, comunicadosDaUnidade(e, 'A101'), enquetesDaUnidade(e, 'A101', agora).pendentes], [4, [], []]);
+      igual([destinatarios(e, { tipo: 'andar', valor: '4' }).length, comunicadosDaUnidade(e, '101A'), enquetesDaUnidade(e, '101A', agora).pendentes], [4, [], []]);
       igual(horariosDaArea(e, 'academia', '2026-10-24', agora).length, 17);
       for (const perfil of ['sindico', 'morador', 'portaria', 'zelador', 'conselho']) igual(typeof contextoAbel(e, perfil, agora), 'string', perfil);
       igual(responderAbel(e, 'morador', 'Tenho encomenda na portaria?', agora).texto.includes('Nenhuma encomenda'), true);
@@ -7960,12 +8003,12 @@ const CASOS_IMPLANTACAO = [
       const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
       igual(e.pessoas.map((p) => p.situacao), ['ativo', 'convidado', 'convidado']);
       const cod = codigoDoConvite('11987654321');
-      igual(confirmarConvite(e, { unidade: 'A101', nome: 'Maria Silva', celular: '11987654321', codigo: '000000' }, AGORA_IMPLANTACAO).erro, 'Código inválido. Confira o SMS');
+      igual(confirmarConvite(e, { unidade: '101A', nome: 'Maria Silva', celular: '11987654321', codigo: '000000' }, AGORA_IMPLANTACAO).erro, 'Código inválido. Confira o SMS');
       igual(confirmarConvite(e, { unidade: 'Z1', nome: 'x', celular: '11987654321', codigo: cod }, AGORA_IMPLANTACAO).erro, 'Escolha a sua unidade');
-      const maria = confirmarConvite(e, { unidade: 'a101', nome: 'maria silva', celular: '(11) 98765-4321', codigo: cod }, AGORA_IMPLANTACAO);
-      igual([maria.situacao, maria.estado.pessoas[1].situacao, maria.estado.moradorAtual, indicadoresSindico(maria.estado, AGORA_IMPLANTACAO).adesao.com], ['ativo', 'ativo', 'A101', 2]);
-      const novo = confirmarConvite(maria.estado, { unidade: 'A202', nome: 'Paulo Reis', celular: '11911112222', codigo: codigoDoConvite('11911112222') }, AGORA_IMPLANTACAO);
-      igual([novo.situacao, moradoresPendentes(novo.estado).map((p) => p.nome), novo.notificacao.texto], ['pendente', ['Paulo Reis'], 'Novo morador no apto A202: Paulo Reis. Aprove no Início']);
+      const maria = confirmarConvite(e, { unidade: '101a', nome: 'maria silva', celular: '(11) 98765-4321', codigo: cod }, AGORA_IMPLANTACAO);
+      igual([maria.situacao, maria.estado.pessoas[1].situacao, maria.estado.moradorAtual, indicadoresSindico(maria.estado, AGORA_IMPLANTACAO).adesao.com], ['ativo', 'ativo', '101A', 2]);
+      const novo = confirmarConvite(maria.estado, { unidade: '202A', nome: 'Paulo Reis', celular: '11911112222', codigo: codigoDoConvite('11911112222') }, AGORA_IMPLANTACAO);
+      igual([novo.situacao, moradoresPendentes(novo.estado).map((p) => p.nome), novo.notificacao.texto], ['pendente', ['Paulo Reis'], 'Novo morador no apto 202A: Paulo Reis. Aprove no Início']);
       igual(aprovarMorador(novo.estado, novo.id, 'morador', AGORA_IMPLANTACAO).erro, 'Somente o síndico pode fazer isso');
       const ok = aprovarMorador(novo.estado, novo.id, 'sindico', AGORA_IMPLANTACAO).estado;
       igual([moradoresPendentes(ok).length, indicadoresSindico(ok, AGORA_IMPLANTACAO).adesao.com], [0, 3]);
@@ -7991,26 +8034,26 @@ const CASOS_CONECTADO = [
       const comp = proximaCompetencia(e.financeiro);
       const p = previaConectada(e, comp);
       const linha = (u) => p.linhas.find((l) => l.unidade === u);
-      igual([linha('A101').bloqueada, linha('B201').motivo, linha('A102').motivo], [false, MSG_SEM_CPF, 'Sem responsável financeiro']);
+      igual([linha('101A').bloqueada, linha('201B').motivo, linha('102A').motivo], [false, MSG_SEM_CPF, 'Sem responsável financeiro']);
       const linhas = linhasParaAsaas(e, comp);
-      igual(linhas.map((l) => [l.unidade, l.valor, l.vencimento, l.responsavel.cpf, l.responsavel.email, l.multaPct]), [['A101', 55000, p.vencimento, '52998224725', 'maria@email.com', 2]]);
-      igual(linhasParaAsaas(e, comp, ['B201']), []);
+      igual(linhas.map((l) => [l.unidade, l.valor, l.vencimento, l.responsavel.cpf, l.responsavel.email, l.multaPct]), [['101A', 55000, p.vencimento, '52998224725', 'maria@email.com', 2]]);
+      igual(linhasParaAsaas(e, comp, ['201B']), []);
     },
   },
   {
     nome: 'conectado: emissão parcial, reenvio sem duplicar e baixa pelo servidor',
     rodar() {
       const e = condominioConectado();
-      const r1 = aplicarEmissao(e, '2026-10', [{ unidade: 'A101', ok: true, cobranca: cobrancaServidor('A101') }, { unidade: 'B402', ok: false, erro: 'O CPF informado é inválido.' }], 'sindico', AGORA_IMPLANTACAO);
+      const r1 = aplicarEmissao(e, '2026-10', [{ unidade: '101A', ok: true, cobranca: cobrancaServidor('101A') }, { unidade: '402B', ok: false, erro: 'O CPF informado é inválido.' }], 'sindico', AGORA_IMPLANTACAO);
       const fin1 = r1.estado.financeiro;
-      igual([r1.emitidas, fin1.emitidas, fin1.cobrancas.map((c) => c.asaas.referencia), fin1.falhasAsaas['2026-10']], [1, ['2026-10'], ['cond-teste:2026-10:A101'], [{ unidade: 'B402', erro: 'O CPF informado é inválido.' }]]);
-      const r2 = aplicarEmissao(r1.estado, '2026-10', [{ unidade: 'B402', ok: true, cobranca: cobrancaServidor('B402') }, { unidade: 'A101', ok: true, cobranca: cobrancaServidor('A101') }], 'sindico', AGORA_IMPLANTACAO);
+      igual([r1.emitidas, fin1.emitidas, fin1.cobrancas.map((c) => c.asaas.referencia), fin1.falhasAsaas['2026-10']], [1, ['2026-10'], ['cond-teste:2026-10:101A'], [{ unidade: '402B', erro: 'O CPF informado é inválido.' }]]);
+      const r2 = aplicarEmissao(r1.estado, '2026-10', [{ unidade: '402B', ok: true, cobranca: cobrancaServidor('402B') }, { unidade: '101A', ok: true, cobranca: cobrancaServidor('101A') }], 'sindico', AGORA_IMPLANTACAO);
       igual([r2.estado.financeiro.cobrancas.length, r2.estado.financeiro.falhasAsaas['2026-10'], r2.estado.financeiro.emitidas], [2, [], ['2026-10']]);
       igual(aplicarEmissao(e, '2026-10', [], 'morador', AGORA_IMPLANTACAO).erro, 'Somente o síndico pode fazer isso');
-      const pago = aplicarSituacoes(r2.estado, [cobrancaServidor('A101', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' }), cobrancaServidor('B402')], AGORA_IMPLANTACAO);
-      const a101 = pago.estado.financeiro.cobrancas.find((c) => c.unidade === 'A101');
+      const pago = aplicarSituacoes(r2.estado, [cobrancaServidor('101A', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' }), cobrancaServidor('402B')], AGORA_IMPLANTACAO);
+      const a101 = pago.estado.financeiro.cobrancas.find((c) => c.unidade === '101A');
       igual([pago.baixas, a101.status, a101.forma, pago.estado.financeiro.saldo > 0, pago.notificacao.texto.startsWith('Pagamento recebido')], [1, 'paga', 'pix', true, true]);
-      igual(aplicarSituacoes(pago.estado, [cobrancaServidor('A101', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' })], AGORA_IMPLANTACAO).baixas, 0);
+      igual(aplicarSituacoes(pago.estado, [cobrancaServidor('101A', { situacao: 'paga', pagoEm: '2026-10-23', forma: 'pix' })], AGORA_IMPLANTACAO).baixas, 0);
     },
   },
   {
@@ -13168,7 +13211,7 @@ function QrCodeReal({ texto, tamanho = 220 }) {
 function rascunhoPadrao() {
   return {
     condominio: { nome: '', cnpj: '', cep: '', endereco: '', cidade: '', uf: 'SP', sindico: { nome: '', unidade: '', email: '', celular: '' }, plano: 'intermediario' },
-    geracao: { modo: 'gerador', blocos: '', andares: '4', porAndar: '4', coberturaUltimo: false, csv: '' },
+    geracao: { modo: 'gerador', blocos: '', andares: '4', porAndar: '4', somar: '100', primeiro: ['101', '102', '103', '104'], coberturaUltimo: false, csv: '' },
     unidades: [],
     csvMoradores: '',
     moradores: [],
@@ -13243,13 +13286,42 @@ function PassoCondominio({ r, mudar }) {
   </div>`;
 }
 
+// Rascunhos antigos não têm os números do 1º andar nem a soma: completa com a sugestão.
+function geracaoCompleta(g) {
+  const somar = g.somar ?? '100';
+  const sugestao = sugestaoPrimeiroAndar(g.porAndar, Number(somar) || 100).map(String);
+  const primeiro = sugestao.map((s, i) => (g.primeiro && g.primeiro[i] !== undefined ? g.primeiro[i] : s));
+  return { ...g, somar, primeiro };
+}
+
+function GradeUnidades({ unidades }) {
+  const blocos = [...new Set(unidades.map((u) => u.bloco || ''))];
+  return html`<div class="grade-unidades">${blocos.map((b) => {
+    const doBloco = unidades.filter((u) => (u.bloco || '') === b);
+    const andares = [...new Set(doBloco.map((u) => u.andar))].sort((x, y) => y - x);
+    return html`<div key=${b} class="pilha">
+      ${b && html`<strong>Bloco ${b}</strong>`}
+      ${andares.slice(0, 40).map((a) => html`<div key=${a} class="linha-andar"><span class="sub">${a}º andar</span>
+        <span class="lista-unidades">${doBloco.filter((u) => u.andar === a).map((u) => html`<span key=${u.id} class=${`etq-turno ${u.tipo === 'cobertura' ? 't-tarde' : 't-folga'}`}>${u.id}</span>`)}</span></div>`)}
+    </div>`;
+  })}</div>`;
+}
+
 function PassoUnidades({ r, mudar }) {
-  const g = r.geracao;
+  const g = geracaoCompleta(r.geracao);
   const [erro, setErro] = useState(null);
-  const campo = (chave) => (ev) => mudar({ geracao: { ...g, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value } });
+  const valor = (ev) => (ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value);
+  const campo = (chave) => (ev) => mudar({ geracao: { ...g, [chave]: valor(ev) } });
+  // Mudar a soma troca os números do 1º andar que ainda estão na sugestão anterior (101 → 11 ao passar de 100 para 10).
+  function mudarSomar(ev) {
+    const anterior = sugestaoPrimeiroAndar(g.porAndar, Number(g.somar) || 100).map(String);
+    const nova = sugestaoPrimeiroAndar(g.porAndar, Number(ev.target.value) || 100).map(String);
+    mudar({ geracao: { ...g, somar: ev.target.value, primeiro: g.primeiro.map((p, i) => (p === anterior[i] ? nova[i] : p)) } });
+  }
+  const mudarPrimeiro = (i) => (ev) => mudar({ geracao: { ...g, primeiro: g.primeiro.map((p, j) => (j === i ? ev.target.value : p)) } });
   function gerar() {
     const res = g.modo === 'gerador'
-      ? gerarUnidades({ blocos: g.blocos.split(/[\s,;]+/).filter(Boolean), andares: Number(g.andares), porAndar: Number(g.porAndar), coberturaUltimo: g.coberturaUltimo })
+      ? gerarUnidades({ blocos: g.blocos.split(/[\s,;]+/).filter(Boolean), andares: Number(g.andares), primeiroAndar: g.primeiro, somar: Number(g.somar), coberturaUltimo: g.coberturaUltimo })
       : lerCsvUnidades(g.csv);
     setErro(res.erro || null);
     if (!res.erro) mudar({ unidades: res.unidades });
@@ -13262,14 +13334,19 @@ function PassoUnidades({ r, mudar }) {
           <${Campo} rotulo="Blocos" dica="Ex.: A, B. Deixe vazio se não houver"><input id="impl-blocos" value=${g.blocos} onInput=${campo('blocos')} /><//>
           <${Campo} rotulo="Andares"><input id="impl-andares" type="number" min="1" max="40" value=${g.andares} onInput=${campo('andares')} /><//>
           <${Campo} rotulo="Apartamentos por andar"><input id="impl-por-andar" type="number" min="1" max="20" value=${g.porAndar} onInput=${campo('porAndar')} /><//>
+          <${Campo} rotulo="Somar a cada andar" dica="Ex.: 10 (11 → 21 → 31) ou 100 (101 → 201)"><input id="impl-somar" type="number" min="1" value=${g.somar} onInput=${mudarSomar} /><//>
         </div>
+        <fieldset class="primeiro-andar"><legend>Números do 1º andar (ou térreo)</legend>
+          <div class="lista-unidades">${g.primeiro.map((p, i) => html`<input key=${i} id=${`impl-primeiro-${i}`} aria-label=${`Apartamento ${i + 1} do 1º andar`} inputmode="numeric" value=${p} onInput=${mudarPrimeiro(i)} />`)}</div>
+          <small class="sub">Os demais andares somam ${g.somar || '?'} a cada andar. O bloco vai depois do número: ${g.primeiro[0] || '11'}A, ${g.primeiro[0] || '11'}B.</small>
+        </fieldset>
         <label class="check"><input id="impl-cobertura" type="checkbox" checked=${g.coberturaUltimo} onChange=${campo('coberturaUltimo')} /><span>O último andar é de coberturas</span></label>`
-      : html`<${Campo} rotulo="Planilha de unidades" dica="Colunas: unidade;bloco;tipo (padrão ou cobertura)"><textarea id="impl-csv-unidades" rows="6" value=${g.csv} onInput=${campo('csv')} placeholder="unidade;bloco;tipo\n101;;padrão\n801;;cobertura"></textarea><//>`}
+      : html`<${Campo} rotulo="Planilha de unidades" dica="Colunas: unidade;bloco;tipo (padrão ou cobertura);andar (opcional). Com bloco, a unidade vira 11A, 11B"><textarea id="impl-csv-unidades" rows="6" value=${g.csv} onInput=${campo('csv')} placeholder="unidade;bloco;tipo\n11;A;padrão\n11;B;padrão"></textarea><//>`}
     <button type="button" class="btn secundario" data-acao="gerar-unidades" onClick=${gerar}>${g.modo === 'gerador' ? 'Gerar unidades' : 'Ler planilha'}</button>
     <${Erro} texto=${erro} />
     ${r.unidades.length > 0 && html`<div class="cartao pilha">
       <strong>${r.unidades.length} unidades${coberturas ? ` · ${coberturas} coberturas` : ''}</strong>
-      <div class="lista-unidades">${r.unidades.slice(0, 60).map((u) => html`<span key=${u.id} class=${`etq-turno ${u.tipo === 'cobertura' ? 't-tarde' : 't-folga'}`}>${u.id}</span>`)}${r.unidades.length > 60 ? html`<small class="sub">e mais ${r.unidades.length - 60}</small>` : ''}</div>
+      <${GradeUnidades} unidades=${r.unidades} />
     </div>`}
   </div>`;
 }

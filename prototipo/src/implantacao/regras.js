@@ -66,22 +66,42 @@ export function celularValido(celular) {
 }
 
 // Unidades como "101", "102"… e, com blocos, "A101". O último andar pode ser todo de coberturas.
-export function gerarUnidades({ blocos = [], andares, porAndar, coberturaUltimo = false }) {
+// Sugestão dos números do 1º andar: somar 100 → 101, 102…; somar 10 → 11, 12…
+export function sugestaoPrimeiroAndar(porAndar, somar = 100) {
+  return Array.from({ length: Math.max(0, Number(porAndar) || 0) }, (_, i) => Number(somar) + i + 1);
+}
+
+// Números do 1º andar (ou térreo) somados a cada andar; o bloco vai depois do número (11A, 24B).
+export function gerarUnidades({ blocos = [], andares, porAndar, primeiroAndar, somar = 100, coberturaUltimo = false }) {
   const a = Number(andares);
-  const p = Number(porAndar);
+  const s = Number(somar);
+  const primeiro = (primeiroAndar || sugestaoPrimeiroAndar(porAndar, s)).map((n) => (String(n).trim() === '' ? NaN : Number(String(n).trim())));
   if (!Number.isInteger(a) || a < 1 || a > 40) return { erro: 'Informe de 1 a 40 andares' };
-  if (!Number.isInteger(p) || p < 1 || p > 20) return { erro: 'Informe de 1 a 20 apartamentos por andar' };
+  if (primeiro.length < 1 || primeiro.length > 20) return { erro: 'Informe de 1 a 20 apartamentos por andar' };
+  if (primeiro.some((n) => !Number.isInteger(n) || n < 0)) return { erro: 'Preencha os números do 1º andar' };
+  if (new Set(primeiro).size !== primeiro.length) return { erro: 'Há números repetidos no 1º andar' };
+  if (a > 1 && (!Number.isInteger(s) || s < 1)) return { erro: 'Informe quanto somar a cada andar' };
   const nomes = blocos.map((b) => String(b).trim().toUpperCase()).filter(Boolean);
   if (new Set(nomes).size !== nomes.length) return { erro: 'Blocos repetidos' };
   const listaBlocos = nomes.length ? nomes : [''];
-  if (listaBlocos.length * a * p > LIMITE_UNIDADES) return { erro: `No máximo ${LIMITE_UNIDADES} unidades` };
+  if (listaBlocos.length * a * primeiro.length > LIMITE_UNIDADES) return { erro: `No máximo ${LIMITE_UNIDADES} unidades` };
   const unidades = [];
   for (const bloco of listaBlocos) {
     for (let andar = 1; andar <= a; andar++) {
-      for (let n = 1; n <= p; n++) unidades.push({ id: `${bloco}${andar}${String(n).padStart(2, '0')}`, bloco: bloco || null, andar, tipo: coberturaUltimo && andar === a && a > 1 ? 'cobertura' : 'A' });
+      for (const n of primeiro) unidades.push({ id: `${n + s * (andar - 1)}${bloco}`, bloco: bloco || null, andar, tipo: coberturaUltimo && andar === a && a > 1 ? 'cobertura' : 'A' });
     }
   }
+  const repetida = unidades.find((u, i) => unidades.findIndex((x) => x.id === u.id) !== i);
+  if (repetida) return { erro: `A unidade ${repetida.id} se repete entre andares: aumente o valor a somar` };
   return { unidades };
+}
+
+// Andar pelo número: 2 dígitos → a dezena (21 → 2º); 3 ou mais → tudo menos os 2 últimos (1204 → 12º).
+export function andarDoNumero(id) {
+  const d = (String(id).match(/\d+/) || [''])[0];
+  if (d.length >= 3) return Number(d.slice(0, -2)) || 1;
+  if (d.length === 2) return Number(d[0]) || 1;
+  return 1;
 }
 
 function dividirLinha(linha, sep) {
@@ -111,12 +131,15 @@ export function lerCsvUnidades(texto) {
   const corpo = /unidade/i.test(linhas[0]) ? linhas.slice(1) : linhas;
   const unidades = [];
   for (const [n, linha] of corpo.entries()) {
-    const [id, bloco, tipo] = dividirLinha(linha, sep);
-    const limpo = String(id || '').toUpperCase().replace(/\s+/g, '');
-    if (!limpo) return { erro: `Linha ${n + 1}: informe a unidade` };
+    const [id, bloco, tipo, andarInformado] = dividirLinha(linha, sep);
+    const numero = String(id || '').toUpperCase().replace(/\s+/g, '');
+    const b = String(bloco || '').toUpperCase().replace(/\s+/g, '');
+    if (!numero) return { erro: `Linha ${n + 1}: informe a unidade` };
+    // Com bloco, a unidade é número + bloco (11A, 11B): o mesmo número em blocos diferentes não se repete.
+    const limpo = b && !numero.endsWith(b) ? `${numero}${b}` : numero;
     if (unidades.some((u) => u.id === limpo)) return { erro: `Linha ${n + 1}: unidade ${limpo} repetida` };
-    const andar = Number((limpo.match(/(\d+)\d\d$/) || [])[1]) || 1;
-    unidades.push({ id: limpo, bloco: bloco ? bloco.toUpperCase() : null, andar, tipo: /cobertura/i.test(tipo || '') ? 'cobertura' : 'A' });
+    const andar = Number(andarInformado) > 0 ? Number(andarInformado) : andarDoNumero(numero);
+    unidades.push({ id: limpo, bloco: b || null, andar, tipo: /cobertura/i.test(tipo || '') ? 'cobertura' : 'A' });
   }
   if (unidades.length > LIMITE_UNIDADES) return { erro: `No máximo ${LIMITE_UNIDADES} unidades` };
   return { unidades };

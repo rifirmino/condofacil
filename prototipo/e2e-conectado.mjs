@@ -37,7 +37,7 @@ async function asaasConectado() {
   await porId('impl-cep', '01310-100');
   await porId('impl-endereco', 'Av. Paulista');
   await porId('impl-sindico', 'Helena Prado');
-  await porId('impl-sindico-apto', 'B402');
+  await porId('impl-sindico-apto', '402B');
   await porId('impl-sindico-email', 'helena@email.com');
   await porId('impl-sindico-celular', '11999998888');
   await avancar();
@@ -48,7 +48,7 @@ async function asaasConectado() {
   await clicarSeletor('[data-acao="gerar-unidades"]');
   await esperarTexto('16 unidades');
   await avancar();
-  await porId('impl-csv-moradores', 'A101;Maria Silva;maria@email.com;11987654321;titular;sim;529.982.247-25\nB201;Rui Costa;rui@email.com;11944443333;proprietario;sim');
+  await porId('impl-csv-moradores', '101A;Maria Silva;maria@email.com;11987654321;titular;sim;529.982.247-25\n201B;Rui Costa;rui@email.com;11944443333;proprietario;sim');
   await esperarTexto('529.982.247-25');
   await avancar();
   await porId('impl-taxa-a', '500,00');
@@ -77,7 +77,7 @@ async function asaasConectado() {
 
   // A Maria entra pelo convite e paga pelo Pix real.
   await irPara('#morador.convite');
-  await porId('convite-unidade', 'A101');
+  await porId('convite-unidade', '101A');
   await porId('convite-nome', 'Maria Silva');
   await porId('convite-celular', '11987654321');
   await clicarSeletor('[data-acao="pedir-codigo"]');

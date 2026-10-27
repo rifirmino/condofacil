@@ -455,7 +455,9 @@ const ROTEIROS = {
     await clicarSeletor('[data-acao="semana-anterior"]');
     await esperar(`document.querySelector('.pilha strong').innerText === ${JSON.stringify(antes)}`, 'a volta para a semana');
     await clicarSeletor('[data-semana-turno]');
-    await preencher('Porteiro do turno', 'paulo');
+    // Outro porteiro que não o atual: roteiros anteriores podem já ter posto alguém neste turno.
+    const outro = await js(`(() => { const s = __e2e.campo('Porteiro do turno'); return [...s.options].map((o) => o.value).find((v) => v && v !== s.value); })()`);
+    await preencher('Porteiro do turno', outro);
     await esperarTexto('Turno ajustado');
     await irPara('#portaria.escala');
     await esperarTexto('Escala da semana');
@@ -663,7 +665,7 @@ const ROTEIROS = {
     await porId('impl-nome', 'Residencial Teste E2E');
     await porId('impl-cnpj', '12.345.678/0001-90');
     await porId('impl-sindico', 'Helena Prado');
-    await porId('impl-sindico-apto', 'B402');
+    await porId('impl-sindico-apto', '402B');
     await porId('impl-sindico-celular', '11999998888');
     await clicarSeletor('[data-acao="avancar-implantacao"]');
     await esperarTexto('passo 2 de 7');
@@ -677,11 +679,11 @@ const ROTEIROS = {
     await esperarTexto('16 unidades · 4 coberturas');
     await clicarSeletor('[data-acao="avancar-implantacao"]');
     await esperarTexto('passo 3 de 7');
-    await porId('impl-csv-moradores', 'A101;Maria Silva;maria@email.com;11987654321;titular;sim\nZ999;Ninguém;;;titular;sim');
+    await porId('impl-csv-moradores', '101A;Maria Silva;maria@email.com;11987654321;titular;sim\nZ999;Ninguém;;;titular;sim');
     await esperarTexto('1 com erro');
     await clicarSeletor('[data-acao="avancar-implantacao"]');
     await esperarTexto('Corrija as linhas com erro');
-    await porId('impl-csv-moradores', 'A101;Maria Silva;maria@email.com;11987654321;titular;sim\nB201;Rui Costa;rui@email.com;11944443333;proprietario;sim');
+    await porId('impl-csv-moradores', '101A;Maria Silva;maria@email.com;11987654321;titular;sim\n201B;Rui Costa;rui@email.com;11944443333;proprietario;sim');
     await esperarTexto('2 de 2 linhas prontas');
     await clicarSeletor('[data-acao="avancar-implantacao"]');
     await esperarTexto('passo 4 de 7');
@@ -726,7 +728,7 @@ const ROTEIROS = {
 
     // Convite: quem está na planilha entra direto; quem não está espera o síndico.
     await irPara('#morador.convite');
-    await porId('convite-unidade', 'A101');
+    await porId('convite-unidade', '101A');
     await porId('convite-nome', 'Maria Silva');
     await porId('convite-celular', '(11) 98765-4321');
     await clicarSeletor('[data-acao="pedir-codigo"]');
@@ -735,7 +737,7 @@ const ROTEIROS = {
     await esperarTexto('Tudo certo!');
     await irPara('#morador.inicio');
     await irPara('#morador.convite');
-    await porId('convite-unidade', 'A202');
+    await porId('convite-unidade', '202A');
     await porId('convite-nome', 'Carlos Lima');
     await porId('convite-celular', '11955554444');
     await clicarSeletor('[data-acao="pedir-codigo"]');
@@ -746,7 +748,7 @@ const ROTEIROS = {
     await clicarSeletor('[data-acao="confirmar-convite"]');
     await esperarTexto('Cadastro enviado');
     await irPara('#sindico.inicio');
-    await esperarTexto('Carlos Lima · apto A202');
+    await esperarTexto('Carlos Lima · apto 202A');
     await clicarSeletor('[data-aprovar-morador]');
     await esperarTexto('Carlos Lima aprovado.');
 

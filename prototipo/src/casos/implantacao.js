@@ -1,4 +1,4 @@
-import { cpfValido, fmtCpf, gerarUnidades, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, validarCondominio, mensagemWhatsAppConvite } from '../implantacao/regras.js';
+import { cpfValido, fmtCpf, gerarUnidades, sugestaoPrimeiroAndar, andarDoNumero, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, validarCondominio, mensagemWhatsAppConvite } from '../implantacao/regras.js';
 import { condominioNovo } from '../implantacao/novo.js';
 import { indicadoresSindico, alertasDocumentos, destinatarios, comunicadosDaUnidade, horariosDaArea } from '../regras.js';
 import { indicadoresFinanceiros, devedores, previaCompetencia, proximaCompetencia, serieReceitasDespesas, tituloSerie, pendentesDaRegua } from '../cobranca/regras.js';
@@ -19,13 +19,13 @@ import { confirmarConvite, aprovarMorador, recusarMorador, codigoDoConvite, mora
 import { igual } from './afirmar.js';
 
 export const AGORA_IMPLANTACAO = new Date(2026, 9, 23, 10, 0);
-const CSV_TESTE = 'unidade;nome;email;celular;vinculo;responsavel\nA101;Maria Silva;maria@email.com;11987654321;titular;sim\nA102;João Souza;joao@email;119;locatário;não\nZ999;Pedro;;;;\nA101;Carlos Lima;carlos@email.com;11955554444;inquilino;sim';
+const CSV_TESTE = 'unidade;nome;email;celular;vinculo;responsavel\n101A;Maria Silva;maria@email.com;11987654321;titular;sim\n102A;João Souza;joao@email;119;locatário;não\nZ999;Pedro;;;;\n101A;Carlos Lima;carlos@email.com;11955554444;inquilino;sim';
 
 export function configTeste() {
   const { unidades } = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
-  const { validas } = lerCsvMoradores('A101;Maria Silva;maria@email.com;11987654321;titular;sim\nB201;Rui Costa;rui@email.com;11944443333;proprietario;sim', unidades.map((u) => u.id));
+  const { validas } = lerCsvMoradores('101A;Maria Silva;maria@email.com;11987654321;titular;sim\n201B;Rui Costa;rui@email.com;11944443333;proprietario;sim', unidades.map((u) => u.id));
   return {
-    condominio: { nome: 'Residencial Teste', cnpj: '12.345.678/0001-90', cep: '01310-100', endereco: 'Av. Paulista, 1000', cidade: 'São Paulo', uf: 'SP', sindico: { nome: 'Helena Prado', unidade: 'B402', email: 'helena@email.com', celular: '11999998888' }, plano: 'intermediario' },
+    condominio: { nome: 'Residencial Teste', cnpj: '12.345.678/0001-90', cep: '01310-100', endereco: 'Av. Paulista, 1000', cidade: 'São Paulo', uf: 'SP', sindico: { nome: 'Helena Prado', unidade: '402B', email: 'helena@email.com', celular: '11999998888' }, plano: 'intermediario' },
     unidades,
     moradores: validas,
     cobranca: { diaVencimento: 10, multaPct: 2, jurosPct: 1, fundoPct: 10, modo: 'fixo', valores: { A: 50000, cobertura: 75000 }, orcamento: 0 },
@@ -39,18 +39,18 @@ export const CASOS_IMPLANTACAO = [
     nome: 'implantação: CPF do responsável na planilha',
     rodar() {
       igual([cpfValido('529.982.247-25'), cpfValido('52998224724'), cpfValido('11111111111'), cpfValido('123'), fmtCpf('52998224725')], [true, false, false, false, '529.982.247-25']);
-      const l = lerCsvMoradores('A101;Maria;;;titular;sim;529.982.247-25\nA102;João;;;titular;sim;123\nA201;Ana;;;titular;sim', ['A101', 'A102', 'A201']);
+      const l = lerCsvMoradores('101A;Maria;;;titular;sim;529.982.247-25\n102A;João;;;titular;sim;123\n201A;Ana;;;titular;sim', ['101A', '102A', '201A']);
       igual([l.linhas[0].dados.cpf, l.linhas[1].erros, l.linhas[2].dados.cpf, l.linhas[2].erros], ['52998224725', ['CPF inválido'], '', []]);
       const cfg = configTeste();
       const e = condominioNovo({ ...cfg, moradores: [{ ...cfg.moradores[0], cpf: '52998224725' }, cfg.moradores[1]] }, AGORA_IMPLANTACAO);
-      igual([e.financeiro.unidades.A101.responsavel.cpf, e.financeiro.unidades.B201.responsavel.cpf], ['52998224725', null]);
+      igual([e.financeiro.unidades['101A'].responsavel.cpf, e.financeiro.unidades['201B'].responsavel.cpf], ['52998224725', null]);
     },
   },
   {
     nome: 'implantação: gerador e planilha de unidades',
     rodar() {
       const g = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
-      igual([g.unidades.length, g.unidades[0].id, g.unidades.at(-1).id, g.unidades.filter((u) => u.tipo === 'cobertura').length], [16, 'A101', 'B402', 4]);
+      igual([g.unidades.length, g.unidades[0].id, g.unidades.at(-1).id, g.unidades.filter((u) => u.tipo === 'cobertura').length], [16, '101A', '402B', 4]);
       igual(gerarUnidades({ andares: 8, porAndar: 4 }).unidades.map((u) => u.id).slice(0, 5), ['101', '102', '103', '104', '201']);
       igual([gerarUnidades({ andares: 0, porAndar: 2 }).erro, gerarUnidades({ andares: 3, porAndar: 21 }).erro, gerarUnidades({ blocos: ['A', 'a'], andares: 2, porAndar: 2 }).erro, gerarUnidades({ blocos: Array.from({ length: 30 }, (_, i) => `B${i}`), andares: 40, porAndar: 1 }).erro], ['Informe de 1 a 40 andares', 'Informe de 1 a 20 apartamentos por andar', 'Blocos repetidos', 'No máximo 1000 unidades']);
       const csv = lerCsvUnidades('unidade,bloco,tipo\n101,,\n1201,,cobertura');
@@ -59,13 +59,27 @@ export const CASOS_IMPLANTACAO = [
     },
   },
   {
+    nome: 'implantação: 1º andar digitado, soma por andar e bloco depois do número',
+    rodar() {
+      const g = gerarUnidades({ blocos: ['A', 'B'], andares: 4, primeiroAndar: [11, 12, 13, 14], somar: 10 });
+      const ids = g.unidades.map((u) => u.id);
+      igual([ids.length, ids.slice(0, 5), ids.slice(-4), g.unidades.find((u) => u.id === '31B').andar], [32, ['11A', '12A', '13A', '14A', '21A'], ['41B', '42B', '43B', '44B'], 3]);
+      igual([gerarUnidades({ andares: 2, primeiroAndar: [11, 11], somar: 10 }).erro, gerarUnidades({ andares: 2, primeiroAndar: [1, 11], somar: 10 }).erro, gerarUnidades({ andares: 2, primeiroAndar: ['', 12], somar: 10 }).erro], ['Há números repetidos no 1º andar', 'A unidade 11 se repete entre andares: aumente o valor a somar', 'Preencha os números do 1º andar']);
+      igual([sugestaoPrimeiroAndar(4, 10), sugestaoPrimeiroAndar(2, 100)], [[11, 12, 13, 14], [101, 102]]);
+      const planilha = ['unidade;bloco;tipo', ...['A', 'B'].flatMap((b) => [11, 12, 13, 14, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44].map((n) => `${n};${b};PADRAO`))].join('\n');
+      const csv = lerCsvUnidades(planilha);
+      igual([csv.erro, csv.unidades.length, csv.unidades[16].id, csv.unidades.find((u) => u.id === '24A').andar], [undefined, 32, '11B', 2]);
+      igual([andarDoNumero('11A'), andarDoNumero('1204'), andarDoNumero('7'), lerCsvUnidades('11A;A\n11;A').erro, lerCsvUnidades('T1;;;0\nG2;;padrão;5').unidades.map((u) => u.andar)], [1, 12, 1, 'Linha 2: unidade 11A repetida', [1, 5]]);
+    },
+  },
+  {
     nome: 'implantação: planilha de moradores com erros por linha',
     rodar() {
-      const r = lerCsvMoradores(CSV_TESTE, ['A101', 'A102']);
-      igual(r.linhas.map((l) => l.erros), [[], ['E-mail inválido', 'Celular inválido'], ['Unidade Z999 não existe'], ['A unidade A101 já tem responsável financeiro']]);
+      const r = lerCsvMoradores(CSV_TESTE, ['101A', '102A']);
+      igual(r.linhas.map((l) => l.erros), [[], ['E-mail inválido', 'Celular inválido'], ['Unidade Z999 não existe'], ['A unidade 101A já tem responsável financeiro']]);
       igual([r.validas.length, r.totalErros, r.linhas[1].dados.vinculo, r.linhas[0].numero], [1, 3, 'inquilino', 2]);
-      igual(lerCsvMoradores('"A101","Silva, Maria","",""', ['A101']).validas[0].nome, 'Silva, Maria');
-      igual(lerCsvMoradores('A101\tAna\t\t\tsocio', ['A101']).linhas[0].erros, ['Vínculo "socio" desconhecido']);
+      igual(lerCsvMoradores('"101A","Silva, Maria","",""', ['101A']).validas[0].nome, 'Silva, Maria');
+      igual(lerCsvMoradores('101A\tAna\t\t\tsocio', ['101A']).linhas[0].erros, ['Vínculo "socio" desconhecido']);
     },
   },
   {
@@ -74,7 +88,7 @@ export const CASOS_IMPLANTACAO = [
       const { unidades } = gerarUnidades({ blocos: ['A', 'B'], andares: 4, porAndar: 2, coberturaUltimo: true });
       const f = fracoesDasUnidades(unidades, { A: 50000, cobertura: 75000 });
       const soma = Object.values(f).reduce((s, x) => s + x, 0);
-      igual([Math.abs(soma - 1) < 1e-9, f.A102 < f.A401, Math.round((f.A401 / f.A102) * 10) / 10], [true, true, 1.5]);
+      igual([Math.abs(soma - 1) < 1e-9, f['102A'] < f['401A'], Math.round((f['401A'] / f['102A']) * 10) / 10], [true, true, 1.5]);
       igual([identificadorCondominio('Residencial Ipê Amarelo'), linkConvite('residencial-teste')], ['residencial-ipe-amarelo', 'https://condofacil.cloud/c/residencial-teste']);
       const base = configTeste().condominio;
       igual([validarCondominio({ ...base, nome: ' ' }), validarCondominio({ ...base, cnpj: '123' }), validarCondominio({ ...base, sindico: { nome: '' } }), validarCondominio(base)], ['Informe o nome do condomínio', 'O CNPJ deve ter 14 dígitos', 'Informe o nome do síndico', null]);
@@ -85,12 +99,12 @@ export const CASOS_IMPLANTACAO = [
     nome: 'implantação: condomínio novo nasce válido e vazio',
     rodar() {
       const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
-      igual([e.origem, e.condominio.nome, e.condominio.unidades.length, e.pessoas.map((p) => p.nome), e.moradorAtual], ['novo', 'Residencial Teste', 16, ['Helena Prado', 'Maria Silva', 'Rui Costa'], 'B402']);
-      igual([e.financeiro.unidades.A101.responsavel.nome, e.financeiro.unidades.B402.responsavel.nome, e.financeiro.unidades.A102.responsavel], ['Maria Silva', 'Helena Prado', null]);
+      igual([e.origem, e.condominio.nome, e.condominio.unidades.length, e.pessoas.map((p) => p.nome), e.moradorAtual], ['novo', 'Residencial Teste', 16, ['Helena Prado', 'Maria Silva', 'Rui Costa'], '402B']);
+      igual([e.financeiro.unidades['101A'].responsavel.nome, e.financeiro.unidades['402B'].responsavel.nome, e.financeiro.unidades['102A'].responsavel], ['Maria Silva', 'Helena Prado', null]);
       igual([e.areas.map((a) => a.id), e.financeiro.cobrancas.length, e.financeiro.saldo], [['salao', 'academia'], 0, 0]);
       igual([primeiraNaoEmitida(e.financeiro), proximaCompetencia(e.financeiro), versaoVigente(e.financeiro).id], ['2026-10', '2026-10', 'CV-001']);
       const previa = previaCompetencia(e, '2026-10');
-      igual([previa.linhas.length, previa.linhas.find((l) => l.unidade === 'A101').total, previa.linhas.find((l) => l.unidade === 'A401').total, previa.linhas.filter((l) => l.bloqueada).length], [16, 55000, 82500, 13]);
+      igual([previa.linhas.length, previa.linhas.find((l) => l.unidade === '101A').total, previa.linhas.find((l) => l.unidade === '401A').total, previa.linhas.filter((l) => l.bloqueada).length], [16, 55000, 82500, 13]);
       const emitido = emitirCompetencia(e, '2026-10', 'sindico', AGORA_IMPLANTACAO);
       igual([emitido.emitidas, emitido.estado.financeiro.emitidas, primeiraNaoEmitida(emitido.estado.financeiro)], [3, ['2026-10'], '2026-11']);
     },
@@ -129,7 +143,7 @@ export const CASOS_IMPLANTACAO = [
       const vivo = balanceteVivo(e, hoje);
       igual([saldoFinal(vivo), mesesDaPrestacao(e, hoje)], [0, ['2026-10']]);
       igual(fluxoProjetado(e, hoje, 0).serie.length, 91);
-      igual([destinatarios(e, { tipo: 'andar', valor: '4' }).length, comunicadosDaUnidade(e, 'A101'), enquetesDaUnidade(e, 'A101', agora).pendentes], [4, [], []]);
+      igual([destinatarios(e, { tipo: 'andar', valor: '4' }).length, comunicadosDaUnidade(e, '101A'), enquetesDaUnidade(e, '101A', agora).pendentes], [4, [], []]);
       igual(horariosDaArea(e, 'academia', '2026-10-24', agora).length, 17);
       for (const perfil of ['sindico', 'morador', 'portaria', 'zelador', 'conselho']) igual(typeof contextoAbel(e, perfil, agora), 'string', perfil);
       igual(responderAbel(e, 'morador', 'Tenho encomenda na portaria?', agora).texto.includes('Nenhuma encomenda'), true);
@@ -141,12 +155,12 @@ export const CASOS_IMPLANTACAO = [
       const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
       igual(e.pessoas.map((p) => p.situacao), ['ativo', 'convidado', 'convidado']);
       const cod = codigoDoConvite('11987654321');
-      igual(confirmarConvite(e, { unidade: 'A101', nome: 'Maria Silva', celular: '11987654321', codigo: '000000' }, AGORA_IMPLANTACAO).erro, 'Código inválido. Confira o SMS');
+      igual(confirmarConvite(e, { unidade: '101A', nome: 'Maria Silva', celular: '11987654321', codigo: '000000' }, AGORA_IMPLANTACAO).erro, 'Código inválido. Confira o SMS');
       igual(confirmarConvite(e, { unidade: 'Z1', nome: 'x', celular: '11987654321', codigo: cod }, AGORA_IMPLANTACAO).erro, 'Escolha a sua unidade');
-      const maria = confirmarConvite(e, { unidade: 'a101', nome: 'maria silva', celular: '(11) 98765-4321', codigo: cod }, AGORA_IMPLANTACAO);
-      igual([maria.situacao, maria.estado.pessoas[1].situacao, maria.estado.moradorAtual, indicadoresSindico(maria.estado, AGORA_IMPLANTACAO).adesao.com], ['ativo', 'ativo', 'A101', 2]);
-      const novo = confirmarConvite(maria.estado, { unidade: 'A202', nome: 'Paulo Reis', celular: '11911112222', codigo: codigoDoConvite('11911112222') }, AGORA_IMPLANTACAO);
-      igual([novo.situacao, moradoresPendentes(novo.estado).map((p) => p.nome), novo.notificacao.texto], ['pendente', ['Paulo Reis'], 'Novo morador no apto A202: Paulo Reis. Aprove no Início']);
+      const maria = confirmarConvite(e, { unidade: '101a', nome: 'maria silva', celular: '(11) 98765-4321', codigo: cod }, AGORA_IMPLANTACAO);
+      igual([maria.situacao, maria.estado.pessoas[1].situacao, maria.estado.moradorAtual, indicadoresSindico(maria.estado, AGORA_IMPLANTACAO).adesao.com], ['ativo', 'ativo', '101A', 2]);
+      const novo = confirmarConvite(maria.estado, { unidade: '202A', nome: 'Paulo Reis', celular: '11911112222', codigo: codigoDoConvite('11911112222') }, AGORA_IMPLANTACAO);
+      igual([novo.situacao, moradoresPendentes(novo.estado).map((p) => p.nome), novo.notificacao.texto], ['pendente', ['Paulo Reis'], 'Novo morador no apto 202A: Paulo Reis. Aprove no Início']);
       igual(aprovarMorador(novo.estado, novo.id, 'morador', AGORA_IMPLANTACAO).erro, 'Somente o síndico pode fazer isso');
       const ok = aprovarMorador(novo.estado, novo.id, 'sindico', AGORA_IMPLANTACAO).estado;
       igual([moradoresPendentes(ok).length, indicadoresSindico(ok, AGORA_IMPLANTACAO).adesao.com], [0, 3]);
