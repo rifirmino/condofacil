@@ -53,16 +53,32 @@ export function criarRotas({ banco, asaas, config }) {
     if (campo) return falha(400, `Informe o campo ${campo}`);
     const existente = await banco.obterCondominio(corpo.id);
     if (existente) return ok({ walletId: existente.walletId, situacao: existente.situacao });
-    const conta = await asaas(config.chaveRaiz).post('/accounts', {
-      name: corpo.nome, email: corpo.email, cpfCnpj: corpo.cnpj, companyType: 'ASSOCIATION', mobilePhone: corpo.celular,
-      incomeValue: reais(corpo.rendaMensal), postalCode: corpo.cep, address: corpo.endereco, addressNumber: corpo.numero, province: corpo.bairro,
-    });
-    await asaas(conta.apiKey).post('/webhooks', {
-      name: 'CondoFácil', url: `${config.urlPublica}/api/webhook/asaas`, email: corpo.email, enabled: true, interrupted: false,
+    // Conta Asaas de pessoa física não cria subcontas (403): o condomínio passa a cobrar pela conta principal.
+    let conta;
+    try {
+      conta = await asaas(config.chaveRaiz).post('/accounts', {
+        name: corpo.nome, email: corpo.email, cpfCnpj: corpo.cnpj, companyType: 'ASSOCIATION', mobilePhone: corpo.celular,
+        incomeValue: reais(corpo.rendaMensal), postalCode: corpo.cep, address: corpo.endereco, addressNumber: corpo.numero, province: corpo.bairro,
+      });
+    } catch (e) {
+      if (!(e instanceof ErroAsaas) || e.status !== 403) throw e;
+      conta = { apiKey: config.chaveRaiz, walletId: 'conta-principal' };
+    }
+    const situacao = conta.apiKey === config.chaveRaiz ? 'conta-principal' : 'ativa';
+    await garantirWebhook(asaas(conta.apiKey), corpo.email);
+    await banco.salvarCondominio({ id: corpo.id, nome: corpo.nome, cnpj: corpo.cnpj, walletId: conta.walletId, apiKeyCifrada: cifrar(conta.apiKey, config.chaveCripto), situacao });
+    return ok({ walletId: conta.walletId, situacao });
+  }
+
+  // Um webhook por conta: na conta principal, vários condomínios compartilham o mesmo.
+  async function garantirWebhook(cliente, email) {
+    const url = `${config.urlPublica}/api/webhook/asaas`;
+    const existentes = await cliente.get('/webhooks');
+    if ((existentes.data || []).some((w) => w.url === url)) return;
+    await cliente.post('/webhooks', {
+      name: 'CondoFácil', url, email, enabled: true, interrupted: false,
       authToken: config.tokenWebhook, sendType: 'SEQUENTIALLY', events: ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_OVERDUE'],
     });
-    await banco.salvarCondominio({ id: corpo.id, nome: corpo.nome, cnpj: corpo.cnpj, walletId: conta.walletId, apiKeyCifrada: cifrar(conta.apiKey, config.chaveCripto), situacao: 'ativa' });
-    return ok({ walletId: conta.walletId, situacao: 'ativa' });
   }
 
   async function clienteDaLinha(cliente, condominioId, l) {

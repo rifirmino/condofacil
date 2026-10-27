@@ -5,6 +5,8 @@ export const CHAVE_RAIZ_FALSA = 'raiz_teste';
 const PNG_FALSO = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 export async function asaasFalso({ urlWebhookPadrao } = {}) {
+  const opcoes = { negarSubconta: false };
+  const webhooksCriados = [];
   let n = 0;
   const proximo = (prefixo) => `${prefixo}_${(n += 1)}`;
   const contas = [];
@@ -44,6 +46,8 @@ export async function asaasFalso({ urlWebhookPadrao } = {}) {
     const id = (url.pathname.match(/\/(pay_\d+)/) || [])[1];
 
     if (rota === 'POST /accounts') {
+      // Como o Asaas real responde a uma conta de pessoa física: 403 com "message", sem "errors".
+      if (opcoes.negarSubconta) return responder(res, 403, { message: 'Contas de pessoa física (CPF) não podem criar subcontas no Asaas.' });
       if (!corpo.cpfCnpj) return erro(res, 400, 'Informe o CPF ou CNPJ');
       const conta = { id: proximo('acc'), apiKey: proximo('sub'), walletId: proximo('wal'), ...corpo };
       contas.push(conta);
@@ -52,7 +56,12 @@ export async function asaasFalso({ urlWebhookPadrao } = {}) {
     }
     if (rota === 'POST /webhooks') {
       webhooks.set(chave, { url: corpo.url, authToken: corpo.authToken, events: corpo.events });
+      webhooksCriados.push(chave);
       return responder(res, 200, { id: proximo('wh'), ...corpo });
+    }
+    if (rota === 'GET /webhooks') {
+      const w = webhooks.get(chave);
+      return responder(res, 200, { data: w ? [{ id: 'wh', url: w.url, enabled: true }] : [] });
     }
     if (rota === 'GET /customers') {
       return responder(res, 200, { data: clientes.filter((c) => c.dono === chave && (!url.searchParams.get('cpfCnpj') || c.cpfCnpj === url.searchParams.get('cpfCnpj'))) });
@@ -98,6 +107,8 @@ export async function asaasFalso({ urlWebhookPadrao } = {}) {
     pagamentos,
     webhooks,
     falharCpf,
+    opcoes,
+    webhooksCriados,
     eventosEnviados,
     fechar: () => new Promise((ok) => { servidor.closeAllConnections(); servidor.close(ok); }),
   };

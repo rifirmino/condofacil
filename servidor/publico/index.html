@@ -13354,7 +13354,7 @@ function SubcontaReal({ r, mudar }) {
     setErro(null);
     try {
       const resp = await chamarApi('POST', '/api/condominios', { id, nome: c.nome, cnpj, email: c.sindico.email, celular: apenasDigitos(c.sindico.celular), cep: apenasDigitos(c.cep), endereco: c.endereco, numero: a.numero, bairro: a.bairro, rendaMensal: arrecadacaoPrevista(r) || 100000 });
-      mudar({ idCondominio: id, asaas: { ...a, cnpj, situacao: 'aprovada', ambiente: 'sandbox', real: true, walletId: resp.walletId } });
+      mudar({ idCondominio: id, asaas: { ...a, cnpj, situacao: 'aprovada', ambiente: 'sandbox', real: true, walletId: resp.walletId, contaPrincipal: resp.situacao === 'conta-principal' } });
     } catch (e) {
       setErro(e.message);
     }
@@ -13369,7 +13369,9 @@ function SubcontaReal({ r, mudar }) {
       <${Campo} rotulo="Bairro"><input id="impl-bairro" value=${a.bairro || ''} onInput=${campo('bairro')} placeholder="Ex.: Centro" /><//>
     </div>
     ${a.real
-      ? html`<p class="sucesso">Subconta aprovada no Asaas sandbox (carteira ${a.walletId}). As cobranças vão sair por ela.</p>`
+      ? a.contaPrincipal
+        ? html`<p class="sucesso">Asaas sandbox pronto. A conta Asaas é de pessoa física e não cria subcontas, então as cobranças deste condomínio vão sair pela conta principal do sandbox.</p>`
+        : html`<p class="sucesso">Subconta aprovada no Asaas sandbox (carteira ${a.walletId}). As cobranças vão sair por ela.</p>`
       : html`<button type="button" class="btn primario" data-acao="criar-subconta" disabled=${enviando} onClick=${criar}>${enviando ? 'Criando no Asaas…' : 'Criar subconta no Asaas sandbox'}</button>`}
     <${Erro} texto=${erro} />
   </div>`;

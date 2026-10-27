@@ -142,3 +142,17 @@ test('chave da API recusada pelo Asaas vira mensagem clara', async () => {
     assert.deepEqual([r2.status, r2.corpo.erro], [502, MSG_CHAVE_RECUSADA]);
   } finally { await t.fechar(); }
 });
+
+test('sem permissão de subconta (conta de CPF), cobra pela conta principal com um webhook só', async () => {
+  const t = await montar();
+  try {
+    t.falso.opcoes.negarSubconta = true;
+    const r1 = await t.chamar('POST', '/api/condominios', DADOS_CONDOMINIO);
+    const r2 = await t.chamar('POST', '/api/condominios', { ...DADOS_CONDOMINIO, id: 'cond-dois', nome: 'Outro' });
+    assert.deepEqual([r1.status, r1.corpo.situacao, r2.corpo.situacao], [200, 'conta-principal', 'conta-principal']);
+    assert.deepEqual([t.falso.contas.length, t.falso.webhooksCriados], [0, [CHAVE_RAIZ_FALSA]]);
+    const e = await t.chamar('POST', '/api/emissoes', { condominio: 'cond-teste', competencia: '2026-11', linhas: [linha('A101', CPF_OK)] });
+    assert.equal(e.corpo.resultados[0].ok, true);
+    assert.equal([...t.falso.pagamentos.values()][0].dono, CHAVE_RAIZ_FALSA);
+  } finally { await t.fechar(); }
+});

@@ -34,7 +34,7 @@ export function clienteAsaas({ url, chave, tempoMs = 10000 }) {
     if (!resp.ok) {
       // O corpo de erro do Asaas não traz segredos; vai ao log (privado, no hPanel) para diagnóstico.
       console.warn(`Asaas ${resp.status} em ${metodo} ${caminho.split('?')[0]}: ${texto.slice(0, 300) || '(sem corpo)'}`);
-      throw new ErroAsaas(resp.status, (dados.errors && dados.errors[0] && dados.errors[0].description) || `Asaas respondeu ${resp.status}`);
+      throw new ErroAsaas(resp.status, (dados.errors && dados.errors[0] && dados.errors[0].description) || dados.message || `Asaas respondeu ${resp.status}`);
     }
     return dados;
   }
