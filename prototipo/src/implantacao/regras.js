@@ -40,6 +40,12 @@ export function validarCondominio(dados) {
   return null;
 }
 
+// Resposta do ViaCEP (viacep.com.br/ws/<cep>/json/) no formato do cadastro; CEP inexistente vem com "erro".
+export function enderecoDoViaCep(json) {
+  if (!json || json.erro || !json.localidade) return null;
+  return { endereco: json.logradouro || '', bairro: json.bairro || '', cidade: json.localidade, uf: json.uf || '' };
+}
+
 // CPF com os dois dígitos verificadores; 11 dígitos iguais não valem.
 export function cpfValido(cpf) {
   const d = apenasDigitos(cpf);

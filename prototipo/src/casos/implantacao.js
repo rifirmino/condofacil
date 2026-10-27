@@ -1,4 +1,4 @@
-import { cpfValido, fmtCpf, gerarUnidades, sugestaoPrimeiroAndar, andarDoNumero, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, validarCondominio, mensagemWhatsAppConvite } from '../implantacao/regras.js';
+import { cpfValido, fmtCpf, enderecoDoViaCep, gerarUnidades, sugestaoPrimeiroAndar, andarDoNumero, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, validarCondominio, mensagemWhatsAppConvite } from '../implantacao/regras.js';
 import { condominioNovo } from '../implantacao/novo.js';
 import { indicadoresSindico, alertasDocumentos, destinatarios, comunicadosDaUnidade, horariosDaArea } from '../regras.js';
 import { indicadoresFinanceiros, devedores, previaCompetencia, proximaCompetencia, serieReceitasDespesas, tituloSerie, pendentesDaRegua } from '../cobranca/regras.js';
@@ -56,6 +56,13 @@ export const CASOS_IMPLANTACAO = [
       const csv = lerCsvUnidades('unidade,bloco,tipo\n101,,\n1201,,cobertura');
       igual(csv.unidades.map((u) => [u.id, u.andar, u.tipo]), [['101', 1, 'A'], ['1201', 12, 'cobertura']]);
       igual(lerCsvUnidades('101\n101').erro, 'Linha 2: unidade 101 repetida');
+    },
+  },
+  {
+    nome: 'implantação: endereço pelo CEP (ViaCEP)',
+    rodar() {
+      igual(enderecoDoViaCep({ cep: '01310-100', logradouro: 'Avenida Paulista', bairro: 'Bela Vista', localidade: 'São Paulo', uf: 'SP' }), { endereco: 'Avenida Paulista', bairro: 'Bela Vista', cidade: 'São Paulo', uf: 'SP' });
+      igual([enderecoDoViaCep({ erro: 'true' }), enderecoDoViaCep(null), enderecoDoViaCep({ localidade: 'Santo André', uf: 'SP' }).endereco], [null, null, '']);
     },
   },
   {
