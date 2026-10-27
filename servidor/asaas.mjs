@@ -31,7 +31,11 @@ export function clienteAsaas({ url, chave, tempoMs = 10000 }) {
     const texto = await resp.text();
     let dados = {};
     try { dados = texto ? JSON.parse(texto) : {}; } catch { dados = {}; }
-    if (!resp.ok) throw new ErroAsaas(resp.status, (dados.errors && dados.errors[0] && dados.errors[0].description) || `Asaas respondeu ${resp.status}`);
+    if (!resp.ok) {
+      // O corpo de erro do Asaas não traz segredos; vai ao log (privado, no hPanel) para diagnóstico.
+      console.warn(`Asaas ${resp.status} em ${metodo} ${caminho.split('?')[0]}: ${texto.slice(0, 300) || '(sem corpo)'}`);
+      throw new ErroAsaas(resp.status, (dados.errors && dados.errors[0] && dados.errors[0].description) || `Asaas respondeu ${resp.status}`);
+    }
     return dados;
   }
   return { get: (c) => chamar('GET', c), post: (c, corpo) => chamar('POST', c, corpo ?? {}) };

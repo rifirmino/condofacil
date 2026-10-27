@@ -37,6 +37,11 @@ await banco.preparar();
 
 const publico = (arquivo) => () => readFileSync(join(raiz, 'publico', arquivo));
 const rotas = criarRotas({ banco, asaas: (chave) => clienteAsaas({ url: urlAsaas, chave }), config });
+// Confere na partida se a chave funciona numa consulta simples (separa chave ruim de falta de permissão).
+clienteAsaas({ url: urlAsaas, chave: config.chaveRaiz }).get('/customers?limit=1')
+  .then(() => console.log('Chave do Asaas: consulta de teste OK'))
+  .catch((e) => console.warn(`Chave do Asaas: consulta de teste falhou (${e.status})`));
+
 const porta = Number(env.PORT) || 3000;
 criarServidor({ rotas, paginas: { site: publico('site.html'), app: publico('index.html') } }).listen(porta, () => {
   console.log(`CondoFácil no ar na porta ${porta} (Asaas sandbox)`);
