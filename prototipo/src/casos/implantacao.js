@@ -16,6 +16,8 @@ import { fluxoProjetado } from '../financeiro/fluxo.js';
 import { contextoAbel } from '../assistente/ia.js';
 import { responderAbel } from '../assistente/regras.js';
 import { confirmarConvite, aprovarMorador, recusarMorador, codigoDoConvite, moradoresPendentes } from '../implantacao/acoes.js';
+import { atualizarMeusDados, salvarResidentes, residentesDaUnidade, definirResponsavel, removerPessoa, outrosDaUnidade } from '../moradores/acoes.js';
+import { pessoaDaUnidade } from '../vendas/regras.js';
 import { igual } from './afirmar.js';
 
 export const AGORA_IMPLANTACAO = new Date(2026, 9, 23, 10, 0);
@@ -172,6 +174,46 @@ export const CASOS_IMPLANTACAO = [
       const ok = aprovarMorador(novo.estado, novo.id, 'sindico', AGORA_IMPLANTACAO).estado;
       igual([moradoresPendentes(ok).length, indicadoresSindico(ok, AGORA_IMPLANTACAO).adesao.com], [0, 3]);
       igual(recusarMorador(novo.estado, novo.id, 'sindico').estado.pessoas.length, 3);
+    },
+  },
+  {
+    nome: 'moradores: convite com outro nome, substituir na aprovação e pessoa atual no app',
+    rodar() {
+      const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
+      // Planilha: Maria Silva no 101A; pelo convite entra Ricardo, que não estava na planilha.
+      const pedido = confirmarConvite(e, { unidade: '101A', nome: 'Ricardo Firmino', celular: '11925913118', codigo: codigoDoConvite('11925913118') }, AGORA_IMPLANTACAO);
+      const ricardo = pedido.estado.pessoas.find((p) => p.id === pedido.id);
+      igual([pedido.situacao, outrosDaUnidade(pedido.estado, ricardo).map((p) => p.nome)], ['pendente', ['Maria Silva']]);
+      const adicional = aprovarMorador(pedido.estado, pedido.id, 'sindico', AGORA_IMPLANTACAO);
+      igual([adicional.estado.pessoas.filter((p) => p.unidade === '101A').length, adicional.saiu], [2, []]);
+      const sub = aprovarMorador(pedido.estado, pedido.id, 'sindico', AGORA_IMPLANTACAO, 'substituir');
+      const resp = sub.estado.financeiro.unidades['101A'].responsavel;
+      igual([sub.saiu, sub.estado.pessoas.filter((p) => p.unidade === '101A').map((p) => p.nome), resp.nome, resp.cpf], [['Maria Silva'], ['Ricardo Firmino'], 'Ricardo Firmino', null]);
+      // O síndico nunca sai numa substituição.
+      const naUnidadeDoSindico = confirmarConvite(e, { unidade: '402B', nome: 'Outra Pessoa', celular: '11900001111', codigo: codigoDoConvite('11900001111') }, AGORA_IMPLANTACAO);
+      igual(aprovarMorador(naUnidadeDoSindico.estado, naUnidadeDoSindico.id, 'sindico', AGORA_IMPLANTACAO, 'substituir').saiu, []);
+      // Com duas pessoas ativas no 101A, o app mostra quem entrou pelo convite.
+      const ativos = { ...adicional.estado, pessoas: adicional.estado.pessoas.map((p) => (p.unidade === '101A' ? { ...p, situacao: 'ativo' } : p)) };
+      const entrou = confirmarConvite(ativos, { unidade: '101A', nome: 'Ricardo Firmino', celular: '11925913118', codigo: codigoDoConvite('11925913118') }, AGORA_IMPLANTACAO);
+      igual([pessoaDaUnidade(entrou.estado, '101A').nome, pessoaDaUnidade({ ...entrou.estado, pessoaAtual: null }, '101A').nome], ['Ricardo Firmino', 'Maria Silva']);
+    },
+  },
+  {
+    nome: 'moradores: meus dados, quem mora no apartamento, responsável financeiro e remoção',
+    rodar() {
+      const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
+      const maria = e.pessoas.find((p) => p.nome === 'Maria Silva');
+      const r = atualizarMeusDados(e, maria.id, { nome: ' Maria S. Souza ', cpf: '529.982.247-25', celular: '(11) 98765-4321', email: 'maria@novo.com' });
+      igual(r.estado.pessoas.find((p) => p.id === maria.id), { ...maria, nome: 'Maria S. Souza', cpf: '52998224725', celular: '11987654321', email: 'maria@novo.com' });
+      igual([atualizarMeusDados(e, maria.id, { nome: '' }).erro, atualizarMeusDados(e, maria.id, { nome: 'M', cpf: '123' }).erro, atualizarMeusDados(e, maria.id, { nome: 'M', celular: '119' }).erro, atualizarMeusDados(e, 'x', { nome: 'M' }).erro], ['Informe o seu nome', 'CPF inválido', 'Celular inválido: use DDD + número', 'Cadastro não encontrado']);
+      const casa = salvarResidentes(e, '101A', [{ nome: 'João Silva', telefone: '' }, { nome: ' Ana Silva ', telefone: '(11) 91234-5678' }, { nome: '', telefone: '' }]);
+      igual(residentesDaUnidade(casa.estado, '101A'), [{ nome: 'João Silva', telefone: '' }, { nome: 'Ana Silva', telefone: '11912345678' }]);
+      igual([residentesDaUnidade(e, '101A'), salvarResidentes(e, '101A', [{ nome: '', telefone: '11912345678' }]).erro, salvarResidentes(e, '101A', [{ nome: 'X', telefone: '12' }]).erro], [[], 'Informe o nome de cada pessoa', 'Telefone inválido: use DDD + número']);
+      const def = definirResponsavel(e, '102A', { nome: 'Carlos Lima', cpf: '529.982.247-25', relacao: 'inquilino' }, 'sindico');
+      igual(def.estado.financeiro.unidades['102A'].responsavel, { nome: 'Carlos Lima', relacao: 'inquilino', cpf: '52998224725', documento: 'CPF 529.982.247-25', canais: ['App', 'E-mail', 'WhatsApp'] });
+      igual([definirResponsavel(e, '102A', { nome: 'X', cpf: '1' }, 'sindico').erro, definirResponsavel(e, '102A', { nome: 'X', cpf: '52998224725' }, 'morador').erro], ['Informe um CPF válido', 'Somente o síndico pode fazer isso']);
+      const helena = e.pessoas.find((p) => p.nome === 'Helena Prado');
+      igual([removerPessoa(e, maria.id, 'sindico').estado.pessoas.length, removerPessoa(e, helena.id, 'sindico').erro, removerPessoa(e, maria.id, 'morador').erro], [e.pessoas.length - 1, 'O síndico não pode ser removido por aqui', 'Somente o síndico pode fazer isso']);
     },
   },
 ];

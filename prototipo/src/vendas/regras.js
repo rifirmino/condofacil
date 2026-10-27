@@ -21,8 +21,10 @@ export function lerPreco(texto) {
   return Number.isFinite(valor) ? Math.round(valor * 100) : NaN;
 }
 
+// Quem está usando o app naquela unidade: a pessoa atual (convite ou troca), depois a primeira ativa.
 export function pessoaDaUnidade(estado, unidade) {
-  return estado.pessoas.find((p) => p.unidade === unidade);
+  const daUnidade = estado.pessoas.filter((p) => p.unidade === unidade);
+  return daUnidade.find((p) => p.id === estado.pessoaAtual) || daUnidade.find((p) => !p.situacao || p.situacao === 'ativo') || daUnidade[0];
 }
 
 export function nomeVizinho(estado, unidade) {

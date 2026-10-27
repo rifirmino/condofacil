@@ -653,6 +653,13 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .grade-unidades { display: flex; flex-wrap: wrap; gap: 18px; }
 .linha-andar { display: flex; gap: 10px; align-items: center; }
 .linha-andar > .sub { min-width: 64px; }
+.linha-residente { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+@media (max-width: 480px) { .linha-residente { grid-template-columns: minmax(0, 1fr); } }
+.aprovacao-morador { border-top: 1px solid var(--borda, #d5dedb); padding-top: 10px; }
+.primeiro-andar input, .linha-residente input { font-size: 15px; padding: 10px 12px; border: 1px solid var(--borda); border-radius: var(--raio); background: var(--sup); min-height: 44px; }
+.primeiro-andar input:focus, .linha-residente input:focus { border-color: var(--laranja); outline: none; box-shadow: 0 0 0 2px var(--laranja-tinta); }
+.primeiro-andar .lista-unidades { gap: 8px; }
+.resp-financeiro { display: inline-flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 
 </style>
 <div id="app"></div>
@@ -2781,6 +2788,73 @@ function arquivarComJustificativa(estado, id, motivo, perfil, agora) {
   return { estado: comEntrada(estado, id, { arquivada: true, motivoArquivamento: texto }, { em: agora.toISOString(), status: null, texto: `Arquivada: ${texto}`, autor: 'Síndico' }) };
 }
 
+// ---- src/moradores/acoes.js ----
+
+// Cadastro dos moradores: o morador cuida dos próprios dados e de quem mora com ele; o síndico, do responsável financeiro.
+const SO_SINDICO_CADASTRO = 'Somente o síndico pode fazer isso';
+const MAX_RESIDENTES = 15;
+
+function erroCadastro(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function ehSindico(estado, pessoa) {
+  const s = estado.condominio.sindico;
+  return !!s && pessoa.nome === s.nome && pessoa.unidade === s.unidade;
+}
+
+// As outras pessoas da unidade, menos o síndico: quem sai quando a aprovação substitui.
+function outrosDaUnidade(estado, pessoa) {
+  return estado.pessoas.filter((p) => p.unidade === pessoa.unidade && p.id !== pessoa.id && !ehSindico(estado, p));
+}
+
+function residentesDaUnidade(estado, unidade) {
+  return (estado.residentes || {})[unidade] || [];
+}
+
+function atualizarMeusDados(estado, idPessoa, { nome, cpf, celular, email }) {
+  const p = estado.pessoas.find((x) => x.id === idPessoa);
+  if (!p) return erroCadastro(estado, 'Cadastro não encontrado');
+  const n = String(nome || '').trim();
+  if (!n) return erroCadastro(estado, 'Informe o seu nome');
+  if (String(cpf || '').trim() && !cpfValido(cpf)) return erroCadastro(estado, 'CPF inválido');
+  if (String(celular || '').trim() && !celularValido(celular)) return erroCadastro(estado, 'Celular inválido: use DDD + número');
+  if (String(email || '').trim() && !emailValido(email)) return erroCadastro(estado, 'E-mail inválido');
+  return { estado: { ...estado, pessoas: trocarItem(estado.pessoas, idPessoa, { nome: n, cpf: apenasDigitos(cpf), celular: apenasDigitos(celular), email: String(email || '').trim() }) } };
+}
+
+function salvarResidentes(estado, unidade, lista) {
+  const limpa = lista.map((r) => ({ nome: String(r.nome || '').trim(), telefone: String(r.telefone || '').trim() })).filter((r) => r.nome || r.telefone);
+  if (limpa.some((r) => !r.nome)) return erroCadastro(estado, 'Informe o nome de cada pessoa');
+  if (limpa.some((r) => r.telefone && !celularValido(r.telefone))) return erroCadastro(estado, 'Telefone inválido: use DDD + número');
+  if (limpa.length > MAX_RESIDENTES) return erroCadastro(estado, `No máximo ${MAX_RESIDENTES} pessoas por apartamento`);
+  const residentes = { ...(estado.residentes || {}), [unidade]: limpa.map((r) => ({ nome: r.nome, telefone: apenasDigitos(r.telefone) })) };
+  return { estado: { ...estado, residentes } };
+}
+
+function definirResponsavel(estado, unidade, { nome, cpf, relacao }, perfil) {
+  if (perfil !== 'sindico') return erroCadastro(estado, SO_SINDICO_CADASTRO);
+  const fin = estado.financeiro;
+  if (!fin.unidades[unidade]) return erroCadastro(estado, 'Unidade não encontrada');
+  const n = String(nome || '').trim();
+  if (!n) return erroCadastro(estado, 'Informe o nome do responsável financeiro');
+  if (!cpfValido(cpf)) return erroCadastro(estado, 'Informe um CPF válido');
+  const atual = fin.unidades[unidade].responsavel || {};
+  const responsavel = { ...atual, nome: n, relacao: NOMES_RELACAO[relacao] ? relacao : atual.relacao || 'titular', cpf: apenasDigitos(cpf), documento: `CPF ${fmtCpf(cpf)}`, canais: atual.canais || ['App', 'E-mail', 'WhatsApp'] };
+  return {
+    estado: { ...estado, financeiro: { ...fin, unidades: { ...fin.unidades, [unidade]: { ...fin.unidades[unidade], responsavel } } } },
+    notificacao: { canal: 'App', para: n, texto: `Você é o responsável financeiro do apto ${unidade}: as cobranças passam a sair no seu nome` },
+  };
+}
+
+function removerPessoa(estado, id, perfil) {
+  if (perfil !== 'sindico') return erroCadastro(estado, SO_SINDICO_CADASTRO);
+  const p = estado.pessoas.find((x) => x.id === id);
+  if (!p) return erroCadastro(estado, 'Cadastro não encontrado');
+  if (ehSindico(estado, p)) return erroCadastro(estado, 'O síndico não pode ser removido por aqui');
+  return { estado: { ...estado, pessoas: estado.pessoas.filter((x) => x.id !== id), pessoaAtual: estado.pessoaAtual === id ? null : estado.pessoaAtual } };
+}
+
 // ---- src/implantacao/acoes.js ----
 
 // Primeiro acesso pelo convite (QR Code): quem está na planilha passa a ativo; quem não está aguarda o síndico aprovar.
@@ -2811,7 +2885,7 @@ function confirmarConvite(estado, { unidade, nome, celular, codigo }, agora) {
     if (existente.situacao === 'pendente') return { estado, id: existente.id, situacao: 'pendente' };
     const ativo = { situacao: 'ativo', celular: existente.celular || cel, acessoEm: agora.toISOString() };
     return {
-      estado: { ...estado, pessoas: trocarItem(estado.pessoas, existente.id, ativo), moradorAtual: u },
+      estado: { ...estado, pessoas: trocarItem(estado.pessoas, existente.id, ativo), moradorAtual: u, pessoaAtual: existente.id },
       id: existente.id,
       situacao: 'ativo',
       notificacao: { canal: 'App', para: estado.condominio.sindico ? estado.condominio.sindico.nome : 'Síndico', texto: `${existente.nome} (apto ${u}) entrou no app pelo convite` },
@@ -2827,12 +2901,23 @@ function confirmarConvite(estado, { unidade, nome, celular, codigo }, agora) {
   };
 }
 
-function aprovarMorador(estado, id, perfil, agora) {
+// modo 'adicional' = mais um morador; 'substituir' = as outras pessoas da unidade (menos o síndico) saem, e a
+// responsabilidade financeira de quem saiu passa para quem entrou, sem CPF (o síndico completa em Moradores).
+function aprovarMorador(estado, id, perfil, agora, modo = 'adicional') {
   if (perfil !== 'sindico') return erroConvite(estado, 'Somente o síndico pode fazer isso');
   const p = estado.pessoas.find((x) => x.id === id);
   if (!p || p.situacao !== 'pendente') return erroConvite(estado, 'Este cadastro não está aguardando aprovação');
+  const saem = modo === 'substituir' ? outrosDaUnidade(estado, p) : [];
+  let novo = { ...estado, pessoas: trocarItem(estado.pessoas, id, { situacao: 'ativo', acessoEm: agora.toISOString() }).filter((x) => !saem.includes(x)) };
+  const fin = estado.financeiro;
+  const resp = fin.unidades[p.unidade] && fin.unidades[p.unidade].responsavel;
+  if (resp && saem.some((x) => x.nome === resp.nome)) {
+    const responsavel = { ...resp, nome: p.nome, cpf: null, documento: 'CPF a informar pelo síndico' };
+    novo = { ...novo, financeiro: { ...fin, unidades: { ...fin.unidades, [p.unidade]: { ...fin.unidades[p.unidade], responsavel } } } };
+  }
   return {
-    estado: { ...estado, pessoas: trocarItem(estado.pessoas, id, { situacao: 'ativo', acessoEm: agora.toISOString() }) },
+    estado: novo,
+    saiu: saem.map((x) => x.nome),
     notificacao: { canal: 'App + WhatsApp', para: p.nome, texto: `Seu acesso ao apto ${p.unidade} foi aprovado. Bem-vindo ao CondoFácil!` },
   };
 }
@@ -4765,8 +4850,10 @@ function lerPreco(texto) {
   return Number.isFinite(valor) ? Math.round(valor * 100) : NaN;
 }
 
+// Quem está usando o app naquela unidade: a pessoa atual (convite ou troca), depois a primeira ativa.
 function pessoaDaUnidade(estado, unidade) {
-  return estado.pessoas.find((p) => p.unidade === unidade);
+  const daUnidade = estado.pessoas.filter((p) => p.unidade === unidade);
+  return daUnidade.find((p) => p.id === estado.pessoaAtual) || daUnidade.find((p) => !p.situacao || p.situacao === 'ativo') || daUnidade[0];
 }
 
 function nomeVizinho(estado, unidade) {
@@ -4933,7 +5020,8 @@ function textoLimpo(texto) {
 function trocarMorador(estado, unidade) {
   const disponivel = estado.origem === 'novo' ? estado.pessoas.some((p) => p.unidade === unidade && p.situacao === 'ativo') : MORADORES_DEMO.some(([u]) => u === unidade);
   if (!disponivel) return erroVenda(estado, 'Morador indisponível na demonstração');
-  return { estado: { ...estado, moradorAtual: unidade, sacola: [] } };
+  const pessoa = estado.pessoas.find((p) => p.unidade === unidade && (!p.situacao || p.situacao === 'ativo'));
+  return { estado: { ...estado, moradorAtual: unidade, pessoaAtual: pessoa ? pessoa.id : null, sacola: [] } };
 }
 
 function alternarOfertas(estado, unidade) {
@@ -8026,6 +8114,46 @@ const CASOS_IMPLANTACAO = [
       const ok = aprovarMorador(novo.estado, novo.id, 'sindico', AGORA_IMPLANTACAO).estado;
       igual([moradoresPendentes(ok).length, indicadoresSindico(ok, AGORA_IMPLANTACAO).adesao.com], [0, 3]);
       igual(recusarMorador(novo.estado, novo.id, 'sindico').estado.pessoas.length, 3);
+    },
+  },
+  {
+    nome: 'moradores: convite com outro nome, substituir na aprovação e pessoa atual no app',
+    rodar() {
+      const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
+      // Planilha: Maria Silva no 101A; pelo convite entra Ricardo, que não estava na planilha.
+      const pedido = confirmarConvite(e, { unidade: '101A', nome: 'Ricardo Firmino', celular: '11925913118', codigo: codigoDoConvite('11925913118') }, AGORA_IMPLANTACAO);
+      const ricardo = pedido.estado.pessoas.find((p) => p.id === pedido.id);
+      igual([pedido.situacao, outrosDaUnidade(pedido.estado, ricardo).map((p) => p.nome)], ['pendente', ['Maria Silva']]);
+      const adicional = aprovarMorador(pedido.estado, pedido.id, 'sindico', AGORA_IMPLANTACAO);
+      igual([adicional.estado.pessoas.filter((p) => p.unidade === '101A').length, adicional.saiu], [2, []]);
+      const sub = aprovarMorador(pedido.estado, pedido.id, 'sindico', AGORA_IMPLANTACAO, 'substituir');
+      const resp = sub.estado.financeiro.unidades['101A'].responsavel;
+      igual([sub.saiu, sub.estado.pessoas.filter((p) => p.unidade === '101A').map((p) => p.nome), resp.nome, resp.cpf], [['Maria Silva'], ['Ricardo Firmino'], 'Ricardo Firmino', null]);
+      // O síndico nunca sai numa substituição.
+      const naUnidadeDoSindico = confirmarConvite(e, { unidade: '402B', nome: 'Outra Pessoa', celular: '11900001111', codigo: codigoDoConvite('11900001111') }, AGORA_IMPLANTACAO);
+      igual(aprovarMorador(naUnidadeDoSindico.estado, naUnidadeDoSindico.id, 'sindico', AGORA_IMPLANTACAO, 'substituir').saiu, []);
+      // Com duas pessoas ativas no 101A, o app mostra quem entrou pelo convite.
+      const ativos = { ...adicional.estado, pessoas: adicional.estado.pessoas.map((p) => (p.unidade === '101A' ? { ...p, situacao: 'ativo' } : p)) };
+      const entrou = confirmarConvite(ativos, { unidade: '101A', nome: 'Ricardo Firmino', celular: '11925913118', codigo: codigoDoConvite('11925913118') }, AGORA_IMPLANTACAO);
+      igual([pessoaDaUnidade(entrou.estado, '101A').nome, pessoaDaUnidade({ ...entrou.estado, pessoaAtual: null }, '101A').nome], ['Ricardo Firmino', 'Maria Silva']);
+    },
+  },
+  {
+    nome: 'moradores: meus dados, quem mora no apartamento, responsável financeiro e remoção',
+    rodar() {
+      const e = condominioNovo(configTeste(), AGORA_IMPLANTACAO);
+      const maria = e.pessoas.find((p) => p.nome === 'Maria Silva');
+      const r = atualizarMeusDados(e, maria.id, { nome: ' Maria S. Souza ', cpf: '529.982.247-25', celular: '(11) 98765-4321', email: 'maria@novo.com' });
+      igual(r.estado.pessoas.find((p) => p.id === maria.id), { ...maria, nome: 'Maria S. Souza', cpf: '52998224725', celular: '11987654321', email: 'maria@novo.com' });
+      igual([atualizarMeusDados(e, maria.id, { nome: '' }).erro, atualizarMeusDados(e, maria.id, { nome: 'M', cpf: '123' }).erro, atualizarMeusDados(e, maria.id, { nome: 'M', celular: '119' }).erro, atualizarMeusDados(e, 'x', { nome: 'M' }).erro], ['Informe o seu nome', 'CPF inválido', 'Celular inválido: use DDD + número', 'Cadastro não encontrado']);
+      const casa = salvarResidentes(e, '101A', [{ nome: 'João Silva', telefone: '' }, { nome: ' Ana Silva ', telefone: '(11) 91234-5678' }, { nome: '', telefone: '' }]);
+      igual(residentesDaUnidade(casa.estado, '101A'), [{ nome: 'João Silva', telefone: '' }, { nome: 'Ana Silva', telefone: '11912345678' }]);
+      igual([residentesDaUnidade(e, '101A'), salvarResidentes(e, '101A', [{ nome: '', telefone: '11912345678' }]).erro, salvarResidentes(e, '101A', [{ nome: 'X', telefone: '12' }]).erro], [[], 'Informe o nome de cada pessoa', 'Telefone inválido: use DDD + número']);
+      const def = definirResponsavel(e, '102A', { nome: 'Carlos Lima', cpf: '529.982.247-25', relacao: 'inquilino' }, 'sindico');
+      igual(def.estado.financeiro.unidades['102A'].responsavel, { nome: 'Carlos Lima', relacao: 'inquilino', cpf: '52998224725', documento: 'CPF 529.982.247-25', canais: ['App', 'E-mail', 'WhatsApp'] });
+      igual([definirResponsavel(e, '102A', { nome: 'X', cpf: '1' }, 'sindico').erro, definirResponsavel(e, '102A', { nome: 'X', cpf: '52998224725' }, 'morador').erro], ['Informe um CPF válido', 'Somente o síndico pode fazer isso']);
+      const helena = e.pessoas.find((p) => p.nome === 'Helena Prado');
+      igual([removerPessoa(e, maria.id, 'sindico').estado.pessoas.length, removerPessoa(e, helena.id, 'sindico').erro, removerPessoa(e, maria.id, 'morador').erro], [e.pessoas.length - 1, 'O síndico não pode ser removido por aqui', 'Somente o síndico pode fazer isso']);
     },
   },
 ];
@@ -11771,9 +11899,9 @@ function personasMorador(estado) {
 
 function TelaMorador(props) {
   const eu = props.estado.moradorAtual;
-  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao, enquetes: MEnquetes, convite: MConvite };
+  const telas = { inicio: MInicio, reservas: MReservas, avisos: MAvisos, ocorrencias: MOcorrencias, mais: MMais, documentos: MDocumentos, encomendas: MEncomendas, preferencias: MPreferencias, vendas: TelaVendas, financeiro: MFinanceiro, prestacao: MPrestacao, enquetes: MEnquetes, convite: MConvite, dados: MDados };
   const Conteudo = telas[props.rota.tela] || MInicio;
-  const aba = ['documentos', 'encomendas', 'preferencias', 'avisos', 'prestacao', 'enquetes'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
+  const aba = ['documentos', 'encomendas', 'preferencias', 'avisos', 'prestacao', 'enquetes', 'dados'].includes(props.rota.tela) ? 'mais' : props.rota.tela;
   return html`<div class="celular">
     <div class="cel-status" aria-hidden="true"><span>${relogio(props.agora)}</span><span>CondoFácil</span></div>
     <div class="cel-pessoa" role="group" aria-label="Morador da demonstração">
@@ -12146,6 +12274,7 @@ function MPrestacao({ estado, rota }) {
 function MMais() {
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Mais</h1>
+    <a class="cartao link com-icone" href="#morador.dados"><${QuadroIcone} nome="pessoa" /><span><strong>Meus dados</strong><span class="sub">Nome, CPF, contatos e quem mora no apartamento</span></span></a>
     <a class="cartao link com-icone" href="#morador.avisos"><${QuadroIcone} nome="megafone" /><span><strong>Avisos</strong><span class="sub">Comunicados do síndico e confirmação de leitura</span></span></a>
     <a class="cartao link com-icone" href="#morador.encomendas"><${QuadroIcone} nome="pacote" /><span><strong>Encomendas</strong><span class="sub">Na portaria e histórico de retiradas</span></span></a>
     <a class="cartao link com-icone" href="#morador.enquetes"><${QuadroIcone} nome="enquete" /><span><strong>Enquetes</strong><span class="sub">Responda e veja os resultados</span></span></a>
@@ -12213,7 +12342,7 @@ function MPreferencias({ estado, executar, eu }) {
 
 // ---- src/ui/sindico.js ----
 
-const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['cobranca', 'Cobrança', 'cifrao'], ['financeiro', 'Financeiro', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['enquetes', 'Enquetes', 'enquete'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
+const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['moradores', 'Moradores', 'pessoa'], ['cobranca', 'Cobrança', 'cifrao'], ['financeiro', 'Financeiro', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['enquetes', 'Enquetes', 'enquete'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
 const EM_BREVE = [['Estoque, checklist e rondas', 'Avançado']];
 const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
 const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
@@ -12238,7 +12367,7 @@ function tipoEtiquetaComunicado(c) {
 
 function TelaSindico(props) {
   const tela = MENU_SINDICO.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'inicio';
-  const Conteudo = { inicio: SInicio, reservas: SReservas, comunicados: SComunicados, enquetes: SEnquetes, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, financeiro: SFinanceiro, manutencao: SManutencao, escala: SEscala }[tela];
+  const Conteudo = { inicio: SInicio, moradores: SMoradores, reservas: SReservas, comunicados: SComunicados, enquetes: SEnquetes, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, financeiro: SFinanceiro, manutencao: SManutencao, escala: SEscala }[tela];
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
       <p class="painel-usuario"><strong>${props.estado.condominio.sindico.nome}</strong><small>Síndico · apto ${props.estado.condominio.sindico.unidade}</small></p>
@@ -13602,6 +13731,147 @@ function TelaImplantacao({ rota, rascunho, aoSalvarRascunho, aoAtivar }) {
   </section>`;
 }
 
+// ---- src/ui/moradores.js ----
+
+// Meus dados (morador, só a própria unidade) e Moradores (síndico, todas as unidades e o responsável financeiro).
+const NOMES_SITUACAO_PESSOA = { ativo: ['ok', 'usa o app'], convidado: ['neutro', 'convidado'], pendente: ['alerta', 'aguardando aprovação'] };
+
+// Na demonstração o documento vem pronto (mascarado); no condomínio implantado, o CPF do cadastro.
+function documentoDoResponsavel(resp) {
+  if (resp.cpf) return `CPF ${fmtCpf(resp.cpf)}`;
+  return resp.documento && !/a informar|implantação/.test(resp.documento) ? resp.documento : 'sem CPF';
+}
+
+function fmtTelefone(t) {
+  const d = String(t || '');
+  return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : d;
+}
+
+function EditorResidentes({ estado, unidade, executar }) {
+  const [lista, setLista] = useState(() => {
+    const atuais = residentesDaUnidade(estado, unidade).map((r) => ({ nome: r.nome, telefone: fmtTelefone(r.telefone) }));
+    return atuais.length ? atuais : [{ nome: '', telefone: '' }];
+  });
+  const [erro, setErro] = useState(null);
+  const [ok, setOk] = useState(null);
+  const mudar = (i, chave) => (ev) => setLista(lista.map((r, j) => (j === i ? { ...r, [chave]: ev.target.value } : r)));
+  function salvar() {
+    const r = executar((e) => salvarResidentes(e, unidade, lista));
+    setErro(r.erro || null);
+    setOk(r.erro ? null : 'Lista salva.');
+  }
+  return html`<div class="pilha">
+    ${lista.map((r, i) => html`<div key=${i} class="linha-residente">
+      <input id=${`residente-nome-${i}`} aria-label=${`Nome da pessoa ${i + 1}`} placeholder="Nome" value=${r.nome} onInput=${mudar(i, 'nome')} />
+      <input id=${`residente-telefone-${i}`} aria-label=${`Telefone da pessoa ${i + 1} (opcional)`} placeholder="Telefone (opcional)" inputmode="tel" value=${r.telefone} onInput=${mudar(i, 'telefone')} />
+      <button type="button" class="btn-link" onClick=${() => setLista(lista.filter((_, j) => j !== i))}>Remover</button>
+    </div>`)}
+    <div class="acoes">
+      <button type="button" class="btn secundario" onClick=${() => setLista([...lista, { nome: '', telefone: '' }])}>Adicionar pessoa</button>
+      <button type="button" class="btn primario" data-acao="salvar-residentes" onClick=${salvar}>Salvar lista</button>
+    </div>
+    <${Erro} texto=${erro} />
+    <${Sucesso} texto=${ok} />
+  </div>`;
+}
+
+function MDados({ estado, eu, executar }) {
+  const pessoa = pessoaDaUnidade(estado, eu);
+  const [form, setForm] = useState(() => ({ nome: pessoa ? pessoa.nome : '', cpf: pessoa && pessoa.cpf ? fmtCpf(pessoa.cpf) : '', celular: pessoa ? fmtTelefone(pessoa.celular) : '', email: pessoa ? pessoa.email || '' : '' }));
+  const [erro, setErro] = useState(null);
+  const [ok, setOk] = useState(null);
+  if (!pessoa) return html`<section class="m-pagina"><${Vazio} texto="Nenhum cadastro nesta unidade." /></section>`;
+  const resp = estado.financeiro.unidades[eu] && estado.financeiro.unidades[eu].responsavel;
+  const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.value });
+  function salvar() {
+    const r = executar((e) => atualizarMeusDados(e, pessoa.id, form));
+    setErro(r.erro || null);
+    setOk(r.erro ? null : 'Seus dados foram atualizados.');
+  }
+  return html`<section class="m-pagina">
+    <a class="voltar" href="#morador.mais">‹ Mais</a>
+    <h1 class="m-titulo">Meus dados</h1>
+    <p class="m-sub">Apto ${eu} · só você e o síndico veem estes dados.</p>
+    <div class="pilha formulario">
+      <${Campo} rotulo="Nome"><input id="dados-nome" value=${form.nome} onInput=${campo('nome')} autocomplete="name" /><//>
+      <${Campo} rotulo="CPF"><input id="dados-cpf" inputmode="numeric" value=${form.cpf} onInput=${campo('cpf')} placeholder="000.000.000-00" /><//>
+      <${Campo} rotulo="Celular" dica="Com DDD"><input id="dados-celular" inputmode="tel" value=${form.celular} onInput=${campo('celular')} autocomplete="tel" /><//>
+      <${Campo} rotulo="E-mail"><input id="dados-email" type="email" value=${form.email} onInput=${campo('email')} autocomplete="email" /><//>
+      <button type="button" class="btn primario bloco" data-acao="salvar-meus-dados" onClick=${salvar}>Salvar meus dados</button>
+      <${Erro} texto=${erro} />
+      <${Sucesso} texto=${ok} />
+    </div>
+    <h2>Quem mora no apartamento</h2>
+    <small class="m-ajuda">Nome de cada morador; o telefone é opcional. Ajuda a portaria a saber quem é do apartamento.</small>
+    <${EditorResidentes} estado=${estado} unidade=${eu} executar=${executar} />
+    <h2>Responsável financeiro</h2>
+    <div class="cartao"><strong>${resp ? resp.nome : 'Ainda não definido'}</strong><small class="sub">Definido pelo síndico. Para mudar, fale com ele.</small></div>
+  </section>`;
+}
+
+function FormResponsavel({ estado, unidade, executar, aoFechar }) {
+  const atual = estado.financeiro.unidades[unidade].responsavel || {};
+  const [form, setForm] = useState({ nome: atual.nome || '', cpf: atual.cpf ? fmtCpf(atual.cpf) : '', relacao: atual.relacao || 'titular' });
+  const [erro, setErro] = useState(null);
+  const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.value });
+  function salvar() {
+    const r = executar((e) => definirResponsavel(e, unidade, form, 'sindico'));
+    if (r.erro) setErro(r.erro);
+    else aoFechar();
+  }
+  const nomes = estado.pessoas.filter((p) => p.unidade === unidade).map((p) => p.nome);
+  return html`<div class="cartao pilha formulario">
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Nome do responsável"><input id=${`resp-nome-${unidade}`} list=${`resp-nomes-${unidade}`} value=${form.nome} onInput=${campo('nome')} /><datalist id=${`resp-nomes-${unidade}`}>${nomes.map((n) => html`<option key=${n} value=${n} />`)}</datalist><//>
+      <${Campo} rotulo="CPF"><input id=${`resp-cpf-${unidade}`} inputmode="numeric" value=${form.cpf} onInput=${campo('cpf')} placeholder="000.000.000-00" /><//>
+      <${Campo} rotulo="Relação"><select id=${`resp-relacao-${unidade}`} value=${form.relacao} onChange=${campo('relacao')}>${Object.entries(NOMES_RELACAO).map(([k, n]) => html`<option key=${k} value=${k}>${n}</option>`)}</select><//>
+    </div>
+    <div class="acoes">
+      <button type="button" class="btn secundario" onClick=${aoFechar}>Cancelar</button>
+      <button type="button" class="btn primario" data-acao="salvar-responsavel" onClick=${salvar}>Salvar responsável</button>
+    </div>
+    <${Erro} texto=${erro} />
+  </div>`;
+}
+
+function SMoradores({ estado, executar }) {
+  const [busca, setBusca] = useState('');
+  const [editando, setEditando] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const termo = busca.trim().toLowerCase();
+  const unidades = estado.condominio.unidades.filter((u) => !termo || u.toLowerCase().includes(termo) || estado.pessoas.some((p) => p.unidade === u && p.nome.toLowerCase().includes(termo)));
+  function remover(p) {
+    const r = executar((e) => removerPessoa(e, p.id, 'sindico'));
+    setMensagem(r.erro || `${p.nome} removido do apto ${p.unidade}.`);
+  }
+  return html`<section class="pilha">
+    <h1>Moradores</h1>
+    <p class="sub">Quem mora em cada unidade, a situação no app e o responsável financeiro, que só o síndico define.</p>
+    <${Campo} rotulo="Buscar por unidade ou nome"><input id="busca-moradores" value=${busca} onInput=${(ev) => setBusca(ev.target.value)} /><//>
+    <${Sucesso} texto=${mensagem} />
+    ${unidades.length === 0 && html`<${Vazio} texto="Nenhuma unidade encontrada." />`}
+    ${unidades.slice(0, 80).map((u) => {
+      const pessoas = estado.pessoas.filter((p) => p.unidade === u);
+      const residentes = residentesDaUnidade(estado, u);
+      const resp = estado.financeiro.unidades[u] && estado.financeiro.unidades[u].responsavel;
+      return html`<div key=${u} class="cartao pilha" data-unidade-moradores=${u}>
+        <div class="linha-entre"><strong>Apto ${u}</strong>
+          <span class="sub resp-financeiro"><span>Responsável financeiro: ${resp ? `${resp.nome} · ${documentoDoResponsavel(resp)}` : 'não definido'}</span>
+            <button type="button" class="btn-link" data-definir-responsavel=${u} onClick=${() => setEditando(editando === u ? null : u)}>${resp ? 'Alterar' : 'Definir'}</button></span>
+        </div>
+        ${editando === u && html`<${FormResponsavel} estado=${estado} unidade=${u} executar=${executar} aoFechar=${() => setEditando(null)} />`}
+        ${pessoas.length === 0 ? html`<small class="sub">Ninguém cadastrado. Quem mora aqui pode entrar pelo QR Code do convite.</small>` : html`<ul class="itens-sacola">${pessoas.map((p) => {
+          const [tipo, rotulo] = NOMES_SITUACAO_PESSOA[p.situacao] || ['ok', 'usa o app'];
+          return html`<li key=${p.id}><span>${p.nome}${ehSindico(estado, p) ? ' (síndico)' : ''} <${Etiqueta} tipo=${tipo}>${rotulo}<//><small class="sub">${[p.celular && fmtTelefone(p.celular), p.email, p.cpf && `CPF ${fmtCpf(p.cpf)}`].filter(Boolean).join(' · ')}</small></span>
+            ${!ehSindico(estado, p) && html`<button type="button" class="btn-link" data-remover-pessoa=${p.id} onClick=${() => remover(p)}>Remover</button>`}</li>`;
+        })}</ul>`}
+        ${residentes.length > 0 && html`<small class="sub">Também moram: ${residentes.map((r) => (r.telefone ? `${r.nome} (${fmtTelefone(r.telefone)})` : r.nome)).join(', ')}</small>`}
+      </div>`;
+    })}
+    ${unidades.length > 80 && html`<small class="sub">Mostrando 80 de ${unidades.length} unidades: use a busca.</small>`}
+  </section>`;
+}
+
 // ---- src/ui/convite.js ----
 
 // O que o morador vê ao ler o QR Code do convite, e a aprovação dos cadastros novos pelo síndico.
@@ -13626,7 +13896,7 @@ function MConvite({ estado, executar }) {
     if (!r.erro) setResultado(r.situacao);
   }
 
-  if (resultado === 'ativo') return html`<section class="m-pagina"><h1 class="m-titulo">Tudo certo!</h1><p class="m-texto">Seu acesso ao apto ${form.unidade.toUpperCase()} está liberado. Bem-vindo ao ${estado.condominio.nome}.</p><a class="btn primario bloco" href="#morador.inicio">Ir para o início</a></section>`;
+  if (resultado === 'ativo') return html`<section class="m-pagina"><h1 class="m-titulo">Tudo certo!</h1><p class="m-texto">Seu acesso ao apto ${form.unidade.toUpperCase()} está liberado. Bem-vindo ao ${estado.condominio.nome}. Agora complete o seu cadastro.</p><a class="btn primario bloco" data-acao="completar-cadastro" href="#morador.dados">Completar meu cadastro</a><a class="btn secundario bloco" href="#morador.inicio">Depois</a></section>`;
   if (resultado === 'pendente') return html`<section class="m-pagina"><h1 class="m-titulo">Cadastro enviado</h1><p class="m-texto">Você não estava na lista enviada pelo síndico, então ele vai confirmar o seu cadastro no apto ${form.unidade.toUpperCase()}. Você recebe um aviso assim que for aprovado.</p><a class="btn secundario bloco" href="#morador.inicio">Voltar</a></section>`;
   return html`<section class="m-pagina">
     <h1 class="m-titulo">Entrar pelo convite</h1>
@@ -13654,13 +13924,19 @@ function AprovacaoMoradores({ estado, executar }) {
   return html`<div class="cartao pilha">
     <strong>Moradores aguardando aprovação</strong>
     <small class="sub">Entraram pelo convite, mas não estavam na planilha da implantação.</small>
-    ${pendentes.map((p) => html`<div key=${p.id} class="linha-entre">
-      <span>${p.nome} · apto ${p.unidade}${p.celular ? ` · ${p.celular}` : ''}</span>
-      <span class="acoes">
-        <button type="button" class="btn primario" data-aprovar-morador=${p.id} onClick=${() => rodar((e) => aprovarMorador(e, p.id, 'sindico', new Date()), `${p.nome} aprovado.`)}>Aprovar</button>
-        <button type="button" class="btn secundario" onClick=${() => rodar((e) => recusarMorador(e, p.id, 'sindico'), `Cadastro de ${p.nome} recusado.`)}>Recusar</button>
-      </span>
-    </div>`)}
+    ${pendentes.map((p) => {
+      const outros = outrosDaUnidade(estado, p);
+      const nomes = outros.map((o) => o.nome).join(', ');
+      return html`<div key=${p.id} class="pilha aprovacao-morador">
+        <span><strong>${p.nome}</strong> · apto ${p.unidade}${p.celular ? ` · ${p.celular}` : ''}</span>
+        ${outros.length > 0 && html`<small class="sub">Já cadastrado no apto ${p.unidade}: ${outros.map((o) => `${o.nome} (${o.situacao === 'ativo' ? 'usa o app' : o.situacao || 'morador'})`).join(', ')}</small>`}
+        <span class="acoes">
+          <button type="button" class="btn primario" data-aprovar-morador=${p.id} onClick=${() => rodar((e) => aprovarMorador(e, p.id, 'sindico', new Date()), `${p.nome} aprovado.`)}>${outros.length ? 'Aprovar como mais um morador' : 'Aprovar'}</button>
+          ${outros.length > 0 && html`<button type="button" class="btn secundario" data-substituir-morador=${p.id} onClick=${() => rodar((e) => aprovarMorador(e, p.id, 'sindico', new Date(), 'substituir'), `${p.nome} aprovado no lugar de ${nomes}.`)}>Aprovar substituindo ${nomes}</button>`}
+          <button type="button" class="btn secundario" onClick=${() => rodar((e) => recusarMorador(e, p.id, 'sindico'), `Cadastro de ${p.nome} recusado.`)}>Recusar</button>
+        </span>
+      </div>`;
+    })}
     <${Sucesso} texto=${mensagem} />
   </div>`;
 }

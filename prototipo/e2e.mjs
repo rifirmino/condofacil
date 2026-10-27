@@ -648,7 +648,7 @@ const ROTEIROS = {
   async larguraCelular() {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await pausa(300);
-    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas', '#sindico.escala.semana', '#sindico.ocorrencias.PI-001', '#sindico.ocorrencias.OC-0043', '#sindico.cobranca.orcamento', '#sindico.financeiro.contas', '#sindico.financeiro.prestacao', '#conselho.prestacao', '#morador.prestacao', '#sindico.enquetes.EN-001', '#sindico.enquetes.nova', '#morador.enquetes.EN-001']) {
+    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas', '#sindico.escala.semana', '#sindico.ocorrencias.PI-001', '#sindico.ocorrencias.OC-0043', '#sindico.cobranca.orcamento', '#sindico.financeiro.contas', '#sindico.financeiro.prestacao', '#conselho.prestacao', '#morador.prestacao', '#sindico.enquetes.EN-001', '#sindico.enquetes.nova', '#morador.enquetes.EN-001', '#sindico.moradores', '#morador.dados']) {
       await irPara(hash);
       const largura = await js('document.documentElement.scrollWidth');
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);
@@ -735,6 +735,17 @@ const ROTEIROS = {
     await porId('convite-codigo', await js(`document.querySelector('[data-codigo]').dataset.codigo`));
     await clicarSeletor('[data-acao="confirmar-convite"]');
     await esperarTexto('Tudo certo!');
+    await clicarSeletor('[data-acao="completar-cadastro"]');
+    await esperarTexto('Meus dados');
+    await porId('dados-cpf', '123');
+    await clicarSeletor('[data-acao="salvar-meus-dados"]');
+    await esperarTexto('CPF inválido');
+    await porId('dados-cpf', '529.982.247-25');
+    await clicarSeletor('[data-acao="salvar-meus-dados"]');
+    await esperarTexto('Seus dados foram atualizados');
+    await porId('residente-nome-0', 'João Silva');
+    await clicarSeletor('[data-acao="salvar-residentes"]');
+    await esperarTexto('Lista salva');
     await irPara('#morador.inicio');
     await irPara('#morador.convite');
     await porId('convite-unidade', '202A');
@@ -751,6 +762,26 @@ const ROTEIROS = {
     await esperarTexto('Carlos Lima · apto 202A');
     await clicarSeletor('[data-aprovar-morador]');
     await esperarTexto('Carlos Lima aprovado.');
+
+    // O caso do teste de 26/10: a planilha tinha a Maria no 101A e o Ricardo entra pelo convite com o nome dele.
+    await irPara('#morador.convite');
+    await porId('convite-unidade', '101A');
+    await porId('convite-nome', 'Ricardo Firmino');
+    await porId('convite-celular', '11925913118');
+    await clicarSeletor('[data-acao="pedir-codigo"]');
+    await porId('convite-codigo', await js(`document.querySelector('[data-codigo]').dataset.codigo`));
+    await clicarSeletor('[data-acao="confirmar-convite"]');
+    await esperarTexto('Cadastro enviado');
+    await irPara('#sindico.inicio');
+    await esperarTexto('Já cadastrado no apto 101A: Maria Silva');
+    await clicarSeletor('[data-substituir-morador]');
+    await esperarTexto('Ricardo Firmino aprovado no lugar de Maria Silva');
+    await irPara('#sindico.moradores');
+    await esperar(`document.querySelector('[data-unidade-moradores="101A"]').innerText.includes('Ricardo Firmino · sem CPF')`, 'o Ricardo como responsável sem CPF no 101A');
+    await clicarSeletor('[data-definir-responsavel="101A"]');
+    await porId('resp-cpf-101A', '529.982.247-25');
+    await clicarSeletor('[data-acao="salvar-responsavel"]');
+    await esperar(`document.querySelector('[data-unidade-moradores="101A"]').innerText.includes('CPF 529.982.247-25')`, 'o CPF do responsável salvo');
 
     // A demonstração continua intacta e o condomínio criado fica guardado no seletor.
     await js(`document.getElementById('seletor-condominio').value = 'demo'; document.getElementById('seletor-condominio').dispatchEvent(new Event('change', { bubbles: true })); true`);

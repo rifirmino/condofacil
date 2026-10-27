@@ -33,7 +33,8 @@ function textoLimpo(texto) {
 export function trocarMorador(estado, unidade) {
   const disponivel = estado.origem === 'novo' ? estado.pessoas.some((p) => p.unidade === unidade && p.situacao === 'ativo') : MORADORES_DEMO.some(([u]) => u === unidade);
   if (!disponivel) return erroVenda(estado, 'Morador indisponível na demonstração');
-  return { estado: { ...estado, moradorAtual: unidade, sacola: [] } };
+  const pessoa = estado.pessoas.find((p) => p.unidade === unidade && (!p.situacao || p.situacao === 'ativo'));
+  return { estado: { ...estado, moradorAtual: unidade, pessoaAtual: pessoa ? pessoa.id : null, sacola: [] } };
 }
 
 export function alternarOfertas(estado, unidade) {

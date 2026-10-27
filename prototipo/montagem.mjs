@@ -25,6 +25,7 @@ export const ORDEM = [
   'src/notificacoes/regras.js',
   'src/acoes.js',
   'src/notificacoes/acoes.js',
+  'src/moradores/acoes.js',
   'src/implantacao/acoes.js',
   'src/conectado/acoes.js',
   'src/enquetes/regras.js',
@@ -95,6 +96,7 @@ export const ORDEM = [
   'src/ui/zelador.js',
   'src/ui/assistente.js',
   'src/ui/implantacao.js',
+  'src/ui/moradores.js',
   'src/ui/convite.js',
   'src/ui/app.js',
 ];
