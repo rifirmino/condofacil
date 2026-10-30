@@ -1,4 +1,4 @@
-import { POSTOS, PORTEIROS, MODELOS, FERIADOS, NOMES_MOTIVO } from './dados.js';
+import { POSTOS, COLABORADORES_DEMO, CARGOS_PORTARIA, MODELOS, FERIADOS, NOMES_MOTIVO } from './dados.js';
 import { isoDia, deIso, somarDias, somarMes, diferencaDias, diasDoMes, nomeMes, fmtDataCurta } from '../datas.js';
 
 // Turnos com horas locais "AAAA-MM-DDTHH:MM": comparáveis como texto e sem fuso.
@@ -29,8 +29,19 @@ export function mesAtual(agora) {
   return isoDia(agora).slice(0, 7);
 }
 
-export function porteiroPorId(id) {
-  return PORTEIROS.find((p) => p.id === id);
+// Toda a equipe cadastrada; a demonstração usa a equipe de exemplo enquanto não houver cadastro.
+export function colaboradores(estado) {
+  return estado.colaboradores || (estado.origem === 'novo' ? [] : COLABORADORES_DEMO);
+}
+
+// Quem pode ser escalado na portaria agora.
+export function porteirosDe(estado) {
+  return colaboradores(estado).filter((p) => CARGOS_PORTARIA.includes(p.cargo) && p.ativo !== false);
+}
+
+// Inclui desligados: turnos e trocas antigas continuam mostrando o nome.
+export function porteiroPorId(estado, id) {
+  return colaboradores(estado).find((p) => p.id === id) || { id, nome: 'Colaborador removido', cargo: 'porteiro', vinculo: 'clt', empresa: null, telefone: '', postos: [] };
 }
 
 function trabalha(a, dia) {
@@ -111,7 +122,7 @@ export function menorDescanso(estado, porteiro, turno) {
 
 export function descansoInsuficiente(estado, mes) {
   const lista = [];
-  for (const p of PORTEIROS) {
+  for (const p of porteirosDe(estado)) {
     const meus = todosTurnos(estado).filter((t) => t.porteiro === p.id).sort((a, b) => a.inicio.localeCompare(b.inicio));
     for (let i = 1; i < meus.length; i++) {
       const horas = horasEntreLocal(meus[i - 1].fim, meus[i].inicio);
@@ -123,8 +134,8 @@ export function descansoInsuficiente(estado, mes) {
 
 export function sugestoesCobertura(estado, turnoId) {
   const t = acharTurno(estado, turnoId);
-  const folguista = (id) => (porteiroPorId(id).vinculo === 'folguista' ? 1 : 0);
-  return PORTEIROS
+  const folguista = (id) => (porteiroPorId(estado, id).cargo === 'folguista' ? 1 : 0);
+  return porteirosDe(estado)
     .filter((p) => p.postos.includes(t.posto) && p.id !== t.porteiroOriginal && !deFerias(estado.escala, p.id, t.inicio.slice(0, 10)) && !conflita(estado, p.id, t))
     .map((p) => {
       const descanso = menorDescanso(estado, p.id, t);
@@ -155,7 +166,7 @@ export function fmtTurno(t) {
 export function relatorioHoras(estado, mes) {
   const doMes = estado.escala.meses[mes] ? estado.escala.meses[mes].turnos : [];
   const horas = (t) => horasEntreLocal(t.inicio, t.fim);
-  return PORTEIROS.map((p) => {
+  return porteirosDe(estado).map((p) => {
     const meus = doMes.filter((t) => t.porteiro === p.id);
     return {
       porteiro: p.id,
@@ -179,12 +190,12 @@ export function alertasEscala(estado, agora) {
   if (!m) itens.push({ chave: 'esc-gerar', texto: `Gerar a escala de ${nomeDoMesEscala(proximo)}`, href: '#sindico.escala' });
   else if (m.situacao === 'rascunho') itens.push({ chave: 'esc-publicar', texto: `Escala de ${nomeDoMesEscala(proximo)} em rascunho: publicar`, href: '#sindico.escala' });
   for (const x of estado.escala.trocas.filter((t) => t.situacao === 'aceita')) {
-    itens.push({ chave: `troca-${x.id}`, texto: `Troca aguardando aprovação: ${porteiroPorId(x.de).nome} → ${porteiroPorId(x.para).nome}, ${fmtTurno(acharTurno(estado, x.turno)).split('–')[0]}`, href: '#sindico.escala.pendencias' });
+    itens.push({ chave: `troca-${x.id}`, texto: `Troca aguardando aprovação: ${porteiroPorId(estado, x.de).nome} → ${porteiroPorId(estado, x.para).nome}, ${fmtTurno(acharTurno(estado, x.turno)).split('–')[0]}`, href: '#sindico.escala.pendencias' });
   }
   const atual = instanteLocal(agora);
   const limite = instanteLocal(new Date(agora.getTime() + 7 * 24 * HORA_MS_ESCALA));
   for (const t of todosTurnos(estado).filter((x) => !x.porteiro && x.fim > atual && x.inicio < limite).sort((a, b) => a.inicio.localeCompare(b.inicio))) {
-    itens.push({ chave: `desc-${t.id}`, texto: `Turno descoberto: ${POSTOS[t.posto].nome} ${fmtTurno(t)} · ${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}${t.porteiroOriginal ? ` de ${porteiroPorId(t.porteiroOriginal).nome}` : ''}`, href: '#sindico.escala.pendencias' });
+    itens.push({ chave: `desc-${t.id}`, texto: `Turno descoberto: ${POSTOS[t.posto].nome} ${fmtTurno(t)} · ${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}${t.porteiroOriginal ? ` de ${porteiroPorId(estado, t.porteiroOriginal).nome}` : ''}`, href: '#sindico.escala.pendencias' });
   }
   return itens;
 }
@@ -220,7 +231,7 @@ export function semanaDaEscala(estado, segunda) {
   const vazios = meses.flatMap((m) => Object.keys(POSTOS).flatMap((posto) => buracos(estado, m, posto).map((b) => ({ posto, ...b }))));
   return {
     dias,
-    linhas: PORTEIROS.map((p) => ({ porteiro: p.id, celulas: dias.map((dia) => celulaEscala(estado, p.id, dia)) })),
+    linhas: porteirosDe(estado).map((p) => ({ porteiro: p.id, celulas: dias.map((dia) => celulaEscala(estado, p.id, dia)) })),
     descobertos: dias.map((dia) => vazios.filter((b) => b.inicio.startsWith(dia))),
   };
 }

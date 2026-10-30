@@ -1436,7 +1436,15 @@ function editarItemPrevia(estado, competencia, unidade, itens) {
   return { estado: comFinanceiro(estado, { ajustesPrevia: { ...estado.financeiro.ajustesPrevia, [competencia]: daCompetencia } }) };
 }
 
-function emitirCompetencia(estado, competencia, perfil, agora) {
+const MSG_VENCIMENTO_PASSADO = 'Cobrança não pode ser emitida vencida: informe um vencimento a partir de hoje';
+
+// O vencimento da competência, ou o novo informado pelo síndico quando o da competência já passou.
+function vencimentoDaEmissao(previa, vencimento, agora) {
+  const v = vencimento || previa.vencimento;
+  return v < isoDia(agora) ? { erro: MSG_VENCIMENTO_PASSADO } : { vencimento: v };
+}
+
+function emitirCompetencia(estado, competencia, perfil, agora, vencimento = null) {
   if (!podeOperar(perfil)) return erroCobranca(estado, SO_SINDICO);
   const fin = estado.financeiro;
   const previa = previaCompetencia(estado, competencia);
@@ -1444,8 +1452,10 @@ function emitirCompetencia(estado, competencia, perfil, agora) {
   const complementar = fin.emitidas.includes(competencia);
   const linhas = complementar ? pendentesDeEmissao(estado, previa) : previa.linhas.filter((l) => !l.bloqueada);
   if (complementar && !linhas.length) return erroCobranca(estado, 'Competência já emitida');
+  const venc = vencimentoDaEmissao(previa, vencimento, agora);
+  if (venc.erro) return erroCobranca(estado, venc.erro);
   const novas = linhas.map((l) => ({
-    id: `CB-${competencia}-${l.unidade}`, unidade: l.unidade, competencia, vencimento: previa.vencimento, itens: l.itens, valor: l.total,
+    id: `CB-${competencia}-${l.unidade}`, unidade: l.unidade, competencia, vencimento: venc.vencimento, itens: l.itens, valor: l.total,
     status: 'aberta', pagaEm: null, valorPago: null, forma: null, baixaManual: null, eventosAsaas: [], regua: [], substituiu: null, acordo: null,
   }));
   const bloqueadas = previa.linhas.filter((l) => l.bloqueada).map((l) => l.unidade);
@@ -2356,9 +2366,9 @@ function avisoCancelamento(reserva, agora) {
   };
 }
 
-function podeEntregar(encomenda, codigo, nomeRetirada) {
+function podeEntregar(encomenda, codigo, nomeRetirada, exigeCodigo = true) {
   if (encomenda.status !== 'aguardando') return falhaRegra('Encomenda já entregue');
-  if (String(codigo || '').trim() !== encomenda.codigo) return falhaRegra('Código inválido');
+  if (exigeCodigo && String(codigo || '').trim() !== encomenda.codigo) return falhaRegra('Código inválido');
   if (!String(nomeRetirada || '').trim()) return falhaRegra('Informe quem retirou');
   return REGRA_OK;
 }
@@ -2458,6 +2468,20 @@ function indicadoresSindico(estado, agora) {
     vencendo: alertasDocumentos(estado.documentos, isoDia(agora)).length,
     adesao: { com: new Set(estado.pessoas.filter((p) => !p.naoResidente && (!p.situacao || p.situacao === 'ativo')).map((p) => p.unidade)).size, total: estado.condominio.unidades.length },
   };
+}
+
+// ---- src/configuracoes.js ----
+// Preferências do condomínio que o síndico liga e desliga em Configurações.
+const CONFIGURACOES_PADRAO = { encomendaComQr: true };
+
+function configuracoes(estado) {
+  return { ...CONFIGURACOES_PADRAO, ...(estado.configuracoes || {}) };
+}
+
+function salvarConfiguracoes(estado, mudanca, perfil) {
+  if (perfil !== 'sindico') return { estado, erro: 'Somente o síndico pode fazer isso' };
+  const validas = Object.fromEntries(Object.entries(mudanca).filter(([k]) => k in CONFIGURACOES_PADRAO));
+  return { estado: { ...estado, configuracoes: { ...configuracoes(estado), ...validas } } };
 }
 
 // ---- src/notificacoes/regras.js ----
@@ -2629,7 +2653,7 @@ function registrarEncomenda(estado, dados, agora) {
 function entregarEncomenda(estado, { id, codigo, nome }, agora) {
   const e = estado.encomendas.find((x) => x.id === id);
   if (!e) return erroAcao(estado, 'Encomenda não encontrada');
-  const v = podeEntregar(e, codigo, nome);
+  const v = podeEntregar(e, codigo, nome, configuracoes(estado).encomendaComQr);
   if (!v.ok) return erroAcao(estado, v.motivo);
   const quem = nome.trim();
   return {
@@ -2967,7 +2991,7 @@ function previaConectada(estado, competencia) {
   };
 }
 
-function linhasParaAsaas(estado, competencia, apenas = null) {
+function linhasParaAsaas(estado, competencia, apenas = null, vencimento = null) {
   const previa = previaConectada(estado, competencia);
   const { multaPct, jurosPct } = estado.financeiro.parametros;
   return previa.linhas.filter((l) => !l.bloqueada && (!apenas || apenas.includes(l.unidade))).map((l) => {
@@ -2976,7 +3000,7 @@ function linhasParaAsaas(estado, competencia, apenas = null) {
       unidade: l.unidade,
       responsavel: { nome: l.responsavel.nome, cpf: l.responsavel.cpf, email: pessoa ? pessoa.email : '', celular: pessoa ? pessoa.celular : '' },
       valor: l.total,
-      vencimento: previa.vencimento,
+      vencimento: vencimento || previa.vencimento,
       descricao: `Taxa condominial de ${mesExtenso(competencia)} · apto ${l.unidade}`,
       multaPct,
       jurosPct,
@@ -4401,17 +4425,21 @@ function reporCaixa(estado, perfil, agora) {
 // ---- src/escala/dados.js ----
 // Postos, porteiros, modelos de turno e feriados da escala (fase 2, parte 4).
 const POSTOS = { portaria: { nome: 'Portaria principal', abre: 0, fecha: 24 }, guarita: { nome: 'Guarita da garagem', abre: 7, fecha: 22 } };
+// Equipe da demonstração; num condomínio novo a equipe vem do cadastro de Colaboradores.
 const PORTEIROS = [
-  { id: 'jose', nome: 'Seu José', vinculo: 'clt', empresa: null, telefone: '(11) 98811-2040', postos: ['portaria'] },
-  { id: 'marcos', nome: 'Marcos', vinculo: 'clt', empresa: null, telefone: '(11) 97720-3151', postos: ['portaria', 'guarita'] },
-  { id: 'edson', nome: 'Edson', vinculo: 'terceirizado', empresa: 'Vigilância Prisma', telefone: '(11) 96630-4262', postos: ['portaria'] },
-  { id: 'rita', nome: 'Rita', vinculo: 'terceirizado', empresa: 'Vigilância Prisma', telefone: '(11) 95540-5373', postos: ['portaria'] },
-  { id: 'claudia', nome: 'Cláudia', vinculo: 'clt', empresa: null, telefone: '(11) 94450-6484', postos: ['guarita'] },
-  { id: 'bruno', nome: 'Bruno', vinculo: 'clt', empresa: null, telefone: '(11) 93360-7595', postos: ['guarita', 'portaria'] },
-  { id: 'paulo', nome: 'Paulo', vinculo: 'folguista', empresa: null, telefone: '(11) 92270-8606', postos: ['portaria', 'guarita'] },
+  { id: 'jose', nome: 'Seu José', cargo: 'porteiro', vinculo: 'clt', empresa: null, telefone: '(11) 98811-2040', postos: ['portaria'] },
+  { id: 'marcos', nome: 'Marcos', cargo: 'porteiro', vinculo: 'clt', empresa: null, telefone: '(11) 97720-3151', postos: ['portaria', 'guarita'] },
+  { id: 'edson', nome: 'Edson', cargo: 'porteiro', vinculo: 'terceirizado', empresa: 'Vigilância Prisma', telefone: '(11) 96630-4262', postos: ['portaria'] },
+  { id: 'rita', nome: 'Rita', cargo: 'porteiro', vinculo: 'terceirizado', empresa: 'Vigilância Prisma', telefone: '(11) 95540-5373', postos: ['portaria'] },
+  { id: 'claudia', nome: 'Cláudia', cargo: 'porteiro', vinculo: 'clt', empresa: null, telefone: '(11) 94450-6484', postos: ['guarita'] },
+  { id: 'bruno', nome: 'Bruno', cargo: 'porteiro', vinculo: 'clt', empresa: null, telefone: '(11) 93360-7595', postos: ['guarita', 'portaria'] },
+  { id: 'paulo', nome: 'Paulo', cargo: 'folguista', vinculo: 'clt', empresa: null, telefone: '(11) 92270-8606', postos: ['portaria', 'guarita'] },
 ];
 const EMPRESAS = { 'Vigilância Prisma': { contato: 'Central Prisma', telefone: '(11) 4433-9000' } };
-const NOMES_VINCULO = { clt: 'CLT do condomínio', terceirizado: 'Terceirizado', folguista: 'Folguista' };
+const COLABORADORES_DEMO = [...PORTEIROS, { id: 'antonio', nome: 'Seu Antônio', cargo: 'zelador', vinculo: 'clt', empresa: null, telefone: '(11) 91180-9717', postos: [] }];
+const NOMES_VINCULO = { clt: 'CLT (fixo do condomínio)', terceirizado: 'Terceirizado' };
+const CARGOS = { porteiro: 'Porteiro', folguista: 'Porteiro folguista', zelador: 'Zelador', limpeza: 'Auxiliar de limpeza', manutencao: 'Manutenção', jardineiro: 'Jardineiro', administrativo: 'Administrativo', outro: 'Outro' };
+const CARGOS_PORTARIA = ['porteiro', 'folguista'];
 const MODELOS = { '12x36': { nome: '12x36', horas: 12, ciclo: 2 }, '6x1': { nome: '6x1 (8 h)', horas: 8, ciclo: 7 }, noturno: { nome: 'Noturno 12x36', horas: 12, ciclo: 2 } };
 const FERIADOS = { '01-01': 'Confraternização universal', '04-08': 'Aniversário de Santo André', '04-21': 'Tiradentes', '05-01': 'Dia do Trabalho', '09-07': 'Independência', '10-12': 'Nossa Senhora Aparecida', '11-02': 'Finados', '11-15': 'Proclamação da República', '11-20': 'Consciência Negra', '12-25': 'Natal' };
 const NOMES_MOTIVO = { ferias: 'férias', falta: 'falta', atestado: 'atestado' };
@@ -4458,8 +4486,19 @@ function mesAtual(agora) {
   return isoDia(agora).slice(0, 7);
 }
 
-function porteiroPorId(id) {
-  return PORTEIROS.find((p) => p.id === id);
+// Toda a equipe cadastrada; a demonstração usa a equipe de exemplo enquanto não houver cadastro.
+function colaboradores(estado) {
+  return estado.colaboradores || (estado.origem === 'novo' ? [] : COLABORADORES_DEMO);
+}
+
+// Quem pode ser escalado na portaria agora.
+function porteirosDe(estado) {
+  return colaboradores(estado).filter((p) => CARGOS_PORTARIA.includes(p.cargo) && p.ativo !== false);
+}
+
+// Inclui desligados: turnos e trocas antigas continuam mostrando o nome.
+function porteiroPorId(estado, id) {
+  return colaboradores(estado).find((p) => p.id === id) || { id, nome: 'Colaborador removido', cargo: 'porteiro', vinculo: 'clt', empresa: null, telefone: '', postos: [] };
 }
 
 function trabalha(a, dia) {
@@ -4540,7 +4579,7 @@ function menorDescanso(estado, porteiro, turno) {
 
 function descansoInsuficiente(estado, mes) {
   const lista = [];
-  for (const p of PORTEIROS) {
+  for (const p of porteirosDe(estado)) {
     const meus = todosTurnos(estado).filter((t) => t.porteiro === p.id).sort((a, b) => a.inicio.localeCompare(b.inicio));
     for (let i = 1; i < meus.length; i++) {
       const horas = horasEntreLocal(meus[i - 1].fim, meus[i].inicio);
@@ -4552,8 +4591,8 @@ function descansoInsuficiente(estado, mes) {
 
 function sugestoesCobertura(estado, turnoId) {
   const t = acharTurno(estado, turnoId);
-  const folguista = (id) => (porteiroPorId(id).vinculo === 'folguista' ? 1 : 0);
-  return PORTEIROS
+  const folguista = (id) => (porteiroPorId(estado, id).cargo === 'folguista' ? 1 : 0);
+  return porteirosDe(estado)
     .filter((p) => p.postos.includes(t.posto) && p.id !== t.porteiroOriginal && !deFerias(estado.escala, p.id, t.inicio.slice(0, 10)) && !conflita(estado, p.id, t))
     .map((p) => {
       const descanso = menorDescanso(estado, p.id, t);
@@ -4584,7 +4623,7 @@ function fmtTurno(t) {
 function relatorioHoras(estado, mes) {
   const doMes = estado.escala.meses[mes] ? estado.escala.meses[mes].turnos : [];
   const horas = (t) => horasEntreLocal(t.inicio, t.fim);
-  return PORTEIROS.map((p) => {
+  return porteirosDe(estado).map((p) => {
     const meus = doMes.filter((t) => t.porteiro === p.id);
     return {
       porteiro: p.id,
@@ -4608,12 +4647,12 @@ function alertasEscala(estado, agora) {
   if (!m) itens.push({ chave: 'esc-gerar', texto: `Gerar a escala de ${nomeDoMesEscala(proximo)}`, href: '#sindico.escala' });
   else if (m.situacao === 'rascunho') itens.push({ chave: 'esc-publicar', texto: `Escala de ${nomeDoMesEscala(proximo)} em rascunho: publicar`, href: '#sindico.escala' });
   for (const x of estado.escala.trocas.filter((t) => t.situacao === 'aceita')) {
-    itens.push({ chave: `troca-${x.id}`, texto: `Troca aguardando aprovação: ${porteiroPorId(x.de).nome} → ${porteiroPorId(x.para).nome}, ${fmtTurno(acharTurno(estado, x.turno)).split('–')[0]}`, href: '#sindico.escala.pendencias' });
+    itens.push({ chave: `troca-${x.id}`, texto: `Troca aguardando aprovação: ${porteiroPorId(estado, x.de).nome} → ${porteiroPorId(estado, x.para).nome}, ${fmtTurno(acharTurno(estado, x.turno)).split('–')[0]}`, href: '#sindico.escala.pendencias' });
   }
   const atual = instanteLocal(agora);
   const limite = instanteLocal(new Date(agora.getTime() + 7 * 24 * HORA_MS_ESCALA));
   for (const t of todosTurnos(estado).filter((x) => !x.porteiro && x.fim > atual && x.inicio < limite).sort((a, b) => a.inicio.localeCompare(b.inicio))) {
-    itens.push({ chave: `desc-${t.id}`, texto: `Turno descoberto: ${POSTOS[t.posto].nome} ${fmtTurno(t)} · ${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}${t.porteiroOriginal ? ` de ${porteiroPorId(t.porteiroOriginal).nome}` : ''}`, href: '#sindico.escala.pendencias' });
+    itens.push({ chave: `desc-${t.id}`, texto: `Turno descoberto: ${POSTOS[t.posto].nome} ${fmtTurno(t)} · ${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}${t.porteiroOriginal ? ` de ${porteiroPorId(estado, t.porteiroOriginal).nome}` : ''}`, href: '#sindico.escala.pendencias' });
   }
   return itens;
 }
@@ -4649,7 +4688,7 @@ function semanaDaEscala(estado, segunda) {
   const vazios = meses.flatMap((m) => Object.keys(POSTOS).flatMap((posto) => buracos(estado, m, posto).map((b) => ({ posto, ...b }))));
   return {
     dias,
-    linhas: PORTEIROS.map((p) => ({ porteiro: p.id, celulas: dias.map((dia) => celulaEscala(estado, p.id, dia)) })),
+    linhas: porteirosDe(estado).map((p) => ({ porteiro: p.id, celulas: dias.map((dia) => celulaEscala(estado, p.id, dia)) })),
     descobertos: dias.map((dia) => vazios.filter((b) => b.inicio.startsWith(dia))),
   };
 }
@@ -4691,7 +4730,7 @@ function mudarTurno(estado, id, mudanca) {
 }
 
 function alertaDescanso(estado, porteiro, turno) {
-  return menorDescanso(estado, porteiro, turno) < 11 ? `Menos de 11 h de descanso para ${porteiroPorId(porteiro).nome}` : undefined;
+  return menorDescanso(estado, porteiro, turno) < 11 ? `Menos de 11 h de descanso para ${porteiroPorId(estado, porteiro).nome}` : undefined;
 }
 
 function inicioDoTurno(t) {
@@ -4725,7 +4764,7 @@ function ajustarTurno(estado, turnoId, porteiro, perfil) {
   if (!t) return erroEsc(estado, 'Turno não encontrado');
   if (porteiro && conflita(estado, porteiro, t)) return erroEsc(estado, 'Este colega já tem turno nesse horário');
   const novo = mudarTurno(estado, turnoId, porteiro ? { porteiro } : { porteiro: null, motivoDescoberto: t.motivoDescoberto || 'falta', porteiroOriginal: t.porteiroOriginal || t.porteiro });
-  const nomes = [...new Set([t.porteiro, porteiro].filter(Boolean))].map((id) => porteiroPorId(id).nome);
+  const nomes = [...new Set([t.porteiro, porteiro].filter(Boolean))].map((id) => porteiroPorId(estado, id).nome);
   const publicada = estado.escala.meses[turnoId.slice(2, 9)].situacao === 'publicada';
   return {
     estado: novo,
@@ -4745,7 +4784,7 @@ function proporTroca(estado, { turnoId, de, para }, perfil, agora) {
   return {
     estado: comEscala(estado, { trocas: [...estado.escala.trocas, { id, turno: t.id, de, para, situacao: 'proposta', criadaEm: instanteLocal(agora) }], proximaTroca: estado.escala.proximaTroca + 1 }),
     id,
-    notificacao: { canal: 'App', para: porteiroPorId(para).nome, texto: `${porteiroPorId(de).nome} propôs trocar o turno de ${fmtTurno(t)}` },
+    notificacao: { canal: 'App', para: porteiroPorId(estado, para).nome, texto: `${porteiroPorId(estado, de).nome} propôs trocar o turno de ${fmtTurno(t)}` },
   };
 }
 
@@ -4764,7 +4803,7 @@ function recusarTroca(estado, id, quem, perfil) {
   const x = estado.escala.trocas.find((t) => t.id === id);
   if (!x || !['proposta', 'aceita'].includes(x.situacao)) return erroEsc(estado, 'Esta troca não pode mais ser recusada');
   if (perfil !== 'sindico' && x.para !== quem) return erroEsc(estado, 'Só o colega convidado pode aceitar');
-  return { estado: mudarTroca(estado, id, { situacao: 'recusada' }), notificacao: { canal: 'App', para: porteiroPorId(x.de).nome, texto: `Troca ${id} recusada` } };
+  return { estado: mudarTroca(estado, id, { situacao: 'recusada' }), notificacao: { canal: 'App', para: porteiroPorId(estado, x.de).nome, texto: `Troca ${id} recusada` } };
 }
 
 function aprovarTroca(estado, id, perfil) {
@@ -4776,7 +4815,7 @@ function aprovarTroca(estado, id, perfil) {
   return {
     estado: mudarTurno(mudarTroca(estado, id, { situacao: 'aprovada' }), t.id, { porteiro: x.para, trocado: true }),
     alerta: alertaDescanso(estado, x.para, t),
-    notificacao: { canal: 'App', para: `${porteiroPorId(x.de).nome} e ${porteiroPorId(x.para).nome}`, texto: `Troca aprovada: ${POSTOS[t.posto].nome} ${fmtTurno(t)} fica com ${porteiroPorId(x.para).nome}` },
+    notificacao: { canal: 'App', para: `${porteiroPorId(estado, x.de).nome} e ${porteiroPorId(estado, x.para).nome}`, texto: `Troca aprovada: ${POSTOS[t.posto].nome} ${fmtTurno(t)} fica com ${porteiroPorId(estado, x.para).nome}` },
   };
 }
 
@@ -4787,7 +4826,7 @@ function registrarFalta(estado, turnoId, { quem, motivo, anexo = null }, perfil)
   if (!t || !['falta', 'atestado'].includes(motivo)) return erroEsc(estado, 'Escolha o turno e o motivo');
   if (perfil !== 'sindico' && t.porteiro !== quem) return erroEsc(estado, 'Só o porteiro do turno pode registrar a falta');
   if (!t.porteiro) return erroEsc(estado, 'Este turno já está descoberto');
-  const p = porteiroPorId(t.porteiro);
+  const p = porteiroPorId(estado, t.porteiro);
   const novo = mudarTurno(estado, t.id, { porteiro: null, motivoDescoberto: motivo, porteiroOriginal: t.porteiro, anexo });
   const notificacao = p.vinculo === 'terceirizado'
     ? { canal: 'WhatsApp', para: p.empresa, texto: `${p.empresa}: turno descoberto na ${POSTOS[t.posto].nome} ${inicioDoTurno(t)}` }
@@ -4804,7 +4843,7 @@ function atribuirCobertura(estado, turnoId, porteiro, perfil) {
   return {
     estado: mudarTurno(estado, t.id, { porteiro }),
     alerta: alertaDescanso(estado, porteiro, t),
-    notificacao: { canal: 'App', para: porteiroPorId(porteiro).nome, texto: `Você cobre ${POSTOS[t.posto].nome} ${fmtTurno(t)}` },
+    notificacao: { canal: 'App', para: porteiroPorId(estado, porteiro).nome, texto: `Você cobre ${POSTOS[t.posto].nome} ${fmtTurno(t)}` },
   };
 }
 
@@ -4843,6 +4882,92 @@ function comEscalaInicial(estado, agora) {
   const daTroca = turnos.find((t) => t.porteiro === 'marcos' && t.inicio > horaLocal(somarDias(isoDia(agora), 2), 23));
   if (daTroca) e = comEscala(e, { trocas: [{ id: 'TR-001', turno: daTroca.id, de: 'marcos', para: 'paulo', situacao: 'aceita', criadaEm: instanteLocal(new Date(agora.getTime() - 20 * 3600000)) }], proximaTroca: 2 });
   return e;
+}
+
+// ---- src/escala/colaboradores.js ----
+
+// Cadastro da equipe: dados, vínculo e, para porteiros, a escala fixa que alimenta a geração dos meses seguintes.
+const DIAS_FOLGA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const SO_SINDICO_COLAB = 'Somente o síndico pode fazer isso';
+
+function erroColab(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function escalaDoColaborador(estado, id) {
+  return estado.escala.atribuicoes.find((a) => a.porteiro === id) || null;
+}
+
+function textoEscala(a) {
+  if (!a) return null;
+  const fim = (a.inicio + MODELOS[a.modelo].horas) % 24;
+  const dias = MODELOS[a.modelo].ciclo === 2 ? 'dia sim, dia não' : `folga ${DIAS_FOLGA[a.folga].toLowerCase()}`;
+  return `${POSTOS[a.posto].nome} · ${MODELOS[a.modelo].nome} · ${a.inicio}h–${fim}h · ${dias}`;
+}
+
+function novoId(lista, nome) {
+  const base = `col-${String(nome).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20) || 'pessoa'}`;
+  let id = base;
+  for (let n = 2; lista.some((p) => p.id === id); n++) id = `${base}-${n}`;
+  return id;
+}
+
+function validarEscala(escala, postos) {
+  if (!escala) return null;
+  if (!postos.includes(escala.posto)) return 'O posto da escala precisa estar entre os postos do colaborador';
+  if (!MODELOS[escala.modelo]) return 'Escolha o modelo da escala';
+  const inicio = Number(escala.inicio);
+  if (!Number.isInteger(inicio) || inicio < 0 || inicio > 23) return 'Informe a hora de início do turno (0 a 23)';
+  if (MODELOS[escala.modelo].ciclo === 2 && !/^\d{4}-\d{2}-\d{2}$/.test(escala.primeiroDia || '')) return 'Informe o dia do primeiro plantão';
+  if (MODELOS[escala.modelo].ciclo !== 2 && !(Number(escala.folga) >= 0 && Number(escala.folga) <= 6)) return 'Escolha o dia de folga';
+  return null;
+}
+
+function atribuicaoDe(id, escala) {
+  const base = { porteiro: id, posto: escala.posto, modelo: escala.modelo, inicio: Number(escala.inicio) };
+  return MODELOS[escala.modelo].ciclo === 2 ? { ...base, ancora: escala.primeiroDia, paridade: 0 } : { ...base, folga: Number(escala.folga) };
+}
+
+function salvarColaborador(estado, dados, perfil) {
+  if (perfil !== 'sindico') return erroColab(estado, SO_SINDICO_COLAB);
+  const lista = colaboradores(estado);
+  const nome = String(dados.nome || '').trim();
+  if (!nome) return erroColab(estado, 'Informe o nome');
+  if (!CARGOS[dados.cargo]) return erroColab(estado, 'Escolha o cargo');
+  if (!NOMES_VINCULO[dados.vinculo]) return erroColab(estado, 'Escolha o vínculo: CLT ou terceirizado');
+  const empresa = dados.vinculo === 'terceirizado' ? String(dados.empresa || '').trim() : '';
+  if (dados.vinculo === 'terceirizado' && !empresa) return erroColab(estado, 'Informe a empresa do terceirizado');
+  const tel = apenasDigitos(dados.telefone);
+  if (tel && (tel.length < 10 || tel.length > 11)) return erroColab(estado, 'Telefone inválido: use DDD + número');
+  if (String(dados.cpf || '').trim() && !cpfValido(dados.cpf)) return erroColab(estado, 'CPF inválido');
+  const daPortaria = CARGOS_PORTARIA.includes(dados.cargo);
+  const postos = daPortaria ? (dados.postos || []).filter((p) => POSTOS[p]) : [];
+  if (daPortaria && !postos.length) return erroColab(estado, 'Marque ao menos um posto em que ele trabalha');
+  const escala = dados.cargo === 'porteiro' ? dados.escala || null : null;
+  const falhaEscala = validarEscala(escala, postos);
+  if (falhaEscala) return erroColab(estado, falhaEscala);
+  const existente = dados.id ? lista.find((p) => p.id === dados.id) : null;
+  if (dados.id && !existente) return erroColab(estado, 'Colaborador não encontrado');
+  const id = existente ? existente.id : novoId(lista, nome);
+  const registro = { ...(existente || { ativo: true }), id, nome, cargo: dados.cargo, vinculo: dados.vinculo, empresa: empresa || null, telefone: String(dados.telefone || '').trim(), cpf: apenasDigitos(dados.cpf), admissao: dados.admissao || null, postos };
+  const novaLista = existente ? lista.map((p) => (p.id === id ? registro : p)) : [...lista, registro];
+  const atribuicoes = [...estado.escala.atribuicoes.filter((a) => a.porteiro !== id), ...(escala ? [atribuicaoDe(id, escala)] : [])];
+  return {
+    estado: { ...estado, colaboradores: novaLista, escala: { ...estado.escala, atribuicoes } },
+    id,
+    notificacao: existente ? undefined : { canal: 'App', para: nome, texto: `Bem-vindo à equipe do ${estado.condominio.nome}` },
+  };
+}
+
+// Desligar mantém o nome nos turnos e trocas antigos e tira o colaborador das próximas escalas geradas.
+function alternarAtivo(estado, id, perfil) {
+  if (perfil !== 'sindico') return erroColab(estado, SO_SINDICO_COLAB);
+  const lista = colaboradores(estado);
+  const p = lista.find((x) => x.id === id);
+  if (!p) return erroColab(estado, 'Colaborador não encontrado');
+  const ativo = p.ativo === false;
+  const atribuicoes = ativo ? estado.escala.atribuicoes : estado.escala.atribuicoes.filter((a) => a.porteiro !== id);
+  return { estado: { ...estado, colaboradores: lista.map((x) => (x.id === id ? { ...x, ativo } : x)), escala: { ...estado.escala, atribuicoes } }, ativo };
 }
 
 // ---- src/vendas/regras.js ----
@@ -5725,7 +5850,7 @@ function contextoPortaria(estado, agora) {
   const plantao = plantaoAgora(estado, agora);
   const turnos = Object.entries(POSTOS).map(([id, p]) => {
     const { atual, proximo } = plantao[id];
-    return `${p.nome}: ${atual ? (atual.porteiro ? porteiroPorId(atual.porteiro).nome : 'descoberto') : 'fechado agora'}${proximo ? `, próximo ${proximo.porteiro ? porteiroPorId(proximo.porteiro).nome : 'descoberto'} às ${Number(proximo.inicio.slice(11, 13))}h` : ''}`;
+    return `${p.nome}: ${atual ? (atual.porteiro ? porteiroPorId(estado, atual.porteiro).nome : 'descoberto') : 'fechado agora'}${proximo ? `, próximo ${proximo.porteiro ? porteiroPorId(estado, proximo.porteiro).nome : 'descoberto'} às ${Number(proximo.inicio.slice(11, 13))}h` : ''}`;
   });
   const reservas = estado.reservas.filter((r) => r.data === hoje && ['pendente', 'confirmada'].includes(r.status));
   const pacotes = estado.encomendas.filter((e) => e.status === 'aguardando');
@@ -6151,6 +6276,17 @@ const CASOS_ACOES = [
       const ok = entregarEncomenda(r.estado, { id: r.id, codigo: nova.codigo, nome: 'Ana Souza' }, AGORA_TESTE);
       const entregue = acharPorId(ok.estado.encomendas, r.id);
       igual([entregue.status, entregue.retiradaPor], ['retirada', 'Ana Souza']);
+    },
+  },
+  {
+    nome: 'configuração: síndico desliga o QR Code e a portaria entrega sem código',
+    rodar() {
+      const r = registrarEncomenda(dadosIniciais(AGORA_TESTE), { unidade: '302', transportadora: 'Correios', foto: true, porteiro: 'Seu José' }, AGORA_TESTE);
+      igual([configuracoes(r.estado).encomendaComQr, salvarConfiguracoes(r.estado, { encomendaComQr: false }, 'morador').erro], [true, 'Somente o síndico pode fazer isso']);
+      const semQr = salvarConfiguracoes(r.estado, { encomendaComQr: false, inventada: 1 }, 'sindico').estado;
+      igual(semQr.configuracoes, { encomendaComQr: false });
+      const ok = entregarEncomenda(semQr, { id: r.id, codigo: '', nome: 'Ana Souza' }, AGORA_TESTE);
+      igual([ok.erro, acharPorId(ok.estado.encomendas, r.id).status, entregarEncomenda(semQr, { id: r.id, codigo: '', nome: ' ' }, AGORA_TESTE).erro], [undefined, 'retirada', 'Informe quem retirou']);
     },
   },
   {
@@ -7449,6 +7585,35 @@ const CASOS_ESCALA = [
       igual(turno(fazerCheckout(tarde.estado, 'jose', new Date(2026, 9, 19, 19, 2)).estado).checkout, { em: '2026-10-19T19:02' });
     },
   },
+  {
+    nome: 'colaboradores: cadastro com vínculo, escala fixa e desligamento',
+    rodar() {
+      const novo = { origem: 'novo', plano: 'intermediario', condominio: { nome: 'Edifício Teste' }, escala: { atribuicoes: [], ferias: [], trocas: [], meses: {}, proximaTroca: 1 } };
+      igual([colaboradores(novo), porteirosDe(estadoEscala()).length, colaboradores(estadoEscala()).length, porteiroPorId(estadoEscala(), 'paulo').cargo], [[], 7, 8, 'folguista']);
+      const base = { nome: 'João Lima', cargo: 'porteiro', vinculo: 'clt', telefone: '(11) 91234-5678', postos: ['portaria'], escala: { posto: 'portaria', modelo: '12x36', inicio: '7', primeiroDia: '2026-11-01' } };
+      igual([
+        salvarColaborador(novo, base, 'morador').erro,
+        salvarColaborador(novo, { ...base, nome: ' ' }, 'sindico').erro,
+        salvarColaborador(novo, { ...base, vinculo: 'terceirizado' }, 'sindico').erro,
+        salvarColaborador(novo, { ...base, postos: [] }, 'sindico').erro,
+        salvarColaborador(novo, { ...base, escala: { ...base.escala, posto: 'guarita' } }, 'sindico').erro,
+        salvarColaborador(novo, { ...base, escala: { ...base.escala, primeiroDia: '' } }, 'sindico').erro,
+        salvarColaborador(novo, { ...base, telefone: '1199' }, 'sindico').erro,
+      ], ['Somente o síndico pode fazer isso', 'Informe o nome', 'Informe a empresa do terceirizado', 'Marque ao menos um posto em que ele trabalha', 'O posto da escala precisa estar entre os postos do colaborador', 'Informe o dia do primeiro plantão', 'Telefone inválido: use DDD + número']);
+      const r = salvarColaborador(novo, base, 'sindico');
+      igual([r.id, escalaDoColaborador(r.estado, r.id), textoEscala(escalaDoColaborador(r.estado, r.id))], ['col-joao-lima', { porteiro: 'col-joao-lima', posto: 'portaria', modelo: '12x36', inicio: 7, ancora: '2026-11-01', paridade: 0 }, 'Portaria principal · 12x36 · 7h–19h · dia sim, dia não']);
+      const nov = gerarEscala(r.estado, '2026-11', 'sindico').estado.escala.meses['2026-11'].turnos;
+      igual([nov.length, nov[0].porteiro, nov[0].inicio, nov[1].inicio], [15, 'col-joao-lima', '2026-11-01T07:00', '2026-11-03T07:00']);
+      // Terceirizado no 6x1 e zelador sem posto; editar troca a escala sem duplicar.
+      const rita = salvarColaborador(r.estado, { nome: 'Rita Alves', cargo: 'porteiro', vinculo: 'terceirizado', empresa: 'Prisma', postos: ['guarita'], escala: { posto: 'guarita', modelo: '6x1', inicio: '15', folga: '0' } }, 'sindico');
+      const ze = salvarColaborador(rita.estado, { nome: 'Zé', cargo: 'zelador', vinculo: 'clt', postos: ['portaria'], escala: base.escala }, 'sindico');
+      igual([textoEscala(escalaDoColaborador(ze.estado, rita.id)), ze.estado.colaboradores.find((p) => p.id === ze.id).postos, escalaDoColaborador(ze.estado, ze.id), porteirosDe(ze.estado).length], ['Guarita da garagem · 6x1 (8 h) · 15h–23h · folga domingo', [], null, 2]);
+      const editado = salvarColaborador(ze.estado, { ...base, id: r.id, escala: { ...base.escala, inicio: '19', modelo: 'noturno' } }, 'sindico').estado;
+      igual([editado.escala.atribuicoes.filter((a) => a.porteiro === r.id).length, escalaDoColaborador(editado, r.id).inicio, editado.colaboradores.length], [1, 19, 3]);
+      const fora = alternarAtivo(editado, r.id, 'sindico');
+      igual([fora.ativo, escalaDoColaborador(fora.estado, r.id), porteirosDe(fora.estado).length, porteiroPorId(fora.estado, r.id).nome, alternarAtivo(fora.estado, r.id, 'sindico').ativo], [false, null, 1, 'João Lima', true]);
+    },
+  },
 ];
 
 // ---- src/casos/composicao.js ----
@@ -8089,8 +8254,10 @@ const CASOS_IMPLANTACAO = [
       igual([primeiraNaoEmitida(e.financeiro), proximaCompetencia(e.financeiro), versaoVigente(e.financeiro).id], ['2026-10', '2026-10', 'CV-001']);
       const previa = previaCompetencia(e, '2026-10');
       igual([previa.linhas.length, previa.linhas.find((l) => l.unidade === '101A').total, previa.linhas.find((l) => l.unidade === '401A').total, previa.linhas.filter((l) => l.bloqueada).length], [16, 55000, 82500, 13]);
-      const emitido = emitirCompetencia(e, '2026-10', 'sindico', AGORA_IMPLANTACAO);
-      igual([emitido.emitidas, emitido.estado.financeiro.emitidas, primeiraNaoEmitida(emitido.estado.financeiro)], [3, ['2026-10'], '2026-11']);
+      // O vencimento de outubro (dia 10) já passou em 23/10: sem data nova, não emite vencida.
+      igual([previa.vencimento, emitirCompetencia(e, '2026-10', 'sindico', AGORA_IMPLANTACAO).erro, emitirCompetencia(e, '2026-10', 'sindico', AGORA_IMPLANTACAO, '2026-10-22').erro], ['2026-10-10', MSG_VENCIMENTO_PASSADO, MSG_VENCIMENTO_PASSADO]);
+      const emitido = emitirCompetencia(e, '2026-10', 'sindico', AGORA_IMPLANTACAO, '2026-10-23');
+      igual([emitido.emitidas, emitido.estado.financeiro.emitidas, primeiraNaoEmitida(emitido.estado.financeiro), emitido.estado.financeiro.cobrancas[0].vencimento], [3, ['2026-10'], '2026-11', '2026-10-23']);
     },
   },
   {
@@ -8574,6 +8741,8 @@ const ICONES = {
   ferramenta: 'M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.6 2.6-2.4-.6-.6-2.4z',
   enquete: 'M4 5h16v14H4zM8 9h1M11 9h5M8 13h1M11 13h5M8 17h1M11 17h3',
   cifrao: 'M12 3v18M17 7H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H6',
+  equipe: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 11a3 3 0 1 0 0-6M17.5 14.2c2.1.6 3.5 2.9 3.5 5.8',
+  engrenagem: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1',
 };
 
 function Icone({ nome, tamanho = 22 }) {
@@ -8742,7 +8911,7 @@ function SemanaEscala({ estado, agora, executar, editavel = false }) {
       <strong>${POSTOS[turnoEditado.posto].nome} · ${fmtDataCurta(turnoEditado.inicio.slice(0, 10))} · ${horaDoLocal(turnoEditado.inicio)}–${horaDoLocal(turnoEditado.fim)}</strong>
       <label class="campo"><span>Porteiro do turno</span><select id="semana-porteiro" value=${turnoEditado.porteiro || ''} onChange=${(ev) => trocar(ev.target.value)}>
         <option value="">Ninguém (descoberto)</option>
-        ${PORTEIROS.filter((p) => p.postos.includes(turnoEditado.posto)).map((p) => html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}
+        ${porteirosDe(estado).filter((p) => p.postos.includes(turnoEditado.posto)).map((p) => html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}
       </select></label>
       <div class="acoes"><button type="button" class="btn secundario" onClick=${() => setEditando(null)}>Fechar</button></div>
     </div>`}
@@ -8750,7 +8919,7 @@ function SemanaEscala({ estado, agora, executar, editavel = false }) {
       <thead><tr><th scope="col">Porteiro</th>${s.dias.map((d, i) => html`<th key=${d} scope="col" class=${d === hoje ? 'hoje' : ''}>${DIAS_SEMANA_CURTOS[i]}<small>${d.slice(8, 10)}/${d.slice(5, 7)}${feriados[d] ? ' · feriado' : ''}</small></th>`)}</tr></thead>
       <tbody>
         ${s.linhas.map((l) => {
-          const p = porteiroPorId(l.porteiro);
+          const p = porteiroPorId(estado, l.porteiro);
           return html`<tr key=${l.porteiro}>
             <th scope="row">${p.nome}</th>
             ${l.celulas.map((c, i) => html`<td key=${s.dias[i]} class=${s.dias[i] === hoje ? 'hoje' : ''}>${c.map((item, n) => html`<${EtqTurno} key=${n} item=${item} mostrarPosto=${p.postos.length > 1} editavel=${editavel} aoClicar=${() => { setEditando(item.turno); setErro(null); setMensagem(null); }} />`)}</td>`)}
@@ -8779,7 +8948,7 @@ function textoCheckin(t) {
 }
 
 function PEscala({ estado, executar, agora }) {
-  const [porteiro, setPorteiro] = useState('jose');
+  const [porteiro, setPorteiro] = useState(() => (porteirosDe(estado)[0] || { id: '' }).id);
   const [abrindo, setAbrindo] = useState(null);
   const [colega, setColega] = useState('');
   const [motivo, setMotivo] = useState('falta');
@@ -8787,7 +8956,7 @@ function PEscala({ estado, executar, agora }) {
   const [erro, setErro] = useState(null);
   const [mensagem, setMensagem] = useState(null);
   if (!liberado(estado.plano, 'escala')) return html`<section><h1>Escala</h1><${Bloqueado} estado=${estado} recurso="escala" titulo="Escala, trocas e faltas dos porteiros" /></section>`;
-  if (estado.escala.semEquipe) return html`<section><h1>Escala</h1><${Vazio} texto="A equipe da portaria ainda não foi cadastrada. Fale com o síndico." /></section>`;
+  if (!porteirosDe(estado).length) return html`<section><h1>Escala</h1><${Vazio} texto="A equipe da portaria ainda não foi cadastrada. Fale com o síndico." /></section>`;
   const plantao = plantaoAgora(estado, agora);
   const comCheckin = liberado(estado.plano, 'checkin');
   const meus = turnosDoPorteiro(estado, porteiro, agora).slice(0, 8);
@@ -8817,8 +8986,8 @@ function PEscala({ estado, executar, agora }) {
       const { atual, proximo } = plantao[id];
       return html`<div key=${id} class="cartao">
         <strong>${p.nome}</strong>
-        <span>${atual ? `${atual.porteiro ? porteiroPorId(atual.porteiro).nome : 'Descoberto'} · ${horaDoTurno(atual.inicio)}–${horaDoTurno(atual.fim)}` : 'Posto fechado agora'}</span>
-        <small class="sub">${proximo ? `Próximo: ${proximo.porteiro ? porteiroPorId(proximo.porteiro).nome : 'descoberto'} às ${horaDoTurno(proximo.inicio)}` : 'Próximo turno ainda sem escala'}</small>
+        <span>${atual ? `${atual.porteiro ? porteiroPorId(estado, atual.porteiro).nome : 'Descoberto'} · ${horaDoTurno(atual.inicio)}–${horaDoTurno(atual.fim)}` : 'Posto fechado agora'}</span>
+        <small class="sub">${proximo ? `Próximo: ${proximo.porteiro ? porteiroPorId(estado, proximo.porteiro).nome : 'descoberto'} às ${horaDoTurno(proximo.inicio)}` : 'Próximo turno ainda sem escala'}</small>
         ${comCheckin && atual && atual.porteiro && (atual.checkin
           ? html`<small class="sub">${textoCheckin(atual)}</small>${!atual.checkout && html`<button type="button" class="btn secundario" onClick=${() => rodar((e) => fazerCheckout(e, atual.porteiro, new Date()), 'Check-out registrado.')}>Fazer check-out</button>`}`
           : html`<button type="button" class="btn primario" data-acao=${`checkin-${id}`} onClick=${() => rodar((e) => fazerCheckin(e, atual.porteiro, new Date()), 'Check-in registrado com foto.')}>Fazer check-in</button>`)}
@@ -8828,14 +8997,14 @@ function PEscala({ estado, executar, agora }) {
     <${SemanaEscala} estado=${estado} executar=${executar} agora=${agora} />
     <h2>Meus plantões</h2>
     <div class="cel-pessoa escala-porteiros" role="group" aria-label="Porteiro">
-      ${PORTEIROS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${porteiro === p.id} onClick=${() => { setPorteiro(p.id); setAbrindo(null); setErro(null); setMensagem(null); }}>${p.nome}</button>`)}
+      ${porteirosDe(estado).map((p) => html`<button type="button" key=${p.id} aria-pressed=${porteiro === p.id} onClick=${() => { setPorteiro(p.id); setAbrindo(null); setErro(null); setMensagem(null); }}>${p.nome}</button>`)}
     </div>
     <${Erro} texto=${erro} />
     <${Sucesso} texto=${mensagem} />
     ${recebidas.length > 0 && html`<div class="cartao">
       <strong>Trocas recebidas</strong>
       ${recebidas.map((x) => html`<div key=${x.id} class="linha-entre">
-        <span>${porteiroPorId(x.de).nome} pede que você assuma ${fmtTurno(acharTurno(estado, x.turno))}</span>
+        <span>${porteiroPorId(estado, x.de).nome} pede que você assuma ${fmtTurno(acharTurno(estado, x.turno))}</span>
         <span class="acoes">
           <button type="button" class="btn primario" onClick=${() => rodar((e) => aceitarTroca(e, x.id, porteiro), 'Troca aceita. Falta a aprovação do síndico.')}>Aceitar</button>
           <button type="button" class="btn secundario" onClick=${() => rodar((e) => recusarTroca(e, x.id, porteiro, 'portaria'), 'Troca recusada.')}>Recusar</button>
@@ -8845,7 +9014,7 @@ function PEscala({ estado, executar, agora }) {
     ${meus.length
       ? html`<ul class="m-lista">${meus.map((t) => {
           const dia = t.inicio.slice(0, 10);
-          const colegas = PORTEIROS.filter((p) => p.id !== porteiro && p.postos.includes(t.posto));
+          const colegas = porteirosDe(estado).filter((p) => p.id !== porteiro && p.postos.includes(t.posto));
           return html`<li key=${t.id} class="cartao">
             <div class="linha-entre"><strong>${fmtTurno(t)}</strong><span>${POSTOS[t.posto].nome}${feriados[dia] ? html` <${Etiqueta} tipo="info">${feriados[dia]}<//>` : ''}${t.trocado ? html` <${Etiqueta}>troca<//>` : ''}</span></div>
             <div class="acoes">
@@ -8953,6 +9122,7 @@ function PEntregar({ estado, executar, agora }) {
   const [erro, setErro] = useState(null);
   const [entregue, setEntregue] = useState(null);
   const [lido, setLido] = useState(null);
+  const comQr = configuracoes(estado).encomendaComQr;
   const termo = busca.trim();
   const lista = estado.encomendas
     .filter((e) => e.status === 'aguardando' && (!termo || e.unidade.includes(termo) || e.codigo === termo))
@@ -9008,9 +9178,11 @@ function PEntregar({ estado, executar, agora }) {
       ${encomenda
         ? html`<div class="cartao" id="painel-entrega">
             <h2>Entregar: apto ${encomenda.unidade} · ${encomenda.transportadora}</h2>
-            <${Campo} rotulo="Código de retirada"><input id="portaria-codigo" class="entrada-grande" inputmode="numeric" maxlength="6" value=${codigo} onInput=${(ev) => setCodigo(ev.target.value)} /><//>
-            <button type="button" class="btn secundario" onClick=${escanear}>Escanear QR do morador</button>
-            ${lido && html`<p class="dica-ocr" role="status">${lido}</p>`}
+            ${comQr
+              ? html`<${Campo} rotulo="Código de retirada"><input id="portaria-codigo" class="entrada-grande" inputmode="numeric" maxlength="6" value=${codigo} onInput=${(ev) => setCodigo(ev.target.value)} /><//>
+                <button type="button" class="btn secundario" onClick=${escanear}>Escanear QR do morador</button>
+                ${lido && html`<p class="dica-ocr" role="status">${lido}</p>`}`
+              : html`<p class="sub">Retirada sem QR Code: confira a unidade e registre quem retirou.</p>`}
             <${Campo} rotulo="Quem retirou"><input id="portaria-quem" class="entrada-grande" value=${nome} onInput=${(ev) => setNome(ev.target.value)} /><//>
             <div class="sugestoes">${moradoresDaUnidade(estado, encomenda.unidade).map((m) => html`<button type="button" key=${m.id} class="btn secundario" onClick=${() => setNome(m.nome)}>${m.nome}</button>`)}</div>
             <${Erro} texto=${erro} />
@@ -9231,13 +9403,19 @@ function CPrevia({ estado, executar }) {
   const total = emitiveis.reduce((soma, l) => soma + l.total, 0);
   // As que falharam no Asaas têm o botão próprio de reenvio.
   const deFora = emitida ? pendentesDeEmissao(estado, previa).filter((l) => !falhas.some((f) => f.unidade === l.unidade)) : [];
+  // Vencimento da competência já passou: o síndico informa outro, a partir de hoje, antes de emitir.
+  const hoje = isoDia(new Date());
+  const [novoVencimento, setNovoVencimento] = useState('');
+  const pedeVencimento = previa.vencimento < hoje && (!emitida || deFora.length > 0 || falhas.length > 0);
 
   // Modo conectado: o servidor cria as cobranças no Asaas sandbox e o app guarda só as que deram certo.
   async function emitirNoAsaas(apenas) {
+    const venc = vencimentoDaEmissao(previa, novoVencimento || null, new Date());
+    if (venc.erro) { setErro(venc.erro); return; }
     setEnviando(true);
     setErro(null);
     try {
-      const resp = await chamarApi('POST', '/api/emissoes', { condominio: estado.condominio.id, competencia, linhas: linhasParaAsaas(estado, competencia, apenas) });
+      const resp = await chamarApi('POST', '/api/emissoes', { condominio: estado.condominio.id, competencia, linhas: linhasParaAsaas(estado, competencia, apenas, venc.vencimento) });
       const r = executar((e) => aplicarEmissao(e, competencia, resp.resultados, 'sindico', new Date()));
       setErro(r.erro || null);
       const certas = resp.resultados.filter((x) => x.ok).length;
@@ -9250,7 +9428,7 @@ function CPrevia({ estado, executar }) {
 
   function emitir() {
     if (real) { emitirNoAsaas(emitida ? deFora.map((l) => l.unidade) : null); return; }
-    const r = executar((e) => emitirCompetencia(e, competencia, 'sindico', new Date()));
+    const r = executar((e) => emitirCompetencia(e, competencia, 'sindico', new Date(), novoVencimento || null));
     setErro(r.erro || null);
     if (!r.erro && emitida) setMensagem(`${r.emitidas} ${r.emitidas === 1 ? 'cobrança emitida' : 'cobranças emitidas'} para as unidades que tinham ficado de fora.`);
   }
@@ -9275,6 +9453,11 @@ function CPrevia({ estado, executar }) {
       ])}</tbody>
     </table></div>
     <div class="linha-entre total"><span>${emitiveis.length} cobranças · ${previa.linhas.length - emitiveis.length} não emitida(s)</span><strong>${fmtReais(total)}</strong></div>
+    ${pedeVencimento && html`<div class="cartao pilha alerta-vencimento" role="alert">
+      <strong>O vencimento de ${fmtDataCurta(previa.vencimento)} já passou</strong>
+      <span class="sub">Cobrança não é emitida vencida. Informe um novo vencimento, de hoje em diante, para as cobranças desta emissão.</span>
+      <${Campo} rotulo="Novo vencimento"><input id="emissao-vencimento" type="date" min=${hoje} value=${novoVencimento} onInput=${(ev) => { setNovoVencimento(ev.target.value); setErro(null); }} /><//>
+    </div>`}
     <${Sucesso} texto=${mensagem} />
     ${falhas.length > 0 && html`<div class="cartao pilha">
       <strong>Não emitidas no Asaas</strong>
@@ -11136,8 +11319,8 @@ function horaCurta(local) {
   return `${Number(local.slice(11, 13))}h`;
 }
 
-function nomeOuDescoberto(t) {
-  return t.porteiro ? porteiroPorId(t.porteiro).nome : `Descoberto · ${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}`;
+function nomeOuDescoberto(estado, t) {
+  return t.porteiro ? porteiroPorId(estado, t.porteiro).nome : `Descoberto · ${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}`;
 }
 
 function SEscala(props) {
@@ -11145,7 +11328,7 @@ function SEscala(props) {
   if (!liberado(estado.plano, 'escala')) {
     return html`<section><h1>Escala</h1><${Bloqueado} estado=${estado} recurso="escala" titulo="Escala de porteiros com trocas, faltas e cobertura" /></section>`;
   }
-  if (estado.escala.semEquipe) return html`<section><h1>Escala</h1><${Vazio} texto="Cadastre a equipe da portaria para montar a escala (em breve na implantação)." /></section>`;
+  if (!porteirosDe(estado).length) return html`<section class="pilha"><h1>Escala</h1><${Vazio} texto="Nenhum porteiro cadastrado ainda." /><a class="btn primario" href="#sindico.colaboradores">Cadastrar a equipe em Colaboradores</a></section>`;
   const aba = ABAS_ESCALA.some(([id]) => id === rota.id) ? rota.id : 'semana';
   const Conteudo = { semana: ESemana, calendario: ECalendario, pendencias: EPendencias, equipe: EEquipe, horas: EHoras }[aba];
   return html`<section>
@@ -11196,7 +11379,7 @@ function ECalendario({ estado, executar, agora }) {
   const descanso = descansoInsuficiente(estado, mes);
   const feriados = Object.fromEntries(feriadosDoMes(mes).map((f) => [f.dia, f.nome]));
   const turnos = m.turnos.filter((t) => t.posto === posto);
-  const podeCobrir = PORTEIROS.filter((p) => p.postos.includes(posto));
+  const podeCobrir = porteirosDe(estado).filter((p) => p.postos.includes(posto));
 
   return html`<div class="pilha">
     ${seletores}
@@ -11210,7 +11393,7 @@ function ECalendario({ estado, executar, agora }) {
       <span class="dia-escala-data">${fmtDia(dia)}${feriados[dia] ? html` <${Etiqueta} tipo="info">${feriados[dia]}<//>` : ''}${dia === hoje ? html` <${Etiqueta} tipo="alerta">hoje<//>` : ''}</span>
       <span class="dia-escala-turnos">
         ${turnos.filter((t) => t.inicio.startsWith(dia)).map((t) => html`<span key=${t.id} class=${`turno-escala${t.porteiro ? '' : ' descoberto'}`}>
-          <button type="button" class="btn-link" data-turno=${t.id} onClick=${() => setEditando(editando === t.id ? null : t.id)}>${nomeOuDescoberto(t)}</button>
+          <button type="button" class="btn-link" data-turno=${t.id} onClick=${() => setEditando(editando === t.id ? null : t.id)}>${nomeOuDescoberto(estado, t)}</button>
           <small>${horaCurta(t.inicio)}–${horaCurta(t.fim)}</small>${t.trocado ? html` <${Etiqueta}>troca<//>` : ''}
           ${editando === t.id && html`<select aria-label="Trocar porteiro" value=${t.porteiro || ''} onChange=${(ev) => { rodar((e) => ajustarTurno(e, t.id, ev.target.value || null, 'sindico'), 'Turno ajustado.'); setEditando(null); }}>
             <option value="">Ninguém (descoberto)</option>
@@ -11242,7 +11425,7 @@ function EPendencias({ estado, executar, agora }) {
       ? html`<ul class="m-lista">${trocas.map((x) => {
           const t = acharTurno(estado, x.turno);
           return html`<li key=${x.id} class="cartao">
-            <strong>${porteiroPorId(x.de).nome} → ${porteiroPorId(x.para).nome}</strong>
+            <strong>${porteiroPorId(estado, x.de).nome} → ${porteiroPorId(estado, x.para).nome}</strong>
             <small class="sub">${x.id} · ${POSTOS[t.posto].nome} · ${fmtTurno(t)} · o colega já aceitou</small>
             <div class="acoes">
               <button type="button" class="btn primario" data-aprovar=${x.id} onClick=${() => rodar((e) => aprovarTroca(e, x.id, 'sindico'), 'Troca aprovada.')}>Aprovar</button>
@@ -11255,9 +11438,9 @@ function EPendencias({ estado, executar, agora }) {
     ${descobertos.length
       ? html`<ul class="m-lista">${descobertos.map((t) => html`<li key=${t.id} class="cartao">
           <strong>${POSTOS[t.posto].nome} · ${fmtTurno(t)}</strong>
-          <small class="sub">${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}${t.porteiroOriginal ? ` de ${porteiroPorId(t.porteiroOriginal).nome}` : ''}${t.anexo ? ` · ${t.anexo}` : ''}</small>
+          <small class="sub">${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}${t.porteiroOriginal ? ` de ${porteiroPorId(estado, t.porteiroOriginal).nome}` : ''}${t.anexo ? ` · ${t.anexo}` : ''}</small>
           <ul class="itens-sacola">${sugestoesCobertura(estado, t.id).map((s) => {
-            const p = porteiroPorId(s.porteiro);
+            const p = porteiroPorId(estado, s.porteiro);
             return html`<li key=${s.porteiro}>
               <span>${p.nome} · ${NOMES_VINCULO[p.vinculo]} · ${s.descanso === Infinity ? 'livre' : `${s.descanso} h de descanso`}${s.alerta11 ? ' · ⚠ menos de 11 h' : ''}</span>
               <button type="button" class="btn secundario" data-atribuir=${`${t.id}-${s.porteiro}`} onClick=${() => rodar((e) => atribuirCobertura(e, t.id, s.porteiro, 'sindico'), `${p.nome} cobre o turno.`)}>Atribuir</button>
@@ -11277,15 +11460,15 @@ function EEquipe({ estado }) {
       <thead><tr><th>Posto</th><th>Funcionamento</th></tr></thead>
       <tbody>${Object.entries(POSTOS).map(([id, p]) => html`<tr key=${id}><td>${p.nome}</td><td>${p.fecha - p.abre === 24 ? '24 h' : `${p.abre}h–${p.fecha}h`}</td></tr>`)}</tbody>
     </table></div>
-    <h2>Porteiros</h2>
+    <div class="linha-entre"><h2>Porteiros</h2><a class="btn-link" href="#sindico.colaboradores">Cadastrar ou editar em Colaboradores</a></div>
     <div class="tabela-rolagem"><table class="tabela">
       <thead><tr><th>Nome</th><th>Vínculo</th><th>Empresa</th><th>Telefone</th><th>Postos</th><th>Férias</th></tr></thead>
-      <tbody>${PORTEIROS.map((p) => {
+      <tbody>${porteirosDe(estado).map((p) => {
         const f = estado.escala.ferias.find((x) => x.porteiro === p.id);
         return html`<tr key=${p.id}>
           <td>${p.nome}</td>
           <td>${NOMES_VINCULO[p.vinculo]}</td>
-          <td>${p.empresa ? `${p.empresa} · ${EMPRESAS[p.empresa].telefone}` : '—'}</td>
+          <td>${p.empresa ? (EMPRESAS[p.empresa] ? `${p.empresa} · ${EMPRESAS[p.empresa].telefone}` : p.empresa) : '—'}</td>
           <td>${p.telefone}</td>
           <td>${p.postos.map((x) => POSTOS[x].nome).join(', ')}</td>
           <td>${f ? `${fmtDataCurta(f.de).slice(0, 5)} a ${fmtDataCurta(f.ate).slice(0, 5)}` : '—'}</td>
@@ -11303,7 +11486,7 @@ function EHoras({ estado, agora }) {
     <h2>Horas de ${nomeDoMesEscala(mes)}</h2>
     <div class="tabela-rolagem"><table class="tabela">
       <thead><tr><th>Porteiro</th><th>Escaladas</th><th>Com check-in</th><th>Atrasos</th><th>Faltas</th><th>Trocas</th></tr></thead>
-      <tbody>${linhas.map((l) => html`<tr key=${l.porteiro}><td>${porteiroPorId(l.porteiro).nome}</td><td>${l.escaladas} h</td><td>${l.comCheckin} h</td><td>${l.atrasos}</td><td>${l.faltas}</td><td>${l.trocas}</td></tr>`)}</tbody>
+      <tbody>${linhas.map((l) => html`<tr key=${l.porteiro}><td>${porteiroPorId(estado, l.porteiro).nome}</td><td>${l.escaladas} h</td><td>${l.comCheckin} h</td><td>${l.atrasos}</td><td>${l.faltas}</td><td>${l.trocas}</td></tr>`)}</tbody>
     </table></div>
     <small class="sub">O check-in confirma presença no posto; não substitui o ponto eletrônico legal. Exportação para Excel e PDF: em breve.</small>
   </div>`;
@@ -11963,16 +12146,16 @@ function TelaMorador(props) {
   </div>`;
 }
 
-function MCartaoEncomenda({ encomenda, agora }) {
+function MCartaoEncomenda({ estado, encomenda, agora }) {
+  const comQr = configuracoes(estado).encomendaComQr;
   return html`<article class="cartao encomenda" data-codigo=${encomenda.codigo}>
     <div>
       <strong>${encomenda.transportadora}</strong>
       <span class="sub">Chegou ${haQuanto(encomenda.chegadaEm, agora)}</span>
       ${encomendaParada(encomenda, agora) && html`<${Etiqueta} tipo="alerta">Retire em breve<//>`}
-      <span class="m-codigo">Código <b>${encomenda.codigo}</b></span>
-      <small class="sub">Mostre o QR Code na portaria.</small>
+      ${comQr ? html`<span class="m-codigo">Código <b>${encomenda.codigo}</b></span><small class="sub">Mostre o QR Code na portaria.</small>` : html`<small class="sub">Retire na portaria informando a sua unidade.</small>`}
     </div>
-    <${QrFalso} texto=${encomenda.codigo} tamanho=${104} />
+    ${comQr && html`<${QrFalso} texto=${encomenda.codigo} tamanho=${104} />`}
   </article>`;
 }
 
@@ -11993,7 +12176,7 @@ function MInicio({ estado, agora, eu }) {
     <${CartaoEnqueteInicio} estado=${estado} eu=${eu} agora=${agora} />
     <a class="cartao link com-icone" href="#morador.avisos"><${QuadroIcone} nome="megafone" /><span><strong>Avisos</strong><span class="sub">${naoLidos ? `${naoLidos} não ${naoLidos === 1 ? 'lido' : 'lidos'}` : 'Tudo lido'}</span></span></a>
     <h2>Encomendas na portaria</h2>
-    ${pacotes.length ? pacotes.map((e) => html`<${MCartaoEncomenda} key=${e.id} encomenda=${e} agora=${agora} />`) : html`<${Vazio} texto="Nenhuma encomenda esperando por você." />`}
+    ${pacotes.length ? pacotes.map((e) => html`<${MCartaoEncomenda} key=${e.id} estado=${estado} encomenda=${e} agora=${agora} />`) : html`<${Vazio} texto="Nenhuma encomenda esperando por você." />`}
     ${fixado && html`<h2>Fixado pelo síndico</h2>
       <a class="cartao link" href=${`#morador.avisos.${fixado.id}`}>
         <${Etiqueta} tipo=${tipoEtiquetaAviso(fixado)}>${TIPOS_COMUNICADO[fixado.tipo]}<//>
@@ -12362,7 +12545,7 @@ function MEncomendas({ estado, agora, eu }) {
     <a class="voltar" href="#morador.mais">‹ Mais</a>
     <h1 class="m-titulo">Encomendas</h1>
     <h2>Na portaria</h2>
-    ${aguardando.length ? aguardando.map((e) => html`<${MCartaoEncomenda} key=${e.id} encomenda=${e} agora=${agora} />`) : html`<${Vazio} texto="Nada esperando por você." />`}
+    ${aguardando.length ? aguardando.map((e) => html`<${MCartaoEncomenda} key=${e.id} estado=${estado} encomenda=${e} agora=${agora} />`) : html`<${Vazio} texto="Nada esperando por você." />`}
     <h2>Retiradas</h2>
     ${retiradas.length
       ? html`<ul class="m-lista">${retiradas.map((e) => html`<li key=${e.id} class="cartao"><strong>${e.transportadora}</strong><small class="sub">Retirada por ${e.retiradaPor} em ${fmtDataHora(e.retiradaEm)}</small></li>`)}</ul>`
@@ -12390,7 +12573,7 @@ function MPreferencias({ estado, executar, eu }) {
 
 // ---- src/ui/sindico.js ----
 
-const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['moradores', 'Moradores', 'pessoa'], ['cobranca', 'Cobrança', 'cifrao'], ['financeiro', 'Financeiro', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['enquetes', 'Enquetes', 'enquete'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
+const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['moradores', 'Moradores', 'pessoa'], ['cobranca', 'Cobrança', 'cifrao'], ['financeiro', 'Financeiro', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['enquetes', 'Enquetes', 'enquete'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja'], ['colaboradores', 'Colaboradores', 'equipe'], ['configuracoes', 'Configurações', 'engrenagem']];
 const EM_BREVE = [['Estoque, checklist e rondas', 'Avançado']];
 const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
 const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
@@ -12415,7 +12598,7 @@ function tipoEtiquetaComunicado(c) {
 
 function TelaSindico(props) {
   const tela = MENU_SINDICO.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'inicio';
-  const Conteudo = { inicio: SInicio, moradores: SMoradores, reservas: SReservas, comunicados: SComunicados, enquetes: SEnquetes, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, financeiro: SFinanceiro, manutencao: SManutencao, escala: SEscala }[tela];
+  const Conteudo = { inicio: SInicio, moradores: SMoradores, reservas: SReservas, comunicados: SComunicados, enquetes: SEnquetes, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, financeiro: SFinanceiro, manutencao: SManutencao, escala: SEscala, colaboradores: SColaboradores, configuracoes: SConfiguracoes }[tela];
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
       <p class="painel-usuario"><strong>${props.estado.condominio.sindico.nome}</strong><small>Síndico · apto ${props.estado.condominio.sindico.unidade}</small></p>
@@ -13995,12 +14178,132 @@ function AprovacaoMoradores({ estado, executar }) {
   </div>`;
 }
 
+// ---- src/ui/configuracoes.js ----
+
+// Preferências do condomínio: cada opção é um interruptor com a explicação do que muda para a portaria e os moradores.
+function SConfiguracoes({ estado, executar }) {
+  const atual = configuracoes(estado);
+  const [mensagem, setMensagem] = useState(null);
+  function mudar(chave, valor, texto) {
+    const r = executar((e) => salvarConfiguracoes(e, { [chave]: valor }, 'sindico'));
+    setMensagem(r.erro || texto);
+  }
+  return html`<section class="pilha">
+    <h1>Configurações</h1>
+    <p class="sub">Regras do dia a dia do condomínio. As mudanças valem na hora para a portaria e os moradores.</p>
+    <div class="cartao pilha">
+      <h2>Encomendas</h2>
+      <label class="check"><input id="config-encomenda-qr" type="checkbox" checked=${atual.encomendaComQr} onChange=${(ev) => mudar('encomendaComQr', ev.target.checked, ev.target.checked ? 'A retirada de encomendas volta a pedir o QR Code ou o código.' : 'A retirada de encomendas não pede mais o QR Code.')} />
+        <span><strong>Pedir QR Code na retirada</strong><small class="sub">Ligado: o morador mostra o QR Code (ou diz o código) e a portaria confere antes de entregar. Desligado: a portaria entrega conferindo a unidade e registra quem retirou.</small></span></label>
+    </div>
+    <${Sucesso} texto=${mensagem} />
+  </section>`;
+}
+
+// ---- src/ui/colaboradores.js ----
+
+// Equipe do condomínio: CLT e terceirizados, com cargo, contato e, para os porteiros, a escala fixa.
+function formDe(estado, p) {
+  const a = p ? escalaDoColaborador(estado, p.id) : null;
+  return {
+    id: p ? p.id : null, nome: p ? p.nome : '', cargo: p ? p.cargo : 'porteiro', vinculo: p ? p.vinculo : 'clt', empresa: (p && p.empresa) || '',
+    telefone: (p && p.telefone) || '', cpf: p && p.cpf ? fmtCpf(p.cpf) : '', admissao: (p && p.admissao) || '', postos: p ? p.postos : ['portaria'],
+    temEscala: p ? !!a : true, posto: a ? a.posto : (p && p.postos[0]) || 'portaria', modelo: a ? a.modelo : '12x36', inicio: a ? String(a.inicio) : '7',
+    primeiroDia: a && a.ancora ? a.ancora : '', folga: a && a.folga !== undefined ? String(a.folga) : '0',
+  };
+}
+
+function FormColaborador({ estado, inicial, executar, aoFechar }) {
+  const [form, setForm] = useState(() => formDe(estado, inicial));
+  const [erro, setErro] = useState(null);
+  const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value });
+  const alternarPosto = (id) => setForm({ ...form, postos: form.postos.includes(id) ? form.postos.filter((x) => x !== id) : [...form.postos, id] });
+  const daPortaria = CARGOS_PORTARIA.includes(form.cargo);
+  const porteiro = form.cargo === 'porteiro';
+  const ciclo2 = MODELOS[form.modelo].ciclo === 2;
+  function salvar() {
+    const escala = porteiro && form.temEscala ? { posto: form.posto, modelo: form.modelo, inicio: form.inicio, primeiroDia: form.primeiroDia, folga: form.folga } : null;
+    const r = executar((e) => salvarColaborador(e, { ...form, escala }, 'sindico'));
+    if (r.erro) setErro(r.erro);
+    else aoFechar(`${form.nome.trim()} ${inicial ? 'atualizado' : 'cadastrado'}.`);
+  }
+  return html`<div class="cartao pilha formulario" id="form-colaborador">
+    <h2>${inicial ? `Editar ${inicial.nome}` : 'Novo colaborador'}</h2>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Nome"><input id="colab-nome" value=${form.nome} onInput=${campo('nome')} /><//>
+      <${Campo} rotulo="Cargo"><select id="colab-cargo" value=${form.cargo} onChange=${campo('cargo')}>${Object.entries(CARGOS).map(([k, n]) => html`<option key=${k} value=${k}>${n}</option>`)}</select><//>
+      <${Campo} rotulo="Vínculo"><select id="colab-vinculo" value=${form.vinculo} onChange=${campo('vinculo')}>${Object.entries(NOMES_VINCULO).map(([k, n]) => html`<option key=${k} value=${k}>${n}</option>`)}</select><//>
+      ${form.vinculo === 'terceirizado' && html`<${Campo} rotulo="Empresa"><input id="colab-empresa" value=${form.empresa} onInput=${campo('empresa')} placeholder="Ex.: Vigilância Prisma" /><//>`}
+      <${Campo} rotulo="Telefone" dica="Com DDD"><input id="colab-telefone" inputmode="tel" value=${form.telefone} onInput=${campo('telefone')} placeholder="(11) 90000-0000" /><//>
+      <${Campo} rotulo="CPF" dica="Opcional"><input id="colab-cpf" inputmode="numeric" value=${form.cpf} onInput=${campo('cpf')} placeholder="000.000.000-00" /><//>
+      <${Campo} rotulo="Admissão" dica="Opcional"><input id="colab-admissao" type="date" value=${form.admissao} onInput=${campo('admissao')} /><//>
+    </div>
+    ${daPortaria && html`<fieldset class="pilha"><legend>Postos em que trabalha</legend>
+      ${Object.entries(POSTOS).map(([id, p]) => html`<label key=${id} class="check"><input id=${`colab-posto-${id}`} type="checkbox" checked=${form.postos.includes(id)} onChange=${() => alternarPosto(id)} /><span>${p.nome}</span></label>`)}
+    </fieldset>`}
+    ${form.cargo === 'folguista' && html`<p class="sub">O folguista não tem escala fixa: ele aparece primeiro nas sugestões para cobrir folgas, faltas e férias.</p>`}
+    ${porteiro && html`<fieldset class="pilha"><legend>Escala</legend>
+      <label class="check"><input id="colab-tem-escala" type="checkbox" checked=${form.temEscala} onChange=${campo('temEscala')} /><span>Tem escala fixa</span></label>
+      ${form.temEscala && html`<div class="edicao-anuncio">
+        <${Campo} rotulo="Posto"><select id="colab-escala-posto" value=${form.posto} onChange=${campo('posto')}>${form.postos.map((id) => html`<option key=${id} value=${id}>${POSTOS[id].nome}</option>`)}</select><//>
+        <${Campo} rotulo="Modelo"><select id="colab-modelo" value=${form.modelo} onChange=${campo('modelo')}>${Object.entries(MODELOS).map(([k, m]) => html`<option key=${k} value=${k}>${m.nome}</option>`)}</select><//>
+        <${Campo} rotulo="Início do turno" dica="Hora, de 0 a 23"><input id="colab-inicio" type="number" min="0" max="23" value=${form.inicio} onInput=${campo('inicio')} /><//>
+        ${ciclo2
+          ? html`<${Campo} rotulo="Primeiro plantão" dica="Dali em diante, dia sim, dia não"><input id="colab-primeiro-dia" type="date" value=${form.primeiroDia} onInput=${campo('primeiroDia')} /><//>`
+          : html`<${Campo} rotulo="Dia de folga"><select id="colab-folga" value=${form.folga} onChange=${campo('folga')}>${DIAS_FOLGA.map((d, i) => html`<option key=${d} value=${String(i)}>${d}</option>`)}</select><//>`}
+      </div>`}
+      <small class="sub">A escala vale para os meses gerados daqui em diante. Meses já gerados são ajustados turno a turno em Escala.</small>
+    </fieldset>`}
+    <div class="acoes">
+      <button type="button" class="btn secundario" onClick=${() => aoFechar(null)}>Cancelar</button>
+      <button type="button" class="btn primario" data-acao="salvar-colaborador" onClick=${salvar}>${inicial ? 'Salvar alterações' : 'Cadastrar colaborador'}</button>
+    </div>
+    <${Erro} texto=${erro} />
+  </div>`;
+}
+
+function SColaboradores({ estado, executar }) {
+  const [editando, setEditando] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  const lista = [...colaboradores(estado)].sort((a, b) => (a.ativo === false) - (b.ativo === false) || a.nome.localeCompare(b.nome));
+  function fechar(texto) {
+    setEditando(null);
+    if (texto) setMensagem(texto);
+  }
+  function alternar(p) {
+    const r = executar((e) => alternarAtivo(e, p.id, 'sindico'));
+    setMensagem(r.erro || (r.ativo ? `${p.nome} reativado. Configure a escala dele, se tiver.` : `${p.nome} desligado: sai das próximas escalas.`));
+  }
+  return html`<section class="pilha">
+    <h1>Colaboradores</h1>
+    <p class="sub">A equipe do condomínio, fixa (CLT) ou terceirizada. Os porteiros cadastrados aqui formam a escala da portaria.</p>
+    ${editando === null && html`<div class="acoes"><button type="button" class="btn primario" data-acao="novo-colaborador" onClick=${() => { setEditando('novo'); setMensagem(null); }}>Novo colaborador</button></div>`}
+    ${editando === 'novo' && html`<${FormColaborador} estado=${estado} inicial=${null} executar=${executar} aoFechar=${fechar} />`}
+    <${Sucesso} texto=${mensagem} />
+    ${lista.length === 0 && html`<${Vazio} texto="Nenhum colaborador cadastrado. Comece pelos porteiros para montar a escala." />`}
+    ${lista.map((p) => {
+      if (editando === p.id) return html`<${FormColaborador} key=${p.id} estado=${estado} inicial=${p} executar=${executar} aoFechar=${fechar} />`;
+      const escala = textoEscala(escalaDoColaborador(estado, p.id));
+      return html`<div key=${p.id} class=${`cartao pilha${p.ativo === false ? ' desligado' : ''}`} data-colaborador=${p.id}>
+        <div class="linha-entre"><strong>${p.nome}</strong>${p.ativo === false ? html`<${Etiqueta}>Desligado<//>` : html`<${Etiqueta} tipo=${p.vinculo === 'clt' ? 'ok' : 'info'}>${p.vinculo === 'clt' ? 'CLT' : 'Terceirizado'}<//>`}</div>
+        <span class="sub">${CARGOS[p.cargo]}${p.empresa ? ` · ${p.empresa}` : ''}${p.telefone ? ` · ${p.telefone}` : ''}</span>
+        ${p.postos.length > 0 && html`<span class="sub">Postos: ${p.postos.map((x) => POSTOS[x].nome).join(', ')}</span>`}
+        ${CARGOS_PORTARIA.includes(p.cargo) && html`<span class="sub">Escala: ${escala || (p.cargo === 'folguista' ? 'folguista, cobre folgas e faltas' : 'sem escala fixa')}</span>`}
+        <div class="acoes">
+          <button type="button" class="btn-link" data-editar-colaborador=${p.id} onClick=${() => { setEditando(p.id); setMensagem(null); }}>Editar</button>
+          <button type="button" class="btn-link" onClick=${() => alternar(p)}>${p.ativo === false ? 'Reativar' : 'Desligar'}</button>
+        </div>
+      </div>`;
+    })}
+  </section>`;
+}
+
 // ---- src/ui/app.js ----
 
 const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
 const ultimaRota = {};
 // A montagem troca pelo dia e hora em que a página foi gerada.
-const VERSAO_PAGINA = "30/10 19:08";
+const VERSAO_PAGINA = "30/10 19:25";
 
 function estadoDeHoje() {
   const salvo = carregarEstado();

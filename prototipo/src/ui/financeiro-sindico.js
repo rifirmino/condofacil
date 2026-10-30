@@ -3,7 +3,7 @@ import { ETAPAS_REGUA, CATEGORIAS_DESPESA, NOMES_FORMA, NOMES_RELACAO } from '..
 import { fmtReais, fmtReaisCurto, mesCurto, mesExtenso, situacaoCobranca, valorAtualizado, previaCompetencia, pendentesDeEmissao, proximaCompetencia, etapasNoPlano, devedores, indicadoresFinanceiros, serieReceitasDespesas, tituloSerie, rotuloCobranca } from '../cobranca/regras.js';
 import { alertasAcordos } from '../cobranca/acordos.js';
 import { alertasComposicao } from '../cobranca/composicao.js';
-import { emitirCompetencia, editarItemPrevia, baixaManual, cancelarEReemitir, enviarSegundaVia, executarRegua, salvarParametros } from '../cobranca/acoes.js';
+import { emitirCompetencia, vencimentoDaEmissao, editarItemPrevia, baixaManual, cancelarEReemitir, enviarSegundaVia, executarRegua, salvarParametros } from '../cobranca/acoes.js';
 import { lerPreco } from '../vendas/regras.js';
 import { PLANOS, liberado, planoMinimo, mensalidade } from '../planos.js';
 import { isoDia, nomeMes, fmtDataCurta, fmtDataHora } from '../datas.js';
@@ -204,13 +204,19 @@ function CPrevia({ estado, executar }) {
   const total = emitiveis.reduce((soma, l) => soma + l.total, 0);
   // As que falharam no Asaas têm o botão próprio de reenvio.
   const deFora = emitida ? pendentesDeEmissao(estado, previa).filter((l) => !falhas.some((f) => f.unidade === l.unidade)) : [];
+  // Vencimento da competência já passou: o síndico informa outro, a partir de hoje, antes de emitir.
+  const hoje = isoDia(new Date());
+  const [novoVencimento, setNovoVencimento] = useState('');
+  const pedeVencimento = previa.vencimento < hoje && (!emitida || deFora.length > 0 || falhas.length > 0);
 
   // Modo conectado: o servidor cria as cobranças no Asaas sandbox e o app guarda só as que deram certo.
   async function emitirNoAsaas(apenas) {
+    const venc = vencimentoDaEmissao(previa, novoVencimento || null, new Date());
+    if (venc.erro) { setErro(venc.erro); return; }
     setEnviando(true);
     setErro(null);
     try {
-      const resp = await chamarApi('POST', '/api/emissoes', { condominio: estado.condominio.id, competencia, linhas: linhasParaAsaas(estado, competencia, apenas) });
+      const resp = await chamarApi('POST', '/api/emissoes', { condominio: estado.condominio.id, competencia, linhas: linhasParaAsaas(estado, competencia, apenas, venc.vencimento) });
       const r = executar((e) => aplicarEmissao(e, competencia, resp.resultados, 'sindico', new Date()));
       setErro(r.erro || null);
       const certas = resp.resultados.filter((x) => x.ok).length;
@@ -223,7 +229,7 @@ function CPrevia({ estado, executar }) {
 
   function emitir() {
     if (real) { emitirNoAsaas(emitida ? deFora.map((l) => l.unidade) : null); return; }
-    const r = executar((e) => emitirCompetencia(e, competencia, 'sindico', new Date()));
+    const r = executar((e) => emitirCompetencia(e, competencia, 'sindico', new Date(), novoVencimento || null));
     setErro(r.erro || null);
     if (!r.erro && emitida) setMensagem(`${r.emitidas} ${r.emitidas === 1 ? 'cobrança emitida' : 'cobranças emitidas'} para as unidades que tinham ficado de fora.`);
   }
@@ -248,6 +254,11 @@ function CPrevia({ estado, executar }) {
       ])}</tbody>
     </table></div>
     <div class="linha-entre total"><span>${emitiveis.length} cobranças · ${previa.linhas.length - emitiveis.length} não emitida(s)</span><strong>${fmtReais(total)}</strong></div>
+    ${pedeVencimento && html`<div class="cartao pilha alerta-vencimento" role="alert">
+      <strong>O vencimento de ${fmtDataCurta(previa.vencimento)} já passou</strong>
+      <span class="sub">Cobrança não é emitida vencida. Informe um novo vencimento, de hoje em diante, para as cobranças desta emissão.</span>
+      <${Campo} rotulo="Novo vencimento"><input id="emissao-vencimento" type="date" min=${hoje} value=${novoVencimento} onInput=${(ev) => { setNovoVencimento(ev.target.value); setErro(null); }} /><//>
+    </div>`}
     <${Sucesso} texto=${mensagem} />
     ${falhas.length > 0 && html`<div class="cartao pilha">
       <strong>Não emitidas no Asaas</strong>

@@ -17,6 +17,7 @@ import { areaPorId, statusDia, horariosDaArea, comunicadosDaUnidade, avisoCancel
 import { solicitarReserva, cancelarReserva, marcarLido, reagir, abrirOcorrencia, avaliarOcorrencia, euTambem } from '../acoes.js';
 import { isoDia, nomeMes, somarMes, diferencaDias, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
 import { MDados } from './moradores.js';
+import { configuracoes } from '../configuracoes.js';
 import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, QrFalso, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
 const ABAS_MORADOR = [['inicio', 'Início', 'casa'], ['financeiro', 'Financeiro', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['vendas', 'Vendas', 'loja'], ['mais', 'Mais', 'menu']];
@@ -68,16 +69,16 @@ export function TelaMorador(props) {
   </div>`;
 }
 
-function MCartaoEncomenda({ encomenda, agora }) {
+function MCartaoEncomenda({ estado, encomenda, agora }) {
+  const comQr = configuracoes(estado).encomendaComQr;
   return html`<article class="cartao encomenda" data-codigo=${encomenda.codigo}>
     <div>
       <strong>${encomenda.transportadora}</strong>
       <span class="sub">Chegou ${haQuanto(encomenda.chegadaEm, agora)}</span>
       ${encomendaParada(encomenda, agora) && html`<${Etiqueta} tipo="alerta">Retire em breve<//>`}
-      <span class="m-codigo">Código <b>${encomenda.codigo}</b></span>
-      <small class="sub">Mostre o QR Code na portaria.</small>
+      ${comQr ? html`<span class="m-codigo">Código <b>${encomenda.codigo}</b></span><small class="sub">Mostre o QR Code na portaria.</small>` : html`<small class="sub">Retire na portaria informando a sua unidade.</small>`}
     </div>
-    <${QrFalso} texto=${encomenda.codigo} tamanho=${104} />
+    ${comQr && html`<${QrFalso} texto=${encomenda.codigo} tamanho=${104} />`}
   </article>`;
 }
 
@@ -98,7 +99,7 @@ function MInicio({ estado, agora, eu }) {
     <${CartaoEnqueteInicio} estado=${estado} eu=${eu} agora=${agora} />
     <a class="cartao link com-icone" href="#morador.avisos"><${QuadroIcone} nome="megafone" /><span><strong>Avisos</strong><span class="sub">${naoLidos ? `${naoLidos} não ${naoLidos === 1 ? 'lido' : 'lidos'}` : 'Tudo lido'}</span></span></a>
     <h2>Encomendas na portaria</h2>
-    ${pacotes.length ? pacotes.map((e) => html`<${MCartaoEncomenda} key=${e.id} encomenda=${e} agora=${agora} />`) : html`<${Vazio} texto="Nenhuma encomenda esperando por você." />`}
+    ${pacotes.length ? pacotes.map((e) => html`<${MCartaoEncomenda} key=${e.id} estado=${estado} encomenda=${e} agora=${agora} />`) : html`<${Vazio} texto="Nenhuma encomenda esperando por você." />`}
     ${fixado && html`<h2>Fixado pelo síndico</h2>
       <a class="cartao link" href=${`#morador.avisos.${fixado.id}`}>
         <${Etiqueta} tipo=${tipoEtiquetaAviso(fixado)}>${TIPOS_COMUNICADO[fixado.tipo]}<//>
@@ -467,7 +468,7 @@ function MEncomendas({ estado, agora, eu }) {
     <a class="voltar" href="#morador.mais">‹ Mais</a>
     <h1 class="m-titulo">Encomendas</h1>
     <h2>Na portaria</h2>
-    ${aguardando.length ? aguardando.map((e) => html`<${MCartaoEncomenda} key=${e.id} encomenda=${e} agora=${agora} />`) : html`<${Vazio} texto="Nada esperando por você." />`}
+    ${aguardando.length ? aguardando.map((e) => html`<${MCartaoEncomenda} key=${e.id} estado=${estado} encomenda=${e} agora=${agora} />`) : html`<${Vazio} texto="Nada esperando por você." />`}
     <h2>Retiradas</h2>
     ${retiradas.length
       ? html`<ul class="m-lista">${retiradas.map((e) => html`<li key=${e.id} class="cartao"><strong>${e.transportadora}</strong><small class="sub">Retirada por ${e.retiradaPor} em ${fmtDataHora(e.retiradaEm)}</small></li>`)}</ul>`

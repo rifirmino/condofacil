@@ -58,7 +58,15 @@ export function editarItemPrevia(estado, competencia, unidade, itens) {
   return { estado: comFinanceiro(estado, { ajustesPrevia: { ...estado.financeiro.ajustesPrevia, [competencia]: daCompetencia } }) };
 }
 
-export function emitirCompetencia(estado, competencia, perfil, agora) {
+export const MSG_VENCIMENTO_PASSADO = 'Cobrança não pode ser emitida vencida: informe um vencimento a partir de hoje';
+
+// O vencimento da competência, ou o novo informado pelo síndico quando o da competência já passou.
+export function vencimentoDaEmissao(previa, vencimento, agora) {
+  const v = vencimento || previa.vencimento;
+  return v < isoDia(agora) ? { erro: MSG_VENCIMENTO_PASSADO } : { vencimento: v };
+}
+
+export function emitirCompetencia(estado, competencia, perfil, agora, vencimento = null) {
   if (!podeOperar(perfil)) return erroCobranca(estado, SO_SINDICO);
   const fin = estado.financeiro;
   const previa = previaCompetencia(estado, competencia);
@@ -66,8 +74,10 @@ export function emitirCompetencia(estado, competencia, perfil, agora) {
   const complementar = fin.emitidas.includes(competencia);
   const linhas = complementar ? pendentesDeEmissao(estado, previa) : previa.linhas.filter((l) => !l.bloqueada);
   if (complementar && !linhas.length) return erroCobranca(estado, 'Competência já emitida');
+  const venc = vencimentoDaEmissao(previa, vencimento, agora);
+  if (venc.erro) return erroCobranca(estado, venc.erro);
   const novas = linhas.map((l) => ({
-    id: `CB-${competencia}-${l.unidade}`, unidade: l.unidade, competencia, vencimento: previa.vencimento, itens: l.itens, valor: l.total,
+    id: `CB-${competencia}-${l.unidade}`, unidade: l.unidade, competencia, vencimento: venc.vencimento, itens: l.itens, valor: l.total,
     status: 'aberta', pagaEm: null, valorPago: null, forma: null, baixaManual: null, eventosAsaas: [], regua: [], substituiu: null, acordo: null,
   }));
   const bloqueadas = previa.linhas.filter((l) => l.bloqueada).map((l) => l.unidade);

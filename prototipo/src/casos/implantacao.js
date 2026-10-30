@@ -2,7 +2,7 @@ import { cpfValido, fmtCpf, enderecoDoViaCep, gerarUnidades, sugestaoPrimeiroAnd
 import { condominioNovo } from '../implantacao/novo.js';
 import { indicadoresSindico, alertasDocumentos, destinatarios, comunicadosDaUnidade, horariosDaArea } from '../regras.js';
 import { indicadoresFinanceiros, devedores, previaCompetencia, proximaCompetencia, serieReceitasDespesas, tituloSerie, pendentesDaRegua } from '../cobranca/regras.js';
-import { emitirCompetencia } from '../cobranca/acoes.js';
+import { emitirCompetencia, MSG_VENCIMENTO_PASSADO } from '../cobranca/acoes.js';
 import { primeiraNaoEmitida, versaoVigente, alertasComposicao, simularComposicao, resumoVersao } from '../cobranca/composicao.js';
 import { candidataDaPrevisao } from '../cobranca/orcamento.js';
 import { caixaDeEntrada, alertasNotificacoes, indicadorAtendimento } from '../notificacoes/regras.js';
@@ -121,8 +121,10 @@ export const CASOS_IMPLANTACAO = [
       igual([primeiraNaoEmitida(e.financeiro), proximaCompetencia(e.financeiro), versaoVigente(e.financeiro).id], ['2026-10', '2026-10', 'CV-001']);
       const previa = previaCompetencia(e, '2026-10');
       igual([previa.linhas.length, previa.linhas.find((l) => l.unidade === '101A').total, previa.linhas.find((l) => l.unidade === '401A').total, previa.linhas.filter((l) => l.bloqueada).length], [16, 55000, 82500, 13]);
-      const emitido = emitirCompetencia(e, '2026-10', 'sindico', AGORA_IMPLANTACAO);
-      igual([emitido.emitidas, emitido.estado.financeiro.emitidas, primeiraNaoEmitida(emitido.estado.financeiro)], [3, ['2026-10'], '2026-11']);
+      // O vencimento de outubro (dia 10) já passou em 23/10: sem data nova, não emite vencida.
+      igual([previa.vencimento, emitirCompetencia(e, '2026-10', 'sindico', AGORA_IMPLANTACAO).erro, emitirCompetencia(e, '2026-10', 'sindico', AGORA_IMPLANTACAO, '2026-10-22').erro], ['2026-10-10', MSG_VENCIMENTO_PASSADO, MSG_VENCIMENTO_PASSADO]);
+      const emitido = emitirCompetencia(e, '2026-10', 'sindico', AGORA_IMPLANTACAO, '2026-10-23');
+      igual([emitido.emitidas, emitido.estado.financeiro.emitidas, primeiraNaoEmitida(emitido.estado.financeiro), emitido.estado.financeiro.cobrancas[0].vencimento], [3, ['2026-10'], '2026-11', '2026-10-23']);
     },
   },
   {

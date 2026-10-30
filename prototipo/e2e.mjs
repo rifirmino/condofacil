@@ -138,6 +138,7 @@ const ROTEIROS = {
   async cobrancaEmissao() {
     await irPara('#sindico.cobranca.previa');
     await esperarTexto('Sem responsável financeiro: não será emitida');
+    await js(`(() => { const i = document.getElementById('emissao-vencimento'); if (!i) return; const d = new Date(Date.now() + 5 * 864e5); __e2e.porId('emissao-vencimento', d.toISOString().slice(0, 10)); })()`);
     await clicarSeletor('[data-acao="emitir"]');
     await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('31 responsáveis')`, 'o aviso de emissão');
     await irPara('#sindico.inicio');
@@ -733,6 +734,7 @@ const ROTEIROS = {
     }
 
     await irPara('#sindico.cobranca.previa');
+    await js(`(() => { const i = document.getElementById('emissao-vencimento'); if (!i) return; const d = new Date(Date.now() + 5 * 864e5); __e2e.porId('emissao-vencimento', d.toISOString().slice(0, 10)); })()`);
     await clicarSeletor('[data-acao="emitir"]');
     await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('3 responsáveis')`, 'o aviso da primeira emissão');
 

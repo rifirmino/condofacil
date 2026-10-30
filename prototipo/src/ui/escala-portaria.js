@@ -1,7 +1,7 @@
 import { html, useState } from '../vendor.js';
 import { liberado } from '../planos.js';
-import { POSTOS, PORTEIROS } from '../escala/dados.js';
-import { plantaoAgora, turnosDoPorteiro, feriadosDoMes, porteiroPorId, acharTurno, fmtTurno } from '../escala/regras.js';
+import { POSTOS } from '../escala/dados.js';
+import { plantaoAgora, turnosDoPorteiro, feriadosDoMes, porteiroPorId, porteirosDe, acharTurno, fmtTurno } from '../escala/regras.js';
 import { proporTroca, aceitarTroca, recusarTroca, registrarFalta, fazerCheckin, fazerCheckout } from '../escala/acoes.js';
 import { Campo, Erro, Sucesso, Vazio, Etiqueta } from './comum.js';
 import { Bloqueado } from './financeiro-sindico.js';
@@ -18,7 +18,7 @@ function textoCheckin(t) {
 }
 
 export function PEscala({ estado, executar, agora }) {
-  const [porteiro, setPorteiro] = useState('jose');
+  const [porteiro, setPorteiro] = useState(() => (porteirosDe(estado)[0] || { id: '' }).id);
   const [abrindo, setAbrindo] = useState(null);
   const [colega, setColega] = useState('');
   const [motivo, setMotivo] = useState('falta');
@@ -26,7 +26,7 @@ export function PEscala({ estado, executar, agora }) {
   const [erro, setErro] = useState(null);
   const [mensagem, setMensagem] = useState(null);
   if (!liberado(estado.plano, 'escala')) return html`<section><h1>Escala</h1><${Bloqueado} estado=${estado} recurso="escala" titulo="Escala, trocas e faltas dos porteiros" /></section>`;
-  if (estado.escala.semEquipe) return html`<section><h1>Escala</h1><${Vazio} texto="A equipe da portaria ainda não foi cadastrada. Fale com o síndico." /></section>`;
+  if (!porteirosDe(estado).length) return html`<section><h1>Escala</h1><${Vazio} texto="A equipe da portaria ainda não foi cadastrada. Fale com o síndico." /></section>`;
   const plantao = plantaoAgora(estado, agora);
   const comCheckin = liberado(estado.plano, 'checkin');
   const meus = turnosDoPorteiro(estado, porteiro, agora).slice(0, 8);
@@ -56,8 +56,8 @@ export function PEscala({ estado, executar, agora }) {
       const { atual, proximo } = plantao[id];
       return html`<div key=${id} class="cartao">
         <strong>${p.nome}</strong>
-        <span>${atual ? `${atual.porteiro ? porteiroPorId(atual.porteiro).nome : 'Descoberto'} · ${horaDoTurno(atual.inicio)}–${horaDoTurno(atual.fim)}` : 'Posto fechado agora'}</span>
-        <small class="sub">${proximo ? `Próximo: ${proximo.porteiro ? porteiroPorId(proximo.porteiro).nome : 'descoberto'} às ${horaDoTurno(proximo.inicio)}` : 'Próximo turno ainda sem escala'}</small>
+        <span>${atual ? `${atual.porteiro ? porteiroPorId(estado, atual.porteiro).nome : 'Descoberto'} · ${horaDoTurno(atual.inicio)}–${horaDoTurno(atual.fim)}` : 'Posto fechado agora'}</span>
+        <small class="sub">${proximo ? `Próximo: ${proximo.porteiro ? porteiroPorId(estado, proximo.porteiro).nome : 'descoberto'} às ${horaDoTurno(proximo.inicio)}` : 'Próximo turno ainda sem escala'}</small>
         ${comCheckin && atual && atual.porteiro && (atual.checkin
           ? html`<small class="sub">${textoCheckin(atual)}</small>${!atual.checkout && html`<button type="button" class="btn secundario" onClick=${() => rodar((e) => fazerCheckout(e, atual.porteiro, new Date()), 'Check-out registrado.')}>Fazer check-out</button>`}`
           : html`<button type="button" class="btn primario" data-acao=${`checkin-${id}`} onClick=${() => rodar((e) => fazerCheckin(e, atual.porteiro, new Date()), 'Check-in registrado com foto.')}>Fazer check-in</button>`)}
@@ -67,14 +67,14 @@ export function PEscala({ estado, executar, agora }) {
     <${SemanaEscala} estado=${estado} executar=${executar} agora=${agora} />
     <h2>Meus plantões</h2>
     <div class="cel-pessoa escala-porteiros" role="group" aria-label="Porteiro">
-      ${PORTEIROS.map((p) => html`<button type="button" key=${p.id} aria-pressed=${porteiro === p.id} onClick=${() => { setPorteiro(p.id); setAbrindo(null); setErro(null); setMensagem(null); }}>${p.nome}</button>`)}
+      ${porteirosDe(estado).map((p) => html`<button type="button" key=${p.id} aria-pressed=${porteiro === p.id} onClick=${() => { setPorteiro(p.id); setAbrindo(null); setErro(null); setMensagem(null); }}>${p.nome}</button>`)}
     </div>
     <${Erro} texto=${erro} />
     <${Sucesso} texto=${mensagem} />
     ${recebidas.length > 0 && html`<div class="cartao">
       <strong>Trocas recebidas</strong>
       ${recebidas.map((x) => html`<div key=${x.id} class="linha-entre">
-        <span>${porteiroPorId(x.de).nome} pede que você assuma ${fmtTurno(acharTurno(estado, x.turno))}</span>
+        <span>${porteiroPorId(estado, x.de).nome} pede que você assuma ${fmtTurno(acharTurno(estado, x.turno))}</span>
         <span class="acoes">
           <button type="button" class="btn primario" onClick=${() => rodar((e) => aceitarTroca(e, x.id, porteiro), 'Troca aceita. Falta a aprovação do síndico.')}>Aceitar</button>
           <button type="button" class="btn secundario" onClick=${() => rodar((e) => recusarTroca(e, x.id, porteiro, 'portaria'), 'Troca recusada.')}>Recusar</button>
@@ -84,7 +84,7 @@ export function PEscala({ estado, executar, agora }) {
     ${meus.length
       ? html`<ul class="m-lista">${meus.map((t) => {
           const dia = t.inicio.slice(0, 10);
-          const colegas = PORTEIROS.filter((p) => p.id !== porteiro && p.postos.includes(t.posto));
+          const colegas = porteirosDe(estado).filter((p) => p.id !== porteiro && p.postos.includes(t.posto));
           return html`<li key=${t.id} class="cartao">
             <div class="linha-entre"><strong>${fmtTurno(t)}</strong><span>${POSTOS[t.posto].nome}${feriados[dia] ? html` <${Etiqueta} tipo="info">${feriados[dia]}<//>` : ''}${t.trocado ? html` <${Etiqueta}>troca<//>` : ''}</span></div>
             <div class="acoes">

@@ -1,6 +1,6 @@
 import { html, useState } from '../vendor.js';
-import { POSTOS, PORTEIROS } from '../escala/dados.js';
-import { NOMES_CELULA, inicioDaSemana, semanaDaEscala, semanasComEscala, feriadosDoMes, porteiroPorId, acharTurno } from '../escala/regras.js';
+import { POSTOS } from '../escala/dados.js';
+import { NOMES_CELULA, inicioDaSemana, semanaDaEscala, semanasComEscala, feriadosDoMes, porteiroPorId, porteirosDe, acharTurno } from '../escala/regras.js';
 import { ajustarTurno } from '../escala/acoes.js';
 import { isoDia, fmtDataCurta } from '../datas.js';
 import { Erro, Sucesso } from './comum.js';
@@ -66,7 +66,7 @@ export function SemanaEscala({ estado, agora, executar, editavel = false }) {
       <strong>${POSTOS[turnoEditado.posto].nome} · ${fmtDataCurta(turnoEditado.inicio.slice(0, 10))} · ${horaDoLocal(turnoEditado.inicio)}–${horaDoLocal(turnoEditado.fim)}</strong>
       <label class="campo"><span>Porteiro do turno</span><select id="semana-porteiro" value=${turnoEditado.porteiro || ''} onChange=${(ev) => trocar(ev.target.value)}>
         <option value="">Ninguém (descoberto)</option>
-        ${PORTEIROS.filter((p) => p.postos.includes(turnoEditado.posto)).map((p) => html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}
+        ${porteirosDe(estado).filter((p) => p.postos.includes(turnoEditado.posto)).map((p) => html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}
       </select></label>
       <div class="acoes"><button type="button" class="btn secundario" onClick=${() => setEditando(null)}>Fechar</button></div>
     </div>`}
@@ -74,7 +74,7 @@ export function SemanaEscala({ estado, agora, executar, editavel = false }) {
       <thead><tr><th scope="col">Porteiro</th>${s.dias.map((d, i) => html`<th key=${d} scope="col" class=${d === hoje ? 'hoje' : ''}>${DIAS_SEMANA_CURTOS[i]}<small>${d.slice(8, 10)}/${d.slice(5, 7)}${feriados[d] ? ' · feriado' : ''}</small></th>`)}</tr></thead>
       <tbody>
         ${s.linhas.map((l) => {
-          const p = porteiroPorId(l.porteiro);
+          const p = porteiroPorId(estado, l.porteiro);
           return html`<tr key=${l.porteiro}>
             <th scope="row">${p.nome}</th>
             ${l.celulas.map((c, i) => html`<td key=${s.dias[i]} class=${s.dias[i] === hoje ? 'hoje' : ''}>${c.map((item, n) => html`<${EtqTurno} key=${n} item=${item} mostrarPosto=${p.postos.length > 1} editavel=${editavel} aoClicar=${() => { setEditando(item.turno); setErro(null); setMensagem(null); }} />`)}</td>`)}

@@ -4,6 +4,7 @@ import { urgentesAbertas } from '../notificacoes/regras.js';
 import { PEscala } from './escala-portaria.js';
 import { areaPorId, moradoresDaUnidade, encomendaParada } from '../regras.js';
 import { registrarEncomenda, entregarEncomenda } from '../acoes.js';
+import { configuracoes } from '../configuracoes.js';
 import { isoDia, fmtHora, haQuanto } from '../datas.js';
 import { Campo, Erro, Vazio, FotoFalsa, Etiqueta, Icone } from './comum.js';
 
@@ -91,6 +92,7 @@ function PEntregar({ estado, executar, agora }) {
   const [erro, setErro] = useState(null);
   const [entregue, setEntregue] = useState(null);
   const [lido, setLido] = useState(null);
+  const comQr = configuracoes(estado).encomendaComQr;
   const termo = busca.trim();
   const lista = estado.encomendas
     .filter((e) => e.status === 'aguardando' && (!termo || e.unidade.includes(termo) || e.codigo === termo))
@@ -146,9 +148,11 @@ function PEntregar({ estado, executar, agora }) {
       ${encomenda
         ? html`<div class="cartao" id="painel-entrega">
             <h2>Entregar: apto ${encomenda.unidade} · ${encomenda.transportadora}</h2>
-            <${Campo} rotulo="Código de retirada"><input id="portaria-codigo" class="entrada-grande" inputmode="numeric" maxlength="6" value=${codigo} onInput=${(ev) => setCodigo(ev.target.value)} /><//>
-            <button type="button" class="btn secundario" onClick=${escanear}>Escanear QR do morador</button>
-            ${lido && html`<p class="dica-ocr" role="status">${lido}</p>`}
+            ${comQr
+              ? html`<${Campo} rotulo="Código de retirada"><input id="portaria-codigo" class="entrada-grande" inputmode="numeric" maxlength="6" value=${codigo} onInput=${(ev) => setCodigo(ev.target.value)} /><//>
+                <button type="button" class="btn secundario" onClick=${escanear}>Escanear QR do morador</button>
+                ${lido && html`<p class="dica-ocr" role="status">${lido}</p>`}`
+              : html`<p class="sub">Retirada sem QR Code: confira a unidade e registre quem retirou.</p>`}
             <${Campo} rotulo="Quem retirou"><input id="portaria-quem" class="entrada-grande" value=${nome} onInput=${(ev) => setNome(ev.target.value)} /><//>
             <div class="sugestoes">${moradoresDaUnidade(estado, encomenda.unidade).map((m) => html`<button type="button" key=${m.id} class="btn secundario" onClick=${() => setNome(m.nome)}>${m.nome}</button>`)}</div>
             <${Erro} texto=${erro} />

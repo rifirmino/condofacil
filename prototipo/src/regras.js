@@ -62,9 +62,9 @@ export function avisoCancelamento(reserva, agora) {
   };
 }
 
-export function podeEntregar(encomenda, codigo, nomeRetirada) {
+export function podeEntregar(encomenda, codigo, nomeRetirada, exigeCodigo = true) {
   if (encomenda.status !== 'aguardando') return falhaRegra('Encomenda já entregue');
-  if (String(codigo || '').trim() !== encomenda.codigo) return falhaRegra('Código inválido');
+  if (exigeCodigo && String(codigo || '').trim() !== encomenda.codigo) return falhaRegra('Código inválido');
   if (!String(nomeRetirada || '').trim()) return falhaRegra('Informe quem retirou');
   return REGRA_OK;
 }

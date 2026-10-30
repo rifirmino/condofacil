@@ -22,6 +22,7 @@ export const ORDEM = [
   'src/implantacao/novo.js',
   'src/dados.js',
   'src/regras.js',
+  'src/configuracoes.js',
   'src/notificacoes/regras.js',
   'src/acoes.js',
   'src/notificacoes/acoes.js',
@@ -45,6 +46,7 @@ export const ORDEM = [
   'src/escala/dados.js',
   'src/escala/regras.js',
   'src/escala/acoes.js',
+  'src/escala/colaboradores.js',
   'src/vendas/regras.js',
   'src/vendas/acoes.js',
   'src/assistente/manual.js',
@@ -98,6 +100,8 @@ export const ORDEM = [
   'src/ui/implantacao.js',
   'src/ui/moradores.js',
   'src/ui/convite.js',
+  'src/ui/configuracoes.js',
+  'src/ui/colaboradores.js',
   'src/ui/app.js',
 ];
 

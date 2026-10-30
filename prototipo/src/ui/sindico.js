@@ -18,6 +18,8 @@ import { infracaoPorId, alertasInfracoes } from '../infracoes/regras.js';
 import { CartaoProcessoOcorrencia, BlocoProcessos, SDetalheInfracao } from './infracoes.js';
 import { SFinanceiro } from './financeiro.js';
 import { AprovacaoMoradores } from './convite.js';
+import { SConfiguracoes } from './configuracoes.js';
+import { SColaboradores } from './colaboradores.js';
 import { SEnquetes } from './enquetes.js';
 import { alertasEnquetes } from '../enquetes/regras.js';
 import { alertasContas } from '../financeiro/contas.js';
@@ -26,7 +28,7 @@ import { isoDia, somarMes, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto 
 import { SMoradores } from './moradores.js';
 import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
-const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['moradores', 'Moradores', 'pessoa'], ['cobranca', 'Cobrança', 'cifrao'], ['financeiro', 'Financeiro', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['enquetes', 'Enquetes', 'enquete'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja']];
+const MENU_SINDICO = [['inicio', 'Início', 'grafico'], ['moradores', 'Moradores', 'pessoa'], ['cobranca', 'Cobrança', 'cifrao'], ['financeiro', 'Financeiro', 'grafico'], ['reservas', 'Reservas', 'calendario'], ['comunicados', 'Comunicados', 'megafone'], ['enquetes', 'Enquetes', 'enquete'], ['ocorrencias', 'Notificações', 'prancheta'], ['manutencao', 'Manutenção', 'ferramenta'], ['escala', 'Escala', 'calendario'], ['documentos', 'Documentos', 'documento'], ['encomendas', 'Encomendas', 'pacote'], ['vendas', 'Vendas', 'loja'], ['colaboradores', 'Colaboradores', 'equipe'], ['configuracoes', 'Configurações', 'engrenagem']];
 const EM_BREVE = [['Estoque, checklist e rondas', 'Avançado']];
 const MOTIVOS_RECUSA = ['Data reservada para manutenção', 'Conflito com evento do condomínio', 'Unidade com pendência no regulamento', 'Documentação incompleta'];
 const FILTROS_OCORRENCIA = [['ativas', 'Em aberto'], ['todas', 'Todas'], ...FLUXO_OCORRENCIA.map((s) => [s, NOMES_STATUS[s]]), ['arquivadas', 'Arquivadas']];
@@ -51,7 +53,7 @@ function tipoEtiquetaComunicado(c) {
 
 export function TelaSindico(props) {
   const tela = MENU_SINDICO.some(([id]) => id === props.rota.tela) ? props.rota.tela : 'inicio';
-  const Conteudo = { inicio: SInicio, moradores: SMoradores, reservas: SReservas, comunicados: SComunicados, enquetes: SEnquetes, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, financeiro: SFinanceiro, manutencao: SManutencao, escala: SEscala }[tela];
+  const Conteudo = { inicio: SInicio, moradores: SMoradores, reservas: SReservas, comunicados: SComunicados, enquetes: SEnquetes, ocorrencias: SOcorrencias, documentos: SDocumentos, encomendas: SEncomendas, vendas: SVendas, cobranca: SCobranca, financeiro: SFinanceiro, manutencao: SManutencao, escala: SEscala, colaboradores: SColaboradores, configuracoes: SConfiguracoes }[tela];
   return html`<div class="painel">
     <nav class="painel-menu" aria-label="Menu do síndico">
       <p class="painel-usuario"><strong>${props.estado.condominio.sindico.nome}</strong><small>Síndico · apto ${props.estado.condominio.sindico.unidade}</small></p>

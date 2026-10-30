@@ -71,6 +71,7 @@ async function asaasConectado() {
 
   await irPara('#sindico.cobranca.previa');
   await esperarTexto('Sem CPF: não será emitida');
+  await js(`(() => { const i = document.getElementById('emissao-vencimento'); if (!i) return; const d = new Date(Date.now() + 5 * 864e5); __e2e.porId('emissao-vencimento', d.toISOString().slice(0, 10)); })()`);
   await clicarSeletor('[data-acao="emitir"]');
   await esperarTexto('1 cobrança emitida no Asaas sandbox');
   if (falso.pagamentos.size !== 1) throw new Error(`esperava 1 pagamento no Asaas, veio ${falso.pagamentos.size}`);

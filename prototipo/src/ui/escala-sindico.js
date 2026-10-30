@@ -1,7 +1,7 @@
 import { html, useState } from '../vendor.js';
 import { liberado } from '../planos.js';
-import { POSTOS, PORTEIROS, EMPRESAS, NOMES_VINCULO, NOMES_MOTIVO } from '../escala/dados.js';
-import { buracos, feriadosDoMes, descansoInsuficiente, sugestoesCobertura, relatorioHoras, porteiroPorId, todosTurnos, acharTurno, instanteLocal, mesAtual, fmtTurno, nomeDoMesEscala } from '../escala/regras.js';
+import { POSTOS, EMPRESAS, NOMES_VINCULO, NOMES_MOTIVO } from '../escala/dados.js';
+import { buracos, feriadosDoMes, descansoInsuficiente, sugestoesCobertura, relatorioHoras, porteiroPorId, porteirosDe, todosTurnos, acharTurno, instanteLocal, mesAtual, fmtTurno, nomeDoMesEscala } from '../escala/regras.js';
 import { gerarEscala, publicarEscala, ajustarTurno, aprovarTroca, recusarTroca, atribuirCobertura } from '../escala/acoes.js';
 import { isoDia, somarMes, diasDoMes, fmtDia, fmtDataCurta, fmtDataHora } from '../datas.js';
 import { Campo, Erro, Sucesso, Vazio, Etiqueta } from './comum.js';
@@ -14,8 +14,8 @@ function horaCurta(local) {
   return `${Number(local.slice(11, 13))}h`;
 }
 
-function nomeOuDescoberto(t) {
-  return t.porteiro ? porteiroPorId(t.porteiro).nome : `Descoberto · ${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}`;
+function nomeOuDescoberto(estado, t) {
+  return t.porteiro ? porteiroPorId(estado, t.porteiro).nome : `Descoberto · ${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}`;
 }
 
 export function SEscala(props) {
@@ -23,7 +23,7 @@ export function SEscala(props) {
   if (!liberado(estado.plano, 'escala')) {
     return html`<section><h1>Escala</h1><${Bloqueado} estado=${estado} recurso="escala" titulo="Escala de porteiros com trocas, faltas e cobertura" /></section>`;
   }
-  if (estado.escala.semEquipe) return html`<section><h1>Escala</h1><${Vazio} texto="Cadastre a equipe da portaria para montar a escala (em breve na implantação)." /></section>`;
+  if (!porteirosDe(estado).length) return html`<section class="pilha"><h1>Escala</h1><${Vazio} texto="Nenhum porteiro cadastrado ainda." /><a class="btn primario" href="#sindico.colaboradores">Cadastrar a equipe em Colaboradores</a></section>`;
   const aba = ABAS_ESCALA.some(([id]) => id === rota.id) ? rota.id : 'semana';
   const Conteudo = { semana: ESemana, calendario: ECalendario, pendencias: EPendencias, equipe: EEquipe, horas: EHoras }[aba];
   return html`<section>
@@ -74,7 +74,7 @@ function ECalendario({ estado, executar, agora }) {
   const descanso = descansoInsuficiente(estado, mes);
   const feriados = Object.fromEntries(feriadosDoMes(mes).map((f) => [f.dia, f.nome]));
   const turnos = m.turnos.filter((t) => t.posto === posto);
-  const podeCobrir = PORTEIROS.filter((p) => p.postos.includes(posto));
+  const podeCobrir = porteirosDe(estado).filter((p) => p.postos.includes(posto));
 
   return html`<div class="pilha">
     ${seletores}
@@ -88,7 +88,7 @@ function ECalendario({ estado, executar, agora }) {
       <span class="dia-escala-data">${fmtDia(dia)}${feriados[dia] ? html` <${Etiqueta} tipo="info">${feriados[dia]}<//>` : ''}${dia === hoje ? html` <${Etiqueta} tipo="alerta">hoje<//>` : ''}</span>
       <span class="dia-escala-turnos">
         ${turnos.filter((t) => t.inicio.startsWith(dia)).map((t) => html`<span key=${t.id} class=${`turno-escala${t.porteiro ? '' : ' descoberto'}`}>
-          <button type="button" class="btn-link" data-turno=${t.id} onClick=${() => setEditando(editando === t.id ? null : t.id)}>${nomeOuDescoberto(t)}</button>
+          <button type="button" class="btn-link" data-turno=${t.id} onClick=${() => setEditando(editando === t.id ? null : t.id)}>${nomeOuDescoberto(estado, t)}</button>
           <small>${horaCurta(t.inicio)}–${horaCurta(t.fim)}</small>${t.trocado ? html` <${Etiqueta}>troca<//>` : ''}
           ${editando === t.id && html`<select aria-label="Trocar porteiro" value=${t.porteiro || ''} onChange=${(ev) => { rodar((e) => ajustarTurno(e, t.id, ev.target.value || null, 'sindico'), 'Turno ajustado.'); setEditando(null); }}>
             <option value="">Ninguém (descoberto)</option>
@@ -120,7 +120,7 @@ function EPendencias({ estado, executar, agora }) {
       ? html`<ul class="m-lista">${trocas.map((x) => {
           const t = acharTurno(estado, x.turno);
           return html`<li key=${x.id} class="cartao">
-            <strong>${porteiroPorId(x.de).nome} → ${porteiroPorId(x.para).nome}</strong>
+            <strong>${porteiroPorId(estado, x.de).nome} → ${porteiroPorId(estado, x.para).nome}</strong>
             <small class="sub">${x.id} · ${POSTOS[t.posto].nome} · ${fmtTurno(t)} · o colega já aceitou</small>
             <div class="acoes">
               <button type="button" class="btn primario" data-aprovar=${x.id} onClick=${() => rodar((e) => aprovarTroca(e, x.id, 'sindico'), 'Troca aprovada.')}>Aprovar</button>
@@ -133,9 +133,9 @@ function EPendencias({ estado, executar, agora }) {
     ${descobertos.length
       ? html`<ul class="m-lista">${descobertos.map((t) => html`<li key=${t.id} class="cartao">
           <strong>${POSTOS[t.posto].nome} · ${fmtTurno(t)}</strong>
-          <small class="sub">${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}${t.porteiroOriginal ? ` de ${porteiroPorId(t.porteiroOriginal).nome}` : ''}${t.anexo ? ` · ${t.anexo}` : ''}</small>
+          <small class="sub">${NOMES_MOTIVO[t.motivoDescoberto] || 'sem porteiro'}${t.porteiroOriginal ? ` de ${porteiroPorId(estado, t.porteiroOriginal).nome}` : ''}${t.anexo ? ` · ${t.anexo}` : ''}</small>
           <ul class="itens-sacola">${sugestoesCobertura(estado, t.id).map((s) => {
-            const p = porteiroPorId(s.porteiro);
+            const p = porteiroPorId(estado, s.porteiro);
             return html`<li key=${s.porteiro}>
               <span>${p.nome} · ${NOMES_VINCULO[p.vinculo]} · ${s.descanso === Infinity ? 'livre' : `${s.descanso} h de descanso`}${s.alerta11 ? ' · ⚠ menos de 11 h' : ''}</span>
               <button type="button" class="btn secundario" data-atribuir=${`${t.id}-${s.porteiro}`} onClick=${() => rodar((e) => atribuirCobertura(e, t.id, s.porteiro, 'sindico'), `${p.nome} cobre o turno.`)}>Atribuir</button>
@@ -155,15 +155,15 @@ function EEquipe({ estado }) {
       <thead><tr><th>Posto</th><th>Funcionamento</th></tr></thead>
       <tbody>${Object.entries(POSTOS).map(([id, p]) => html`<tr key=${id}><td>${p.nome}</td><td>${p.fecha - p.abre === 24 ? '24 h' : `${p.abre}h–${p.fecha}h`}</td></tr>`)}</tbody>
     </table></div>
-    <h2>Porteiros</h2>
+    <div class="linha-entre"><h2>Porteiros</h2><a class="btn-link" href="#sindico.colaboradores">Cadastrar ou editar em Colaboradores</a></div>
     <div class="tabela-rolagem"><table class="tabela">
       <thead><tr><th>Nome</th><th>Vínculo</th><th>Empresa</th><th>Telefone</th><th>Postos</th><th>Férias</th></tr></thead>
-      <tbody>${PORTEIROS.map((p) => {
+      <tbody>${porteirosDe(estado).map((p) => {
         const f = estado.escala.ferias.find((x) => x.porteiro === p.id);
         return html`<tr key=${p.id}>
           <td>${p.nome}</td>
           <td>${NOMES_VINCULO[p.vinculo]}</td>
-          <td>${p.empresa ? `${p.empresa} · ${EMPRESAS[p.empresa].telefone}` : '—'}</td>
+          <td>${p.empresa ? (EMPRESAS[p.empresa] ? `${p.empresa} · ${EMPRESAS[p.empresa].telefone}` : p.empresa) : '—'}</td>
           <td>${p.telefone}</td>
           <td>${p.postos.map((x) => POSTOS[x].nome).join(', ')}</td>
           <td>${f ? `${fmtDataCurta(f.de).slice(0, 5)} a ${fmtDataCurta(f.ate).slice(0, 5)}` : '—'}</td>
@@ -181,7 +181,7 @@ function EHoras({ estado, agora }) {
     <h2>Horas de ${nomeDoMesEscala(mes)}</h2>
     <div class="tabela-rolagem"><table class="tabela">
       <thead><tr><th>Porteiro</th><th>Escaladas</th><th>Com check-in</th><th>Atrasos</th><th>Faltas</th><th>Trocas</th></tr></thead>
-      <tbody>${linhas.map((l) => html`<tr key=${l.porteiro}><td>${porteiroPorId(l.porteiro).nome}</td><td>${l.escaladas} h</td><td>${l.comCheckin} h</td><td>${l.atrasos}</td><td>${l.faltas}</td><td>${l.trocas}</td></tr>`)}</tbody>
+      <tbody>${linhas.map((l) => html`<tr key=${l.porteiro}><td>${porteiroPorId(estado, l.porteiro).nome}</td><td>${l.escaladas} h</td><td>${l.comCheckin} h</td><td>${l.atrasos}</td><td>${l.faltas}</td><td>${l.trocas}</td></tr>`)}</tbody>
     </table></div>
     <small class="sub">O check-in confirma presença no posto; não substitui o ponto eletrônico legal. Exportação para Excel e PDF: em breve.</small>
   </div>`;

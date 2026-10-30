@@ -1,6 +1,8 @@
 import { atribuicoesIniciais } from '../escala/dados.js';
 import { gerarTurnos, buracos, feriadosDoMes, sugestoesCobertura, plantaoAgora, descansoInsuficiente, horaLocal, fmtTurno, alertasEscala, relatorioHoras, inicioDaSemana, semanaDaEscala, semanasComEscala } from '../escala/regras.js';
 import { gerarEscala, publicarEscala, proporTroca, aceitarTroca, recusarTroca, aprovarTroca, registrarFalta, atribuirCobertura, fazerCheckin, fazerCheckout } from '../escala/acoes.js';
+import { colaboradores, porteirosDe, porteiroPorId } from '../escala/regras.js';
+import { salvarColaborador, alternarAtivo, escalaDoColaborador, textoEscala } from '../escala/colaboradores.js';
 import { dadosIniciais } from '../dados.js';
 import { liberado } from '../planos.js';
 import { igual, AGORA_FASE2 } from './afirmar.js';
@@ -172,6 +174,35 @@ export const CASOS_ESCALA = [
       const tarde = fazerCheckin(e, 'jose', new Date(2026, 9, 19, 7, 18));
       igual(turno(tarde.estado).checkin.atrasoMin, 18);
       igual(turno(fazerCheckout(tarde.estado, 'jose', new Date(2026, 9, 19, 19, 2)).estado).checkout, { em: '2026-10-19T19:02' });
+    },
+  },
+  {
+    nome: 'colaboradores: cadastro com vínculo, escala fixa e desligamento',
+    rodar() {
+      const novo = { origem: 'novo', plano: 'intermediario', condominio: { nome: 'Edifício Teste' }, escala: { atribuicoes: [], ferias: [], trocas: [], meses: {}, proximaTroca: 1 } };
+      igual([colaboradores(novo), porteirosDe(estadoEscala()).length, colaboradores(estadoEscala()).length, porteiroPorId(estadoEscala(), 'paulo').cargo], [[], 7, 8, 'folguista']);
+      const base = { nome: 'João Lima', cargo: 'porteiro', vinculo: 'clt', telefone: '(11) 91234-5678', postos: ['portaria'], escala: { posto: 'portaria', modelo: '12x36', inicio: '7', primeiroDia: '2026-11-01' } };
+      igual([
+        salvarColaborador(novo, base, 'morador').erro,
+        salvarColaborador(novo, { ...base, nome: ' ' }, 'sindico').erro,
+        salvarColaborador(novo, { ...base, vinculo: 'terceirizado' }, 'sindico').erro,
+        salvarColaborador(novo, { ...base, postos: [] }, 'sindico').erro,
+        salvarColaborador(novo, { ...base, escala: { ...base.escala, posto: 'guarita' } }, 'sindico').erro,
+        salvarColaborador(novo, { ...base, escala: { ...base.escala, primeiroDia: '' } }, 'sindico').erro,
+        salvarColaborador(novo, { ...base, telefone: '1199' }, 'sindico').erro,
+      ], ['Somente o síndico pode fazer isso', 'Informe o nome', 'Informe a empresa do terceirizado', 'Marque ao menos um posto em que ele trabalha', 'O posto da escala precisa estar entre os postos do colaborador', 'Informe o dia do primeiro plantão', 'Telefone inválido: use DDD + número']);
+      const r = salvarColaborador(novo, base, 'sindico');
+      igual([r.id, escalaDoColaborador(r.estado, r.id), textoEscala(escalaDoColaborador(r.estado, r.id))], ['col-joao-lima', { porteiro: 'col-joao-lima', posto: 'portaria', modelo: '12x36', inicio: 7, ancora: '2026-11-01', paridade: 0 }, 'Portaria principal · 12x36 · 7h–19h · dia sim, dia não']);
+      const nov = gerarEscala(r.estado, '2026-11', 'sindico').estado.escala.meses['2026-11'].turnos;
+      igual([nov.length, nov[0].porteiro, nov[0].inicio, nov[1].inicio], [15, 'col-joao-lima', '2026-11-01T07:00', '2026-11-03T07:00']);
+      // Terceirizado no 6x1 e zelador sem posto; editar troca a escala sem duplicar.
+      const rita = salvarColaborador(r.estado, { nome: 'Rita Alves', cargo: 'porteiro', vinculo: 'terceirizado', empresa: 'Prisma', postos: ['guarita'], escala: { posto: 'guarita', modelo: '6x1', inicio: '15', folga: '0' } }, 'sindico');
+      const ze = salvarColaborador(rita.estado, { nome: 'Zé', cargo: 'zelador', vinculo: 'clt', postos: ['portaria'], escala: base.escala }, 'sindico');
+      igual([textoEscala(escalaDoColaborador(ze.estado, rita.id)), ze.estado.colaboradores.find((p) => p.id === ze.id).postos, escalaDoColaborador(ze.estado, ze.id), porteirosDe(ze.estado).length], ['Guarita da garagem · 6x1 (8 h) · 15h–23h · folga domingo', [], null, 2]);
+      const editado = salvarColaborador(ze.estado, { ...base, id: r.id, escala: { ...base.escala, inicio: '19', modelo: 'noturno' } }, 'sindico').estado;
+      igual([editado.escala.atribuicoes.filter((a) => a.porteiro === r.id).length, escalaDoColaborador(editado, r.id).inicio, editado.colaboradores.length], [1, 19, 3]);
+      const fora = alternarAtivo(editado, r.id, 'sindico');
+      igual([fora.ativo, escalaDoColaborador(fora.estado, r.id), porteirosDe(fora.estado).length, porteiroPorId(fora.estado, r.id).nome, alternarAtivo(fora.estado, r.id, 'sindico').ativo], [false, null, 1, 'João Lima', true]);
     },
   },
 ];

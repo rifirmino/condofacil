@@ -2,6 +2,7 @@ import { dadosIniciais, SINDICO } from '../dados.js';
 import { podeReservar } from '../regras.js';
 import { solicitarReserva, aprovarReserva, recusarReserva, cancelarReserva, registrarEncomenda, entregarEncomenda, lembrarEncomenda, publicarComunicado, marcarLido, reagir, abrirOcorrencia, avancarOcorrencia, comentarOcorrencia, arquivarOcorrencia, avaliarOcorrencia, euTambem } from '../acoes.js';
 import { igual, AGORA_TESTE } from './afirmar.js';
+import { configuracoes, salvarConfiguracoes } from '../configuracoes.js';
 
 const PEDIDO_SALAO = { areaId: 'salao', unidade: '302', data: '2026-10-15', inicio: 13, fim: 18, convidados: [], aceiteTermo: true };
 
@@ -24,6 +25,17 @@ export const CASOS_ACOES = [
       const ok = entregarEncomenda(r.estado, { id: r.id, codigo: nova.codigo, nome: 'Ana Souza' }, AGORA_TESTE);
       const entregue = acharPorId(ok.estado.encomendas, r.id);
       igual([entregue.status, entregue.retiradaPor], ['retirada', 'Ana Souza']);
+    },
+  },
+  {
+    nome: 'configuração: síndico desliga o QR Code e a portaria entrega sem código',
+    rodar() {
+      const r = registrarEncomenda(dadosIniciais(AGORA_TESTE), { unidade: '302', transportadora: 'Correios', foto: true, porteiro: 'Seu José' }, AGORA_TESTE);
+      igual([configuracoes(r.estado).encomendaComQr, salvarConfiguracoes(r.estado, { encomendaComQr: false }, 'morador').erro], [true, 'Somente o síndico pode fazer isso']);
+      const semQr = salvarConfiguracoes(r.estado, { encomendaComQr: false, inventada: 1 }, 'sindico').estado;
+      igual(semQr.configuracoes, { encomendaComQr: false });
+      const ok = entregarEncomenda(semQr, { id: r.id, codigo: '', nome: 'Ana Souza' }, AGORA_TESTE);
+      igual([ok.erro, acharPorId(ok.estado.encomendas, r.id).status, entregarEncomenda(semQr, { id: r.id, codigo: '', nome: ' ' }, AGORA_TESTE).erro], [undefined, 'retirada', 'Informe quem retirou']);
     },
   },
   {

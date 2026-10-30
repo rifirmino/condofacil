@@ -80,7 +80,7 @@ function contextoPortaria(estado, agora) {
   const plantao = plantaoAgora(estado, agora);
   const turnos = Object.entries(POSTOS).map(([id, p]) => {
     const { atual, proximo } = plantao[id];
-    return `${p.nome}: ${atual ? (atual.porteiro ? porteiroPorId(atual.porteiro).nome : 'descoberto') : 'fechado agora'}${proximo ? `, próximo ${proximo.porteiro ? porteiroPorId(proximo.porteiro).nome : 'descoberto'} às ${Number(proximo.inicio.slice(11, 13))}h` : ''}`;
+    return `${p.nome}: ${atual ? (atual.porteiro ? porteiroPorId(estado, atual.porteiro).nome : 'descoberto') : 'fechado agora'}${proximo ? `, próximo ${proximo.porteiro ? porteiroPorId(estado, proximo.porteiro).nome : 'descoberto'} às ${Number(proximo.inicio.slice(11, 13))}h` : ''}`;
   });
   const reservas = estado.reservas.filter((r) => r.data === hoje && ['pendente', 'confirmada'].includes(r.status));
   const pacotes = estado.encomendas.filter((e) => e.status === 'aguardando');

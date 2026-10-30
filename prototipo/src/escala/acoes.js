@@ -27,7 +27,7 @@ function mudarTurno(estado, id, mudanca) {
 }
 
 function alertaDescanso(estado, porteiro, turno) {
-  return menorDescanso(estado, porteiro, turno) < 11 ? `Menos de 11 h de descanso para ${porteiroPorId(porteiro).nome}` : undefined;
+  return menorDescanso(estado, porteiro, turno) < 11 ? `Menos de 11 h de descanso para ${porteiroPorId(estado, porteiro).nome}` : undefined;
 }
 
 function inicioDoTurno(t) {
@@ -61,7 +61,7 @@ export function ajustarTurno(estado, turnoId, porteiro, perfil) {
   if (!t) return erroEsc(estado, 'Turno não encontrado');
   if (porteiro && conflita(estado, porteiro, t)) return erroEsc(estado, 'Este colega já tem turno nesse horário');
   const novo = mudarTurno(estado, turnoId, porteiro ? { porteiro } : { porteiro: null, motivoDescoberto: t.motivoDescoberto || 'falta', porteiroOriginal: t.porteiroOriginal || t.porteiro });
-  const nomes = [...new Set([t.porteiro, porteiro].filter(Boolean))].map((id) => porteiroPorId(id).nome);
+  const nomes = [...new Set([t.porteiro, porteiro].filter(Boolean))].map((id) => porteiroPorId(estado, id).nome);
   const publicada = estado.escala.meses[turnoId.slice(2, 9)].situacao === 'publicada';
   return {
     estado: novo,
@@ -81,7 +81,7 @@ export function proporTroca(estado, { turnoId, de, para }, perfil, agora) {
   return {
     estado: comEscala(estado, { trocas: [...estado.escala.trocas, { id, turno: t.id, de, para, situacao: 'proposta', criadaEm: instanteLocal(agora) }], proximaTroca: estado.escala.proximaTroca + 1 }),
     id,
-    notificacao: { canal: 'App', para: porteiroPorId(para).nome, texto: `${porteiroPorId(de).nome} propôs trocar o turno de ${fmtTurno(t)}` },
+    notificacao: { canal: 'App', para: porteiroPorId(estado, para).nome, texto: `${porteiroPorId(estado, de).nome} propôs trocar o turno de ${fmtTurno(t)}` },
   };
 }
 
@@ -100,7 +100,7 @@ export function recusarTroca(estado, id, quem, perfil) {
   const x = estado.escala.trocas.find((t) => t.id === id);
   if (!x || !['proposta', 'aceita'].includes(x.situacao)) return erroEsc(estado, 'Esta troca não pode mais ser recusada');
   if (perfil !== 'sindico' && x.para !== quem) return erroEsc(estado, 'Só o colega convidado pode aceitar');
-  return { estado: mudarTroca(estado, id, { situacao: 'recusada' }), notificacao: { canal: 'App', para: porteiroPorId(x.de).nome, texto: `Troca ${id} recusada` } };
+  return { estado: mudarTroca(estado, id, { situacao: 'recusada' }), notificacao: { canal: 'App', para: porteiroPorId(estado, x.de).nome, texto: `Troca ${id} recusada` } };
 }
 
 export function aprovarTroca(estado, id, perfil) {
@@ -112,7 +112,7 @@ export function aprovarTroca(estado, id, perfil) {
   return {
     estado: mudarTurno(mudarTroca(estado, id, { situacao: 'aprovada' }), t.id, { porteiro: x.para, trocado: true }),
     alerta: alertaDescanso(estado, x.para, t),
-    notificacao: { canal: 'App', para: `${porteiroPorId(x.de).nome} e ${porteiroPorId(x.para).nome}`, texto: `Troca aprovada: ${POSTOS[t.posto].nome} ${fmtTurno(t)} fica com ${porteiroPorId(x.para).nome}` },
+    notificacao: { canal: 'App', para: `${porteiroPorId(estado, x.de).nome} e ${porteiroPorId(estado, x.para).nome}`, texto: `Troca aprovada: ${POSTOS[t.posto].nome} ${fmtTurno(t)} fica com ${porteiroPorId(estado, x.para).nome}` },
   };
 }
 
@@ -123,7 +123,7 @@ export function registrarFalta(estado, turnoId, { quem, motivo, anexo = null }, 
   if (!t || !['falta', 'atestado'].includes(motivo)) return erroEsc(estado, 'Escolha o turno e o motivo');
   if (perfil !== 'sindico' && t.porteiro !== quem) return erroEsc(estado, 'Só o porteiro do turno pode registrar a falta');
   if (!t.porteiro) return erroEsc(estado, 'Este turno já está descoberto');
-  const p = porteiroPorId(t.porteiro);
+  const p = porteiroPorId(estado, t.porteiro);
   const novo = mudarTurno(estado, t.id, { porteiro: null, motivoDescoberto: motivo, porteiroOriginal: t.porteiro, anexo });
   const notificacao = p.vinculo === 'terceirizado'
     ? { canal: 'WhatsApp', para: p.empresa, texto: `${p.empresa}: turno descoberto na ${POSTOS[t.posto].nome} ${inicioDoTurno(t)}` }
@@ -140,7 +140,7 @@ export function atribuirCobertura(estado, turnoId, porteiro, perfil) {
   return {
     estado: mudarTurno(estado, t.id, { porteiro }),
     alerta: alertaDescanso(estado, porteiro, t),
-    notificacao: { canal: 'App', para: porteiroPorId(porteiro).nome, texto: `Você cobre ${POSTOS[t.posto].nome} ${fmtTurno(t)}` },
+    notificacao: { canal: 'App', para: porteiroPorId(estado, porteiro).nome, texto: `Você cobre ${POSTOS[t.posto].nome} ${fmtTurno(t)}` },
   };
 }
 

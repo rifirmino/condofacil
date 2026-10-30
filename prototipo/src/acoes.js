@@ -1,4 +1,5 @@
 import { podeReservar, podeEntregar, destinatarios, proximoStatus, areaPorId, avisoCancelamento, STATUS_ATIVOS } from './regras.js';
+import { configuracoes } from './configuracoes.js';
 import { CATEGORIAS, NOMES_STATUS, NOMES_CANAL, nomeSindico } from './dados.js';
 import { fmtDia, fmtHora, haQuanto } from './datas.js';
 
@@ -86,7 +87,7 @@ export function registrarEncomenda(estado, dados, agora) {
 export function entregarEncomenda(estado, { id, codigo, nome }, agora) {
   const e = estado.encomendas.find((x) => x.id === id);
   if (!e) return erroAcao(estado, 'Encomenda não encontrada');
-  const v = podeEntregar(e, codigo, nome);
+  const v = podeEntregar(e, codigo, nome, configuracoes(estado).encomendaComQr);
   if (!v.ok) return erroAcao(estado, v.motivo);
   const quem = nome.trim();
   return {

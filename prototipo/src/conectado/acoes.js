@@ -13,7 +13,7 @@ export function previaConectada(estado, competencia) {
   };
 }
 
-export function linhasParaAsaas(estado, competencia, apenas = null) {
+export function linhasParaAsaas(estado, competencia, apenas = null, vencimento = null) {
   const previa = previaConectada(estado, competencia);
   const { multaPct, jurosPct } = estado.financeiro.parametros;
   return previa.linhas.filter((l) => !l.bloqueada && (!apenas || apenas.includes(l.unidade))).map((l) => {
@@ -22,7 +22,7 @@ export function linhasParaAsaas(estado, competencia, apenas = null) {
       unidade: l.unidade,
       responsavel: { nome: l.responsavel.nome, cpf: l.responsavel.cpf, email: pessoa ? pessoa.email : '', celular: pessoa ? pessoa.celular : '' },
       valor: l.total,
-      vencimento: previa.vencimento,
+      vencimento: vencimento || previa.vencimento,
       descricao: `Taxa condominial de ${mesExtenso(competencia)} · apto ${l.unidade}`,
       multaPct,
       jurosPct,
