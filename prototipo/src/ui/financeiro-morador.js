@@ -4,6 +4,7 @@ import { fmtReais, mesExtenso, situacaoCobranca, valorAtualizado, rotuloCobranca
 import { propostaPendente, acordoAtivo } from '../cobranca/acordos.js';
 import { confirmarPagamentoAsaas } from '../cobranca/acoes.js';
 import { pessoaDaUnidade } from '../vendas/regras.js';
+import { mesmoNome } from '../moradores/acoes.js';
 import { isoDia, nomeMes, fmtDataCurta } from '../datas.js';
 import { Sucesso, Vazio, QrFalso, PrevDoc } from './comum.js';
 import { EtqCobranca } from './financeiro-sindico.js';
@@ -14,7 +15,7 @@ import { chamarApi } from '../conectado/cliente.js';
 function responsavelDaPessoa(estado, eu) {
   const responsavel = estado.financeiro.unidades[eu].responsavel;
   const pessoa = pessoaDaUnidade(estado, eu);
-  return { responsavel, souResponsavel: !!responsavel && !!pessoa && responsavel.nome === pessoa.nome };
+  return { responsavel, souResponsavel: !!responsavel && !!pessoa && mesmoNome(responsavel.nome, pessoa.nome) };
 }
 
 function cobrancasDaUnidade(estado, eu, hoje) {

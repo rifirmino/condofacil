@@ -1,14 +1,10 @@
 import { trocarItem } from '../acoes.js';
 import { apenasDigitos, celularValido } from './regras.js';
-import { outrosDaUnidade } from '../moradores/acoes.js';
+import { outrosDaUnidade, mesmoNome } from '../moradores/acoes.js';
 
 // Primeiro acesso pelo convite (QR Code): quem está na planilha passa a ativo; quem não está aguarda o síndico aprovar.
 function erroConvite(estado, mensagem) {
   return { estado, erro: mensagem };
-}
-
-function normalizarNome(nome) {
-  return String(nome || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 // Código simulado do "SMS": fixo por celular, para o teste ponta a ponta poder conferi-lo.
@@ -25,7 +21,7 @@ export function confirmarConvite(estado, { unidade, nome, celular, codigo }, ago
   if (!celularValido(celular)) return erroConvite(estado, 'Informe um celular com DDD');
   if (String(codigo || '').trim() !== codigoDoConvite(celular)) return erroConvite(estado, 'Código inválido. Confira o SMS');
   const cel = apenasDigitos(celular);
-  const existente = estado.pessoas.find((p) => p.unidade === u && (normalizarNome(p.nome) === normalizarNome(n) || (p.celular && p.celular === cel)));
+  const existente = estado.pessoas.find((p) => p.unidade === u && (mesmoNome(p.nome, n) || (p.celular && p.celular === cel)));
   if (existente) {
     if (existente.situacao === 'pendente') return { estado, id: existente.id, situacao: 'pendente' };
     const ativo = { situacao: 'ativo', celular: existente.celular || cel, acessoEm: agora.toISOString() };

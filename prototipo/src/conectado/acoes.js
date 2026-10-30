@@ -1,5 +1,6 @@
 import { previaCompetencia, podeOperar, mesExtenso } from '../cobranca/regras.js';
 import { comFinanceiro, comAuditoria, confirmarPagamentoAsaas, SO_SINDICO } from '../cobranca/acoes.js';
+import { mesmoNome } from '../moradores/acoes.js';
 
 // Modo conectado: converte o que o servidor devolve do Asaas sandbox nas mesmas estruturas do modo simulado.
 export const MSG_SEM_CPF = 'Sem CPF: não será emitida';
@@ -16,7 +17,7 @@ export function linhasParaAsaas(estado, competencia, apenas = null) {
   const previa = previaConectada(estado, competencia);
   const { multaPct, jurosPct } = estado.financeiro.parametros;
   return previa.linhas.filter((l) => !l.bloqueada && (!apenas || apenas.includes(l.unidade))).map((l) => {
-    const pessoa = estado.pessoas.find((p) => p.unidade === l.unidade && p.nome === l.responsavel.nome);
+    const pessoa = estado.pessoas.find((p) => p.unidade === l.unidade && mesmoNome(p.nome, l.responsavel.nome));
     return {
       unidade: l.unidade,
       responsavel: { nome: l.responsavel.nome, cpf: l.responsavel.cpf, email: pessoa ? pessoa.email : '', celular: pessoa ? pessoa.celular : '' },

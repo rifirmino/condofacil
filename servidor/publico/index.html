@@ -2806,6 +2806,15 @@ function erroCadastro(estado, mensagem) {
   return { estado, erro: mensagem };
 }
 
+function normalizarNome(nome) {
+  return String(nome || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// O responsável financeiro é ligado ao morador pelo nome: ignora maiúsculas, acentos e espaços a mais.
+function mesmoNome(a, b) {
+  return !!normalizarNome(a) && normalizarNome(a) === normalizarNome(b);
+}
+
 function ehSindico(estado, pessoa) {
   const s = estado.condominio.sindico;
   return !!s && pessoa.nome === s.nome && pessoa.unidade === s.unidade;
@@ -2828,7 +2837,12 @@ function atualizarMeusDados(estado, idPessoa, { nome, cpf, celular, email }) {
   if (String(cpf || '').trim() && !cpfValido(cpf)) return erroCadastro(estado, 'CPF inválido');
   if (String(celular || '').trim() && !celularValido(celular)) return erroCadastro(estado, 'Celular inválido: use DDD + número');
   if (String(email || '').trim() && !emailValido(email)) return erroCadastro(estado, 'E-mail inválido');
-  return { estado: { ...estado, pessoas: trocarItem(estado.pessoas, idPessoa, { nome: n, cpf: apenasDigitos(cpf), celular: apenasDigitos(celular), email: String(email || '').trim() }) } };
+  const atualizado = { ...estado, pessoas: trocarItem(estado.pessoas, idPessoa, { nome: n, cpf: apenasDigitos(cpf), celular: apenasDigitos(celular), email: String(email || '').trim() }) };
+  // Se quem trocou o nome é o responsável financeiro da unidade, a cobrança acompanha o nome novo.
+  const daUnidade = estado.financeiro.unidades[p.unidade];
+  if (!daUnidade || !daUnidade.responsavel || !mesmoNome(daUnidade.responsavel.nome, p.nome)) return { estado: atualizado };
+  const fin = estado.financeiro;
+  return { estado: { ...atualizado, financeiro: { ...fin, unidades: { ...fin.unidades, [p.unidade]: { ...daUnidade, responsavel: { ...daUnidade.responsavel, nome: n } } } } } };
 }
 
 function salvarResidentes(estado, unidade, lista) {
@@ -2870,10 +2884,6 @@ function erroConvite(estado, mensagem) {
   return { estado, erro: mensagem };
 }
 
-function normalizarNome(nome) {
-  return String(nome || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
-}
-
 // Código simulado do "SMS": fixo por celular, para o teste ponta a ponta poder conferi-lo.
 function codigoDoConvite(celular) {
   const d = apenasDigitos(celular);
@@ -2888,7 +2898,7 @@ function confirmarConvite(estado, { unidade, nome, celular, codigo }, agora) {
   if (!celularValido(celular)) return erroConvite(estado, 'Informe um celular com DDD');
   if (String(codigo || '').trim() !== codigoDoConvite(celular)) return erroConvite(estado, 'Código inválido. Confira o SMS');
   const cel = apenasDigitos(celular);
-  const existente = estado.pessoas.find((p) => p.unidade === u && (normalizarNome(p.nome) === normalizarNome(n) || (p.celular && p.celular === cel)));
+  const existente = estado.pessoas.find((p) => p.unidade === u && (mesmoNome(p.nome, n) || (p.celular && p.celular === cel)));
   if (existente) {
     if (existente.situacao === 'pendente') return { estado, id: existente.id, situacao: 'pendente' };
     const ativo = { situacao: 'ativo', celular: existente.celular || cel, acessoEm: agora.toISOString() };
@@ -2961,7 +2971,7 @@ function linhasParaAsaas(estado, competencia, apenas = null) {
   const previa = previaConectada(estado, competencia);
   const { multaPct, jurosPct } = estado.financeiro.parametros;
   return previa.linhas.filter((l) => !l.bloqueada && (!apenas || apenas.includes(l.unidade))).map((l) => {
-    const pessoa = estado.pessoas.find((p) => p.unidade === l.unidade && p.nome === l.responsavel.nome);
+    const pessoa = estado.pessoas.find((p) => p.unidade === l.unidade && mesmoNome(p.nome, l.responsavel.nome));
     return {
       unidade: l.unidade,
       responsavel: { nome: l.responsavel.nome, cpf: l.responsavel.cpf, email: pessoa ? pessoa.email : '', celular: pessoa ? pessoa.celular : '' },
@@ -5661,7 +5671,7 @@ function contextoMorador(estado, eu, agora) {
   const pessoa = pessoaDaUnidade(estado, eu);
   const fin = estado.financeiro;
   const responsavel = fin.unidades[eu].responsavel;
-  const souResponsavel = !!responsavel && !!pessoa && responsavel.nome === pessoa.nome;
+  const souResponsavel = !!responsavel && !!pessoa && mesmoNome(responsavel.nome, pessoa.nome);
   const linhas = [`Pessoa: ${pessoa ? pessoa.nome : `Apto ${eu}`}, morador(a) do apto ${eu}. Responsável financeiro da unidade: ${responsavel ? responsavel.nome : 'não cadastrado'}${souResponsavel ? ' (é a própria pessoa)' : ' (outra pessoa: ela não vê as cobranças)'}.`];
   const pacotes = estado.encomendas.filter((e) => e.unidade === eu && e.status === 'aguardando');
   linhas.push(pacotes.length ? `Encomendas aguardando retirada: ${pacotes.map((e) => `${e.transportadora}, código ${e.codigo}, chegou em ${fmtDataCurta(isoDia(new Date(e.chegadaEm)))}${encomendaParada(e, agora) ? ' (parada há mais de 3 dias)' : ''}`).join('; ')}.` : 'Nenhuma encomenda aguardando retirada.');
@@ -8177,6 +8187,11 @@ const CASOS_IMPLANTACAO = [
       const def = definirResponsavel(e, '102A', { nome: 'Carlos Lima', cpf: '529.982.247-25', relacao: 'inquilino' }, 'sindico');
       igual(def.estado.financeiro.unidades['102A'].responsavel, { nome: 'Carlos Lima', relacao: 'inquilino', cpf: '52998224725', documento: 'CPF 529.982.247-25', canais: ['App', 'E-mail', 'WhatsApp'] });
       igual([definirResponsavel(e, '102A', { nome: 'X', cpf: '1' }, 'sindico').erro, definirResponsavel(e, '102A', { nome: 'X', cpf: '52998224725' }, 'morador').erro], ['Informe um CPF válido', 'Somente o síndico pode fazer isso']);
+      // O responsável é ligado pelo nome sem diferenciar maiúsculas e acentos, e acompanha a troca de nome em "Meus dados".
+      const comResp = definirResponsavel(e, maria.unidade, { nome: 'MARIA  SILVA', cpf: '529.982.247-25' }, 'sindico').estado;
+      igual([mesmoNome('MARIA  SILVA', 'Maria Silva'), mesmoNome('Mária Silva', 'maria silva '), mesmoNome('', ''), mesmoNome('Maria', 'Maria Silva')], [true, true, false, false]);
+      const renomeada = atualizarMeusDados(comResp, maria.id, { nome: 'Maria Souza' }).estado;
+      igual([renomeada.financeiro.unidades[maria.unidade].responsavel.nome, atualizarMeusDados(definirResponsavel(e, maria.unidade, { nome: 'Outra Pessoa', cpf: '529.982.247-25' }, 'sindico').estado, maria.id, { nome: 'Maria Souza' }).estado.financeiro.unidades[maria.unidade].responsavel.nome], ['Maria Souza', 'Outra Pessoa']);
       const helena = e.pessoas.find((p) => p.nome === 'Helena Prado');
       igual([removerPessoa(e, maria.id, 'sindico').estado.pessoas.length, removerPessoa(e, helena.id, 'sindico').erro, removerPessoa(e, maria.id, 'morador').erro], [e.pessoas.length - 1, 'O síndico não pode ser removido por aqui', 'Somente o síndico pode fazer isso']);
     },
@@ -11299,7 +11314,7 @@ function EHoras({ estado, agora }) {
 function responsavelDaPessoa(estado, eu) {
   const responsavel = estado.financeiro.unidades[eu].responsavel;
   const pessoa = pessoaDaUnidade(estado, eu);
-  return { responsavel, souResponsavel: !!responsavel && !!pessoa && responsavel.nome === pessoa.nome };
+  return { responsavel, souResponsavel: !!responsavel && !!pessoa && mesmoNome(responsavel.nome, pessoa.nome) };
 }
 
 function cobrancasDaUnidade(estado, eu, hoje) {
@@ -13985,7 +14000,7 @@ function AprovacaoMoradores({ estado, executar }) {
 const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
 const ultimaRota = {};
 // A montagem troca pelo dia e hora em que a página foi gerada.
-const VERSAO_PAGINA = "30/10 18:49";
+const VERSAO_PAGINA = "30/10 19:08";
 
 function estadoDeHoje() {
   const salvo = carregarEstado();

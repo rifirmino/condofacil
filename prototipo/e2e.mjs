@@ -389,13 +389,23 @@ const ROTEIROS = {
   async escalaTroca() {
     await clicar('Reiniciar demonstração');
     await irPara('#portaria.escala');
-    await clicar('Marcos');
     await esperarTexto('Meus plantões');
+    // Quem ainda tem plantão pela frente depende do dia e da hora: usa o primeiro porteiro que tiver.
+    const de = await js(`(async () => {
+      for (const b of document.querySelectorAll('.escala-porteiros button')) {
+        b.click();
+        await new Promise((ok) => setTimeout(ok, 150));
+        if ([...document.querySelectorAll('button')].some((x) => x.textContent.trim() === 'Propor troca')) return b.textContent.trim();
+      }
+      return null;
+    })()`);
+    if (!de) throw new Error('nenhum porteiro com plantão pela frente');
     await clicar('Propor troca');
-    await preencher('Colega', 'paulo');
+    const para = await js(`document.getElementById('troca-colega').selectedOptions[0].textContent.trim()`);
     await clicar('Enviar proposta de troca');
-    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes('Marcos propôs')`, 'o aviso ao Paulo');
-    await clicar('Paulo');
+    await esperar(`!!document.querySelector('.selo') && document.querySelector('.selo').innerText.includes(${JSON.stringify(`${de} propôs`)})`, 'o aviso ao colega');
+    await js(`[...document.querySelectorAll('.escala-porteiros button')].find((b) => b.textContent.trim() === ${JSON.stringify(para)}).click()`);
+    await pausa(150);
     await clicar('Aceitar');
     await esperarTexto('Falta a aprovação do síndico');
     await irPara('#sindico.escala.pendencias');

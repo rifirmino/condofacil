@@ -10,6 +10,15 @@ function erroCadastro(estado, mensagem) {
   return { estado, erro: mensagem };
 }
 
+function normalizarNome(nome) {
+  return String(nome || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// O responsável financeiro é ligado ao morador pelo nome: ignora maiúsculas, acentos e espaços a mais.
+export function mesmoNome(a, b) {
+  return !!normalizarNome(a) && normalizarNome(a) === normalizarNome(b);
+}
+
 export function ehSindico(estado, pessoa) {
   const s = estado.condominio.sindico;
   return !!s && pessoa.nome === s.nome && pessoa.unidade === s.unidade;
@@ -32,7 +41,12 @@ export function atualizarMeusDados(estado, idPessoa, { nome, cpf, celular, email
   if (String(cpf || '').trim() && !cpfValido(cpf)) return erroCadastro(estado, 'CPF inválido');
   if (String(celular || '').trim() && !celularValido(celular)) return erroCadastro(estado, 'Celular inválido: use DDD + número');
   if (String(email || '').trim() && !emailValido(email)) return erroCadastro(estado, 'E-mail inválido');
-  return { estado: { ...estado, pessoas: trocarItem(estado.pessoas, idPessoa, { nome: n, cpf: apenasDigitos(cpf), celular: apenasDigitos(celular), email: String(email || '').trim() }) } };
+  const atualizado = { ...estado, pessoas: trocarItem(estado.pessoas, idPessoa, { nome: n, cpf: apenasDigitos(cpf), celular: apenasDigitos(celular), email: String(email || '').trim() }) };
+  // Se quem trocou o nome é o responsável financeiro da unidade, a cobrança acompanha o nome novo.
+  const daUnidade = estado.financeiro.unidades[p.unidade];
+  if (!daUnidade || !daUnidade.responsavel || !mesmoNome(daUnidade.responsavel.nome, p.nome)) return { estado: atualizado };
+  const fin = estado.financeiro;
+  return { estado: { ...atualizado, financeiro: { ...fin, unidades: { ...fin.unidades, [p.unidade]: { ...daUnidade, responsavel: { ...daUnidade.responsavel, nome: n } } } } } };
 }
 
 export function salvarResidentes(estado, unidade, lista) {

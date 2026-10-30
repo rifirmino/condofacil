@@ -12,6 +12,7 @@ import { POSTOS } from '../escala/dados.js';
 import { ZELADOR } from '../manutencao/dados.js';
 import { CONSELHEIRO } from '../financeiro/dados.js';
 import { pessoaDaUnidade } from '../vendas/regras.js';
+import { mesmoNome } from '../moradores/acoes.js';
 import { isoDia, fmtDataCurta, fmtHora, nomeMes } from '../datas.js';
 import { MANUAL_ABEL } from './manual.js';
 
@@ -25,7 +26,7 @@ function contextoMorador(estado, eu, agora) {
   const pessoa = pessoaDaUnidade(estado, eu);
   const fin = estado.financeiro;
   const responsavel = fin.unidades[eu].responsavel;
-  const souResponsavel = !!responsavel && !!pessoa && responsavel.nome === pessoa.nome;
+  const souResponsavel = !!responsavel && !!pessoa && mesmoNome(responsavel.nome, pessoa.nome);
   const linhas = [`Pessoa: ${pessoa ? pessoa.nome : `Apto ${eu}`}, morador(a) do apto ${eu}. Responsável financeiro da unidade: ${responsavel ? responsavel.nome : 'não cadastrado'}${souResponsavel ? ' (é a própria pessoa)' : ' (outra pessoa: ela não vê as cobranças)'}.`];
   const pacotes = estado.encomendas.filter((e) => e.unidade === eu && e.status === 'aguardando');
   linhas.push(pacotes.length ? `Encomendas aguardando retirada: ${pacotes.map((e) => `${e.transportadora}, código ${e.codigo}, chegou em ${fmtDataCurta(isoDia(new Date(e.chegadaEm)))}${encomendaParada(e, agora) ? ' (parada há mais de 3 dias)' : ''}`).join('; ')}.` : 'Nenhuma encomenda aguardando retirada.');

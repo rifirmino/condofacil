@@ -16,7 +16,7 @@ import { fluxoProjetado } from '../financeiro/fluxo.js';
 import { contextoAbel } from '../assistente/ia.js';
 import { responderAbel } from '../assistente/regras.js';
 import { confirmarConvite, aprovarMorador, recusarMorador, codigoDoConvite, moradoresPendentes } from '../implantacao/acoes.js';
-import { atualizarMeusDados, salvarResidentes, residentesDaUnidade, definirResponsavel, removerPessoa, outrosDaUnidade } from '../moradores/acoes.js';
+import { atualizarMeusDados, salvarResidentes, residentesDaUnidade, definirResponsavel, removerPessoa, outrosDaUnidade, mesmoNome } from '../moradores/acoes.js';
 import { pessoaDaUnidade } from '../vendas/regras.js';
 import { igual } from './afirmar.js';
 
@@ -219,6 +219,11 @@ export const CASOS_IMPLANTACAO = [
       const def = definirResponsavel(e, '102A', { nome: 'Carlos Lima', cpf: '529.982.247-25', relacao: 'inquilino' }, 'sindico');
       igual(def.estado.financeiro.unidades['102A'].responsavel, { nome: 'Carlos Lima', relacao: 'inquilino', cpf: '52998224725', documento: 'CPF 529.982.247-25', canais: ['App', 'E-mail', 'WhatsApp'] });
       igual([definirResponsavel(e, '102A', { nome: 'X', cpf: '1' }, 'sindico').erro, definirResponsavel(e, '102A', { nome: 'X', cpf: '52998224725' }, 'morador').erro], ['Informe um CPF válido', 'Somente o síndico pode fazer isso']);
+      // O responsável é ligado pelo nome sem diferenciar maiúsculas e acentos, e acompanha a troca de nome em "Meus dados".
+      const comResp = definirResponsavel(e, maria.unidade, { nome: 'MARIA  SILVA', cpf: '529.982.247-25' }, 'sindico').estado;
+      igual([mesmoNome('MARIA  SILVA', 'Maria Silva'), mesmoNome('Mária Silva', 'maria silva '), mesmoNome('', ''), mesmoNome('Maria', 'Maria Silva')], [true, true, false, false]);
+      const renomeada = atualizarMeusDados(comResp, maria.id, { nome: 'Maria Souza' }).estado;
+      igual([renomeada.financeiro.unidades[maria.unidade].responsavel.nome, atualizarMeusDados(definirResponsavel(e, maria.unidade, { nome: 'Outra Pessoa', cpf: '529.982.247-25' }, 'sindico').estado, maria.id, { nome: 'Maria Souza' }).estado.financeiro.unidades[maria.unidade].responsavel.nome], ['Maria Souza', 'Outra Pessoa']);
       const helena = e.pessoas.find((p) => p.nome === 'Helena Prado');
       igual([removerPessoa(e, maria.id, 'sindico').estado.pessoas.length, removerPessoa(e, helena.id, 'sindico').erro, removerPessoa(e, maria.id, 'morador').erro], [e.pessoas.length - 1, 'O síndico não pode ser removido por aqui', 'Somente o síndico pode fazer isso']);
     },
