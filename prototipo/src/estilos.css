@@ -648,3 +648,4 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .primeiro-andar input:focus, .linha-residente input:focus { border-color: var(--laranja); outline: none; box-shadow: 0 0 0 2px var(--laranja-tinta); }
 .primeiro-andar .lista-unidades { gap: 8px; }
 .resp-financeiro { display: inline-flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.versao-pagina { align-self: center; color: var(--ardosia-suave); font-size: 12px; }

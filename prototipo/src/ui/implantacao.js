@@ -342,7 +342,11 @@ function PassoAreas({ r, mudar }) {
 }
 
 function PassoDivulgacao({ r }) {
-  const nome = r.condominio.nome || 'Seu condomínio';
+  return html`<${DivulgacaoConvite} nome=${r.condominio.nome || 'Seu condomínio'} />`;
+}
+
+// Cartaz com QR Code, link e mensagem do convite: na implantação e, depois, em Moradores do síndico.
+export function DivulgacaoConvite({ nome }) {
   const link = linkConvite(identificadorCondominio(nome));
   const mensagem = mensagemWhatsAppConvite(nome, link);
   const [copiado, setCopiado] = useState(null);
@@ -373,7 +377,6 @@ function PassoDivulgacao({ r }) {
         <pre class="modelo-csv">${mensagem}</pre>
         <button type="button" class="btn secundario" onClick=${() => copiar(mensagem, 'Mensagem copiada.')}>Copiar mensagem</button>
         <${Sucesso} texto=${copiado} />
-        <small class="sub">O endereço ${CONTATO_COMERCIAL.site} ainda não está publicado: o QR mostra o link certo, que passa a abrir quando o site estiver no ar.</small>
       </div>
     </div>
   </div>`;

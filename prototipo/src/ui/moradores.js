@@ -4,6 +4,7 @@ import { fmtCpf } from '../implantacao/regras.js';
 import { NOMES_RELACAO } from '../cobranca/dados.js';
 import { pessoaDaUnidade } from '../vendas/regras.js';
 import { Campo, Erro, Sucesso, Vazio, Etiqueta } from './comum.js';
+import { DivulgacaoConvite } from './implantacao.js';
 
 // Meus dados (morador, só a própria unidade) e Moradores (síndico, todas as unidades e o responsável financeiro).
 const NOMES_SITUACAO_PESSOA = { ativo: ['ok', 'usa o app'], convidado: ['neutro', 'convidado'], pendente: ['alerta', 'aguardando aprovação'] };
@@ -110,6 +111,7 @@ export function SMoradores({ estado, executar }) {
   const [busca, setBusca] = useState('');
   const [editando, setEditando] = useState(null);
   const [mensagem, setMensagem] = useState(null);
+  const [verConvite, setVerConvite] = useState(false);
   const termo = busca.trim().toLowerCase();
   const unidades = estado.condominio.unidades.filter((u) => !termo || u.toLowerCase().includes(termo) || estado.pessoas.some((p) => p.unidade === u && p.nome.toLowerCase().includes(termo)));
   function remover(p) {
@@ -119,6 +121,8 @@ export function SMoradores({ estado, executar }) {
   return html`<section class="pilha">
     <h1>Moradores</h1>
     <p class="sub">Quem mora em cada unidade, a situação no app e o responsável financeiro, que só o síndico define.</p>
+    <div class="acoes"><button type="button" class="btn secundario" data-acao="ver-convite" aria-expanded=${verConvite} onClick=${() => setVerConvite(!verConvite)}>${verConvite ? 'Fechar convite' : 'Convidar moradores (QR Code)'}</button></div>
+    ${verConvite && html`<div class="cartao"><${DivulgacaoConvite} nome=${estado.condominio.nome} /></div>`}
     <${Campo} rotulo="Buscar por unidade ou nome"><input id="busca-moradores" value=${busca} onInput=${(ev) => setBusca(ev.target.value)} /><//>
     <${Sucesso} texto=${mensagem} />
     ${unidades.length === 0 && html`<${Vazio} texto="Nenhuma unidade encontrada." />`}

@@ -653,6 +653,7 @@ button.etq-turno:hover { filter: brightness(1.06); outline: 2px solid var(--lara
 .primeiro-andar input:focus, .linha-residente input:focus { border-color: var(--laranja); outline: none; box-shadow: 0 0 0 2px var(--laranja-tinta); }
 .primeiro-andar .lista-unidades { gap: 8px; }
 .resp-financeiro { display: inline-flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.versao-pagina { align-self: center; color: var(--ardosia-suave); font-size: 12px; }
 
 </style>
 <div id="app"></div>
@@ -13647,7 +13648,11 @@ function PassoAreas({ r, mudar }) {
 }
 
 function PassoDivulgacao({ r }) {
-  const nome = r.condominio.nome || 'Seu condomínio';
+  return html`<${DivulgacaoConvite} nome=${r.condominio.nome || 'Seu condomínio'} />`;
+}
+
+// Cartaz com QR Code, link e mensagem do convite: na implantação e, depois, em Moradores do síndico.
+function DivulgacaoConvite({ nome }) {
   const link = linkConvite(identificadorCondominio(nome));
   const mensagem = mensagemWhatsAppConvite(nome, link);
   const [copiado, setCopiado] = useState(null);
@@ -13678,7 +13683,6 @@ function PassoDivulgacao({ r }) {
         <pre class="modelo-csv">${mensagem}</pre>
         <button type="button" class="btn secundario" onClick=${() => copiar(mensagem, 'Mensagem copiada.')}>Copiar mensagem</button>
         <${Sucesso} texto=${copiado} />
-        <small class="sub">O endereço ${CONTATO_COMERCIAL.site} ainda não está publicado: o QR mostra o link certo, que passa a abrir quando o site estiver no ar.</small>
       </div>
     </div>
   </div>`;
@@ -13836,6 +13840,7 @@ function SMoradores({ estado, executar }) {
   const [busca, setBusca] = useState('');
   const [editando, setEditando] = useState(null);
   const [mensagem, setMensagem] = useState(null);
+  const [verConvite, setVerConvite] = useState(false);
   const termo = busca.trim().toLowerCase();
   const unidades = estado.condominio.unidades.filter((u) => !termo || u.toLowerCase().includes(termo) || estado.pessoas.some((p) => p.unidade === u && p.nome.toLowerCase().includes(termo)));
   function remover(p) {
@@ -13845,6 +13850,8 @@ function SMoradores({ estado, executar }) {
   return html`<section class="pilha">
     <h1>Moradores</h1>
     <p class="sub">Quem mora em cada unidade, a situação no app e o responsável financeiro, que só o síndico define.</p>
+    <div class="acoes"><button type="button" class="btn secundario" data-acao="ver-convite" aria-expanded=${verConvite} onClick=${() => setVerConvite(!verConvite)}>${verConvite ? 'Fechar convite' : 'Convidar moradores (QR Code)'}</button></div>
+    ${verConvite && html`<div class="cartao"><${DivulgacaoConvite} nome=${estado.condominio.nome} /></div>`}
     <${Campo} rotulo="Buscar por unidade ou nome"><input id="busca-moradores" value=${busca} onInput=${(ev) => setBusca(ev.target.value)} /><//>
     <${Sucesso} texto=${mensagem} />
     ${unidades.length === 0 && html`<${Vazio} texto="Nenhuma unidade encontrada." />`}
@@ -13943,6 +13950,8 @@ function AprovacaoMoradores({ estado, executar }) {
 
 const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
 const ultimaRota = {};
+// A montagem troca pelo dia e hora em que a página foi gerada.
+const VERSAO_PAGINA = "30/10 18:10";
 
 function estadoDeHoje() {
   const salvo = carregarEstado();
@@ -14092,6 +14101,7 @@ function App() {
         <button type="button" class="precos" aria-expanded=${mostrarPrecos} onClick=${() => setMostrarPrecos(!mostrarPrecos)}>Preços</button>
       </div>
       ${estado.origem !== 'novo' && html`<button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>`}
+      ${VERSAO_PAGINA !== '__VERSAO__' && html`<small class="versao-pagina">Versão de ${VERSAO_PAGINA}</small>`}
       ${conexao.servidor && (conexao.codigo
         ? html`<span class="selo-conexao">Asaas sandbox conectado</span>`
         : html`<${ConectarPiloto} erro=${conexao.erro} aoConectar=${conectar} />`)}

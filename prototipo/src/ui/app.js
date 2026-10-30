@@ -37,6 +37,8 @@ import { aplicarSituacoes } from '../conectado/acoes.js';
 
 const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
 const ultimaRota = {};
+// A montagem troca pelo dia e hora em que a página foi gerada.
+const VERSAO_PAGINA = '__VERSAO__';
 
 function estadoDeHoje() {
   const salvo = carregarEstado();
@@ -186,6 +188,7 @@ function App() {
         <button type="button" class="precos" aria-expanded=${mostrarPrecos} onClick=${() => setMostrarPrecos(!mostrarPrecos)}>Preços</button>
       </div>
       ${estado.origem !== 'novo' && html`<button type="button" class="reiniciar" onClick=${reiniciar}>Reiniciar demonstração</button>`}
+      ${VERSAO_PAGINA !== '__VERSAO__' && html`<small class="versao-pagina">Versão de ${VERSAO_PAGINA}</small>`}
       ${conexao.servidor && (conexao.codigo
         ? html`<span class="selo-conexao">Asaas sandbox conectado</span>`
         : html`<${ConectarPiloto} erro=${conexao.erro} aoConectar=${conectar} />`)}

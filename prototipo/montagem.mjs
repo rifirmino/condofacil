@@ -114,7 +114,9 @@ export function montar() {
   const js = ORDEM.map((arquivo) => `// ---- ${arquivo} ----\n${transformar(readFileSync(join(raiz, arquivo), 'utf8'))}`).join('\n');
   const css = readFileSync(join(raiz, 'src/estilos.css'), 'utf8');
   const base = readFileSync(join(raiz, 'src/base.html'), 'utf8');
-  return base.replace('/*CSS*/', () => css).replace('/*JS*/', () => js);
+  // Data da montagem, mostrada no topo do app: confere se o celular já abriu a versão nova.
+  const versao = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '');
+  return base.replace('/*CSS*/', () => css).replace('/*JS*/', () => js.replace("'__VERSAO__'", () => JSON.stringify(versao)));
 }
 
 export function extrairScript(pagina) {
