@@ -82,6 +82,12 @@ export function previaCompetencia(estado, competencia) {
   return { competencia, vencimento: vencimentoDa(fin, competencia), linhas };
 }
 
+// Unidades que ficaram de fora de uma competência já emitida (ex.: sem responsável na hora) e agora podem ser emitidas.
+export function pendentesDeEmissao(estado, previa) {
+  const comCobranca = new Set(estado.financeiro.cobrancas.filter((c) => c.competencia === previa.competencia).map((c) => c.unidade));
+  return previa.linhas.filter((l) => !l.bloqueada && !comCobranca.has(l.unidade));
+}
+
 export function etapasNoPlano(plano) {
   return ETAPAS_POR_PLANO[plano];
 }

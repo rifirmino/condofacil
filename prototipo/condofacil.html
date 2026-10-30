@@ -1152,6 +1152,12 @@ function previaCompetencia(estado, competencia) {
   return { competencia, vencimento: vencimentoDa(fin, competencia), linhas };
 }
 
+// Unidades que ficaram de fora de uma competência já emitida (ex.: sem responsável na hora) e agora podem ser emitidas.
+function pendentesDeEmissao(estado, previa) {
+  const comCobranca = new Set(estado.financeiro.cobrancas.filter((c) => c.competencia === previa.competencia).map((c) => c.unidade));
+  return previa.linhas.filter((l) => !l.bloqueada && !comCobranca.has(l.unidade));
+}
+
 function etapasNoPlano(plano) {
   return ETAPAS_POR_PLANO[plano];
 }
@@ -1426,9 +1432,12 @@ function editarItemPrevia(estado, competencia, unidade, itens) {
 function emitirCompetencia(estado, competencia, perfil, agora) {
   if (!podeOperar(perfil)) return erroCobranca(estado, SO_SINDICO);
   const fin = estado.financeiro;
-  if (fin.emitidas.includes(competencia)) return erroCobranca(estado, 'Competência já emitida');
   const previa = previaCompetencia(estado, competencia);
-  const novas = previa.linhas.filter((l) => !l.bloqueada).map((l) => ({
+  // Competência já emitida: só entram as unidades que ficaram de fora e agora podem ser cobradas.
+  const complementar = fin.emitidas.includes(competencia);
+  const linhas = complementar ? pendentesDeEmissao(estado, previa) : previa.linhas.filter((l) => !l.bloqueada);
+  if (complementar && !linhas.length) return erroCobranca(estado, 'Competência já emitida');
+  const novas = linhas.map((l) => ({
     id: `CB-${competencia}-${l.unidade}`, unidade: l.unidade, competencia, vencimento: previa.vencimento, itens: l.itens, valor: l.total,
     status: 'aberta', pagaEm: null, valorPago: null, forma: null, baixaManual: null, eventosAsaas: [], regua: [], substituiu: null, acordo: null,
   }));
@@ -1436,8 +1445,8 @@ function emitirCompetencia(estado, competencia, perfil, agora) {
   return {
     estado: comFinanceiro(estado, {
       cobrancas: [...fin.cobrancas, ...novas],
-      emitidas: [...fin.emitidas, competencia],
-      auditoria: comAuditoria(estado, agora, 'Emissão em lote', `${mesExtenso(competencia)}: ${novas.length} cobranças${bloqueadas.length ? ` · não emitidas: ${bloqueadas.join(', ')}` : ''}`),
+      emitidas: complementar ? fin.emitidas : [...fin.emitidas, competencia],
+      auditoria: comAuditoria(estado, agora, complementar ? 'Emissão complementar' : 'Emissão em lote',`${mesExtenso(competencia)}: ${novas.length} cobranças${bloqueadas.length ? ` · não emitidas: ${bloqueadas.join(', ')}` : ''}`),
     }),
     emitidas: novas.length,
     notificacao: { canal: 'App + e-mail + WhatsApp', para: `${novas.length} responsáveis`, texto: `Cobranças de ${mesExtenso(competencia)} emitidas pelo Asaas: boleto, Pix e link de pagamento` },
@@ -6771,6 +6780,16 @@ const CASOS_COBRANCA_ACOES = [
     },
   },
   {
+    nome: 'cobrança: unidade que ganhou responsável depois da emissão é emitida à parte',
+    rodar() {
+      const e = definirResponsavel(comNovembroEmitido(), '403', { nome: 'Rita Lopes', cpf: '529.982.247-25', relacao: 'titular' }, 'sindico').estado;
+      igual(pendentesDeEmissao(e, previaCompetencia(e, '2026-11')).map((l) => l.unidade), ['403']);
+      const r = emitirCompetencia(e, '2026-11', 'sindico', AGORA_FASE2);
+      igual([r.emitidas, cobrancaPorId(r.estado, 'CB-2026-11-403').status, r.estado.financeiro.emitidas.filter((c) => c === '2026-11').length, r.estado.financeiro.auditoria.at(-1).acao], [1, 'aberta', 1, 'Emissão complementar']);
+      igual(emitirCompetencia(r.estado, '2026-11', 'sindico', AGORA_FASE2).erro, 'Competência já emitida');
+    },
+  },
+  {
     nome: 'cobrança: confirmação do Asaas é idempotente',
     rodar() {
       const e = comNovembroEmitido();
@@ -9188,6 +9207,8 @@ function CPrevia({ estado, executar }) {
   const [mensagem, setMensagem] = useState(null);
   const emitiveis = previa.linhas.filter((l) => !l.bloqueada);
   const total = emitiveis.reduce((soma, l) => soma + l.total, 0);
+  // As que falharam no Asaas têm o botão próprio de reenvio.
+  const deFora = emitida ? pendentesDeEmissao(estado, previa).filter((l) => !falhas.some((f) => f.unidade === l.unidade)) : [];
 
   // Modo conectado: o servidor cria as cobranças no Asaas sandbox e o app guarda só as que deram certo.
   async function emitirNoAsaas(apenas) {
@@ -9206,9 +9227,10 @@ function CPrevia({ estado, executar }) {
   }
 
   function emitir() {
-    if (real) { emitirNoAsaas(null); return; }
+    if (real) { emitirNoAsaas(emitida ? deFora.map((l) => l.unidade) : null); return; }
     const r = executar((e) => emitirCompetencia(e, competencia, 'sindico', new Date()));
     setErro(r.erro || null);
+    if (!r.erro && emitida) setMensagem(`${r.emitidas} ${r.emitidas === 1 ? 'cobrança emitida' : 'cobranças emitidas'} para as unidades que tinham ficado de fora.`);
   }
 
   return html`<div class="pilha">
@@ -9239,6 +9261,11 @@ function CPrevia({ estado, executar }) {
     </div>`}
     <${Erro} texto=${erro} />
     ${!emitida && html`<button type="button" class="btn primario" data-acao="emitir" disabled=${enviando} onClick=${emitir}>${enviando ? 'Emitindo no Asaas…' : `Emitir ${emitiveis.length} cobranças`}</button>`}
+    ${deFora.length > 0 && html`<div class="cartao pilha">
+      <strong>Ficaram de fora da emissão e já podem ser cobradas</strong>
+      <ul class="itens-sacola">${deFora.map((l) => html`<li key=${l.unidade}><span>Apto ${l.unidade} · ${l.responsavel.nome}</span><span>${fmtReais(l.total)}</span></li>`)}</ul>
+      <button type="button" class="btn primario" data-acao="emitir-de-fora" disabled=${enviando} onClick=${emitir}>${enviando ? 'Emitindo no Asaas…' : `Emitir ${deFora.length === 1 ? 'esta cobrança' : `estas ${deFora.length} cobranças`}`}</button>
+    </div>`}
   </div>`;
 }
 
@@ -13951,7 +13978,7 @@ function AprovacaoMoradores({ estado, executar }) {
 const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
 const ultimaRota = {};
 // A montagem troca pelo dia e hora em que a página foi gerada.
-const VERSAO_PAGINA = "30/10 18:10";
+const VERSAO_PAGINA = "30/10 18:49";
 
 function estadoDeHoje() {
   const salvo = carregarEstado();

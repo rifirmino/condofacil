@@ -1,7 +1,7 @@
 import { nomeSindico } from '../dados.js';
 import { PLANOS } from '../planos.js';
 import { isoDia } from '../datas.js';
-import { validarParametros, previaCompetencia, valorAtualizado, pendentesDaRegua, podeOperar, fmtReais, mesExtenso, rotuloCobranca } from './regras.js';
+import { validarParametros, previaCompetencia, pendentesDeEmissao, valorAtualizado, pendentesDaRegua, podeOperar, fmtReais, mesExtenso, rotuloCobranca } from './regras.js';
 
 // Cada ação devolve { estado, notificacao?, erro? } sem mutar nada; ações financeiras entram na auditoria.
 export const SO_SINDICO = 'Somente o síndico pode fazer isso';
@@ -61,9 +61,12 @@ export function editarItemPrevia(estado, competencia, unidade, itens) {
 export function emitirCompetencia(estado, competencia, perfil, agora) {
   if (!podeOperar(perfil)) return erroCobranca(estado, SO_SINDICO);
   const fin = estado.financeiro;
-  if (fin.emitidas.includes(competencia)) return erroCobranca(estado, 'Competência já emitida');
   const previa = previaCompetencia(estado, competencia);
-  const novas = previa.linhas.filter((l) => !l.bloqueada).map((l) => ({
+  // Competência já emitida: só entram as unidades que ficaram de fora e agora podem ser cobradas.
+  const complementar = fin.emitidas.includes(competencia);
+  const linhas = complementar ? pendentesDeEmissao(estado, previa) : previa.linhas.filter((l) => !l.bloqueada);
+  if (complementar && !linhas.length) return erroCobranca(estado, 'Competência já emitida');
+  const novas = linhas.map((l) => ({
     id: `CB-${competencia}-${l.unidade}`, unidade: l.unidade, competencia, vencimento: previa.vencimento, itens: l.itens, valor: l.total,
     status: 'aberta', pagaEm: null, valorPago: null, forma: null, baixaManual: null, eventosAsaas: [], regua: [], substituiu: null, acordo: null,
   }));
@@ -71,8 +74,8 @@ export function emitirCompetencia(estado, competencia, perfil, agora) {
   return {
     estado: comFinanceiro(estado, {
       cobrancas: [...fin.cobrancas, ...novas],
-      emitidas: [...fin.emitidas, competencia],
-      auditoria: comAuditoria(estado, agora, 'Emissão em lote', `${mesExtenso(competencia)}: ${novas.length} cobranças${bloqueadas.length ? ` · não emitidas: ${bloqueadas.join(', ')}` : ''}`),
+      emitidas: complementar ? fin.emitidas : [...fin.emitidas, competencia],
+      auditoria: comAuditoria(estado, agora, complementar ? 'Emissão complementar' : 'Emissão em lote',`${mesExtenso(competencia)}: ${novas.length} cobranças${bloqueadas.length ? ` · não emitidas: ${bloqueadas.join(', ')}` : ''}`),
     }),
     emitidas: novas.length,
     notificacao: { canal: 'App + e-mail + WhatsApp', para: `${novas.length} responsáveis`, texto: `Cobranças de ${mesExtenso(competencia)} emitidas pelo Asaas: boleto, Pix e link de pagamento` },

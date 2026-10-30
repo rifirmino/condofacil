@@ -1,6 +1,6 @@
 import { html, useState } from '../vendor.js';
 import { ETAPAS_REGUA, CATEGORIAS_DESPESA, NOMES_FORMA, NOMES_RELACAO } from '../cobranca/dados.js';
-import { fmtReais, fmtReaisCurto, mesCurto, mesExtenso, situacaoCobranca, valorAtualizado, previaCompetencia, proximaCompetencia, etapasNoPlano, devedores, indicadoresFinanceiros, serieReceitasDespesas, tituloSerie, rotuloCobranca } from '../cobranca/regras.js';
+import { fmtReais, fmtReaisCurto, mesCurto, mesExtenso, situacaoCobranca, valorAtualizado, previaCompetencia, pendentesDeEmissao, proximaCompetencia, etapasNoPlano, devedores, indicadoresFinanceiros, serieReceitasDespesas, tituloSerie, rotuloCobranca } from '../cobranca/regras.js';
 import { alertasAcordos } from '../cobranca/acordos.js';
 import { alertasComposicao } from '../cobranca/composicao.js';
 import { emitirCompetencia, editarItemPrevia, baixaManual, cancelarEReemitir, enviarSegundaVia, executarRegua, salvarParametros } from '../cobranca/acoes.js';
@@ -202,6 +202,8 @@ function CPrevia({ estado, executar }) {
   const [mensagem, setMensagem] = useState(null);
   const emitiveis = previa.linhas.filter((l) => !l.bloqueada);
   const total = emitiveis.reduce((soma, l) => soma + l.total, 0);
+  // As que falharam no Asaas têm o botão próprio de reenvio.
+  const deFora = emitida ? pendentesDeEmissao(estado, previa).filter((l) => !falhas.some((f) => f.unidade === l.unidade)) : [];
 
   // Modo conectado: o servidor cria as cobranças no Asaas sandbox e o app guarda só as que deram certo.
   async function emitirNoAsaas(apenas) {
@@ -220,9 +222,10 @@ function CPrevia({ estado, executar }) {
   }
 
   function emitir() {
-    if (real) { emitirNoAsaas(null); return; }
+    if (real) { emitirNoAsaas(emitida ? deFora.map((l) => l.unidade) : null); return; }
     const r = executar((e) => emitirCompetencia(e, competencia, 'sindico', new Date()));
     setErro(r.erro || null);
+    if (!r.erro && emitida) setMensagem(`${r.emitidas} ${r.emitidas === 1 ? 'cobrança emitida' : 'cobranças emitidas'} para as unidades que tinham ficado de fora.`);
   }
 
   return html`<div class="pilha">
@@ -253,6 +256,11 @@ function CPrevia({ estado, executar }) {
     </div>`}
     <${Erro} texto=${erro} />
     ${!emitida && html`<button type="button" class="btn primario" data-acao="emitir" disabled=${enviando} onClick=${emitir}>${enviando ? 'Emitindo no Asaas…' : `Emitir ${emitiveis.length} cobranças`}</button>`}
+    ${deFora.length > 0 && html`<div class="cartao pilha">
+      <strong>Ficaram de fora da emissão e já podem ser cobradas</strong>
+      <ul class="itens-sacola">${deFora.map((l) => html`<li key=${l.unidade}><span>Apto ${l.unidade} · ${l.responsavel.nome}</span><span>${fmtReais(l.total)}</span></li>`)}</ul>
+      <button type="button" class="btn primario" data-acao="emitir-de-fora" disabled=${enviando} onClick=${emitir}>${enviando ? 'Emitindo no Asaas…' : `Emitir ${deFora.length === 1 ? 'esta cobrança' : `estas ${deFora.length} cobranças`}`}</button>
+    </div>`}
   </div>`;
 }
 

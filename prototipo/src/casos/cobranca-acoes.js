@@ -1,7 +1,8 @@
 import { dadosIniciais } from '../dados.js';
-import { previaCompetencia, devedores, indicadoresFinanceiros } from '../cobranca/regras.js';
+import { previaCompetencia, pendentesDeEmissao, devedores, indicadoresFinanceiros } from '../cobranca/regras.js';
 import { salvarParametros, editarItemPrevia, emitirCompetencia, confirmarPagamentoAsaas, baixaManual, cancelarEReemitir, enviarSegundaVia, executarRegua, trocarPlano } from '../cobranca/acoes.js';
 import { igual, AGORA_FASE2 } from './afirmar.js';
+import { definirResponsavel } from '../moradores/acoes.js';
 
 const HOJE_ACOES = '2026-10-19';
 
@@ -26,6 +27,16 @@ export const CASOS_COBRANCA_ACOES = [
       igual(cobrancaPorId(r.estado, 'CB-2026-11-403'), undefined);
       igual(indicadoresFinanceiros(r.estado, HOJE_ACOES).arrecadado.proxima, { competencia: '2026-11', pagas: 0, total: 31 });
       igual(r.estado.financeiro.auditoria.at(-1).acao, 'Emissão em lote');
+    },
+  },
+  {
+    nome: 'cobrança: unidade que ganhou responsável depois da emissão é emitida à parte',
+    rodar() {
+      const e = definirResponsavel(comNovembroEmitido(), '403', { nome: 'Rita Lopes', cpf: '529.982.247-25', relacao: 'titular' }, 'sindico').estado;
+      igual(pendentesDeEmissao(e, previaCompetencia(e, '2026-11')).map((l) => l.unidade), ['403']);
+      const r = emitirCompetencia(e, '2026-11', 'sindico', AGORA_FASE2);
+      igual([r.emitidas, cobrancaPorId(r.estado, 'CB-2026-11-403').status, r.estado.financeiro.emitidas.filter((c) => c === '2026-11').length, r.estado.financeiro.auditoria.at(-1).acao], [1, 'aberta', 1, 'Emissão complementar']);
+      igual(emitirCompetencia(r.estado, '2026-11', 'sindico', AGORA_FASE2).erro, 'Competência já emitida');
     },
   },
   {
