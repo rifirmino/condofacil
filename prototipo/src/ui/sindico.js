@@ -20,6 +20,7 @@ import { SFinanceiro } from './financeiro.js';
 import { AprovacaoMoradores } from './convite.js';
 import { SConfiguracoes } from './configuracoes.js';
 import { SColaboradores } from './colaboradores.js';
+import { AreasComuns } from './areas.js';
 import { SEnquetes } from './enquetes.js';
 import { alertasEnquetes } from '../enquetes/regras.js';
 import { alertasContas } from '../financeiro/contas.js';
@@ -116,7 +117,9 @@ function SInicio({ estado, agora, executar }) {
 
 function SReservas({ estado, executar, agora }) {
   const hoje = isoDia(agora);
-  const [areaId, setAreaId] = useState('salao');
+  const [escolhida, setAreaId] = useState(null);
+  // A área escolhida, ou a primeira cadastrada: a lista muda quando o síndico cadastra áreas.
+  const areaId = escolhida && areaPorId(estado, escolhida) ? escolhida : (estado.areas[0] || { id: null }).id;
   const [anoMes, setAnoMes] = useState(hoje.slice(0, 7));
   const [dia, setDia] = useState(hoje);
   const [recusando, setRecusando] = useState(null);
@@ -161,7 +164,7 @@ function SReservas({ estado, executar, agora }) {
               </div>`}
         </li>`)}</ul>`
       : html`<${Vazio} texto="Nenhuma reserva aguardando aprovação." />`}
-    <h2>Agenda</h2>
+    ${areaId && html`<h2>Agenda</h2>
     <div class="chips" role="group" aria-label="Área">
       ${estado.areas.map((a) => html`<button type="button" key=${a.id} class="chip" aria-pressed=${a.id === areaId} onClick=${() => setAreaId(a.id)}>${a.nome}</button>`)}
     </div>
@@ -174,19 +177,8 @@ function SReservas({ estado, executar, agora }) {
           ? html`<ul class="lista-cartoes">${doDia.map((r) => html`<li key=${r.id} class="cartao"><div class="linha-entre"><span>${fmtHora(r.inicio)}–${fmtHora(r.fim)} · apto ${r.unidade}</span><${EtqReserva} status=${r.status} /></div></li>`)}</ul>`
           : !bloqueios.length && html`<${Vazio} texto="Nenhuma reserva neste dia." />`}
       </div>
-    </div>
-    <h2>Regras das áreas</h2>
-    <div class="tabela-rolagem"><table class="tabela">
-      <thead><tr><th>Área</th><th>Tipo</th><th>Taxa</th><th>Aprovação</th><th>Antecedência</th><th>Limite</th></tr></thead>
-      <tbody>${estado.areas.map((a) => html`<tr key=${a.id}>
-        <td>${a.nome}</td>
-        <td>${a.tipo === 'periodo' ? 'Período' : 'Por hora'}</td>
-        <td>${a.taxa ? fmtMoeda(a.taxa) : '—'}</td>
-        <td>${a.aprovacao === 'manual' ? 'Manual' : 'Automática'}</td>
-        <td>${a.antecedenciaMin} a ${a.antecedenciaMax} dias</td>
-        <td>${a.limiteMes ? `${a.limiteMes} por mês` : 'Sem limite'}</td>
-      </tr>`)}</tbody>
-    </table></div>
+    </div>`}
+    <${AreasComuns} estado=${estado} executar=${executar} />
   </section>`;
 }
 

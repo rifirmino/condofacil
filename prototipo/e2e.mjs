@@ -659,7 +659,7 @@ const ROTEIROS = {
   async larguraCelular() {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     await pausa(300);
-    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas', '#sindico.escala.semana', '#sindico.ocorrencias.PI-001', '#sindico.ocorrencias.OC-0043', '#sindico.cobranca.orcamento', '#sindico.financeiro.contas', '#sindico.financeiro.prestacao', '#conselho.prestacao', '#morador.prestacao', '#sindico.enquetes.EN-001', '#sindico.enquetes.nova', '#morador.enquetes.EN-001', '#sindico.moradores', '#morador.dados']) {
+    for (const hash of ['#sindico.inicio', '#sindico.reservas', '#sindico.comunicados.novo', '#sindico.ocorrencias', '#sindico.encomendas', '#sindico.vendas', '#morador.inicio', '#morador.reservas', '#morador.vendas', '#morador.vendas.a1', '#morador.vendas.loja', '#portaria.registrar', '#portaria.entregar', '#sindico.cobranca', '#morador.financeiro', '#sindico.cobranca.acordos', '#sindico.cobranca.AC-001', '#sindico.cobranca.novoacordo', '#sindico.ocorrencias', '#sindico.manutencao', '#sindico.manutencao.compras', '#zelador.os', '#zelador.os.OS-003', '#zelador.compras', '#zelador.compras.nova', '#morador.ocorrencias.nova', '#sindico.escala', '#sindico.escala.pendencias', '#sindico.escala.equipe', '#portaria.escala', '#sindico.cobranca.taxas', '#sindico.escala.semana', '#sindico.ocorrencias.PI-001', '#sindico.ocorrencias.OC-0043', '#sindico.cobranca.orcamento', '#sindico.financeiro.contas', '#sindico.financeiro.prestacao', '#conselho.prestacao', '#morador.prestacao', '#sindico.enquetes.EN-001', '#sindico.enquetes.nova', '#morador.enquetes.EN-001', '#sindico.moradores', '#morador.dados', '#sindico.colaboradores', '#sindico.configuracoes']) {
       await irPara(hash);
       const largura = await js('document.documentElement.scrollWidth');
       if (largura > 390) throw new Error(`${hash} rola na horizontal (${largura}px)`);
@@ -794,6 +794,46 @@ const ROTEIROS = {
     await porId('resp-cpf-101A', '529.982.247-25');
     await clicarSeletor('[data-acao="salvar-responsavel"]');
     await esperar(`document.querySelector('[data-unidade-moradores="101A"]').innerText.includes('CPF 529.982.247-25')`, 'o CPF do responsável salvo');
+
+    // Equipe: o primeiro porteiro cadastrado já forma a escala do mês seguinte.
+    await irPara('#sindico.escala');
+    await esperarTexto('Nenhum porteiro cadastrado ainda');
+    await irPara('#sindico.colaboradores');
+    await clicarSeletor('[data-acao="novo-colaborador"]');
+    await porId('colab-nome', 'João Lima');
+    await porId('colab-telefone', '(11) 91234-5678');
+    await porId('colab-primeiro-dia', new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10));
+    await clicarSeletor('[data-acao="salvar-colaborador"]');
+    await esperarTexto('João Lima cadastrado');
+    await esperar(`document.querySelector('[data-colaborador="col-joao-lima"]').innerText.includes('Portaria principal · 12x36 · 7h–19h')`, 'a escala do João');
+    await irPara('#sindico.escala.calendario');
+    await esperar(`!!document.querySelector('[data-acao="gerar-escala"]')`, 'o botão de gerar a escala');
+
+    // Área comum nova, que o morador já vê para reservar.
+    await irPara('#sindico.reservas');
+    await clicarSeletor('[data-acao="nova-area"]');
+    await porId('area-nome', 'Espaço gourmet');
+    await porId('area-taxa', '80');
+    await clicarSeletor('[data-acao="salvar-area"]');
+    await esperarTexto('Espaço gourmet cadastrada');
+    await irPara('#morador.reservas');
+    await esperarTexto('Espaço gourmet');
+
+    // Configurações: sem QR Code, a portaria entrega sem pedir o código.
+    await irPara('#sindico.configuracoes');
+    await js(`document.getElementById('config-encomenda-qr').click()`);
+    await esperarTexto('não pede mais o QR Code');
+    await irPara('#portaria.registrar');
+    await porId('portaria-unidade', '402b');
+    await clicar('Mercado Livre');
+    await clicar('Registrar encomenda');
+    await esperarTexto('Morador avisado por WhatsApp');
+    await irPara('#portaria.entregar');
+    await clicar('Apto 402B');
+    await esperar(`!!document.getElementById('portaria-quem') && !document.getElementById('portaria-codigo')`, 'a entrega sem o campo de código');
+    await porId('portaria-quem', 'Helena Prado');
+    await clicar('Confirmar entrega');
+    await esperarTexto('Entrega registrada: apto 402B');
 
     // A demonstração continua intacta e o condomínio criado fica guardado no seletor.
     await js(`document.getElementById('seletor-condominio').value = 'demo'; document.getElementById('seletor-condominio').dispatchEvent(new Event('change', { bubbles: true })); true`);

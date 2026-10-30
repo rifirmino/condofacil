@@ -2332,6 +2332,7 @@ function conflito(estado, areaId, data, inicio, fim) {
 function podeReservar(estado, pedido, agora) {
   const area = areaPorId(estado, pedido.areaId);
   if (!area) return falhaRegra('Área inexistente');
+  if (area.ativa === false) return falhaRegra('Área desativada pelo síndico');
   const dias = diferencaDias(pedido.data, isoDia(agora));
   if (dias < 0 || momento(pedido.data, pedido.inicio) <= agora) return falhaRegra('Esse horário já passou');
   if (dias < area.antecedenciaMin) return falhaRegra(`Reserve com pelo menos ${plural(area.antecedenciaMin, 'dia', 'dias')} de antecedência`);
@@ -2811,6 +2812,90 @@ function arquivarComJustificativa(estado, id, motivo, perfil, agora) {
   if (!texto) return erroNotif(estado, 'Informe o motivo do arquivamento');
   if (!estado.ocorrencias.some((o) => o.id === id)) return erroNotif(estado, 'Ocorrência não encontrada');
   return { estado: comEntrada(estado, id, { arquivada: true, motivoArquivamento: texto }, { em: agora.toISOString(), status: null, texto: `Arquivada: ${texto}`, autor: 'Síndico' }) };
+}
+
+// ---- src/areas/acoes.js ----
+// Cadastro das áreas comuns pelo síndico: regras de reserva, taxa e o que cada área tem de particular.
+const PERIODOS_PADRAO = [
+  { id: 'manha', nome: 'Manhã', inicio: 8, fim: 13 },
+  { id: 'tarde', nome: 'Tarde', inicio: 13, fim: 18 },
+  { id: 'noite', nome: 'Noite', inicio: 18, fim: 23 },
+  { id: 'dia', nome: 'Dia inteiro', inicio: 8, fim: 23 },
+];
+const SO_SINDICO_AREA = 'Somente o síndico pode fazer isso';
+
+function erroArea(estado, mensagem) {
+  return { estado, erro: mensagem };
+}
+
+function areasAtivas(estado) {
+  return estado.areas.filter((a) => a.ativa !== false);
+}
+
+function idDaArea(areas, nome) {
+  const base = String(nome).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'area';
+  let id = base;
+  for (let n = 2; areas.some((a) => a.id === id); n++) id = `${base}-${n}`;
+  return id;
+}
+
+function inteiro(valor, vazio = null) {
+  const t = String(valor ?? '').trim();
+  if (!t) return vazio;
+  const n = Number(t.replace(',', '.'));
+  return Number.isInteger(n) ? n : NaN;
+}
+
+// Os números chegam como texto do formulário; vazio em limite e capacidade quer dizer "sem limite".
+function salvarArea(estado, dados, perfil) {
+  if (perfil !== 'sindico') return erroArea(estado, SO_SINDICO_AREA);
+  const nome = String(dados.nome || '').trim();
+  if (!nome) return erroArea(estado, 'Informe o nome da área');
+  const existente = dados.id ? estado.areas.find((a) => a.id === dados.id) : null;
+  if (dados.id && !existente) return erroArea(estado, 'Área não encontrada');
+  if (estado.areas.some((a) => a.id !== dados.id && a.nome.toLowerCase() === nome.toLowerCase())) return erroArea(estado, 'Já existe uma área com esse nome');
+  if (!['periodo', 'hora'].includes(dados.tipo)) return erroArea(estado, 'Escolha como a área é reservada');
+  const periodos = PERIODOS_PADRAO.filter((p) => (dados.periodos || []).includes(p.id));
+  if (dados.tipo === 'periodo' && !periodos.length) return erroArea(estado, 'Marque ao menos um período');
+  const horaInicio = inteiro(dados.horaInicio);
+  const horaFim = inteiro(dados.horaFim);
+  if (dados.tipo === 'hora' && !(horaInicio >= 0 && horaFim <= 24 && horaInicio < horaFim)) return erroArea(estado, 'Horário de funcionamento inválido: a abertura vem antes do fechamento (0 a 24 h)');
+  const taxa = inteiro(dados.taxa, 0);
+  if (!(taxa >= 0)) return erroArea(estado, 'Taxa inválida: use reais inteiros, 0 para sem taxa');
+  const antecedenciaMin = inteiro(dados.antecedenciaMin, 0);
+  const antecedenciaMax = inteiro(dados.antecedenciaMax);
+  if (!(antecedenciaMin >= 0) || !(antecedenciaMax >= antecedenciaMin && antecedenciaMax <= 365)) return erroArea(estado, 'Antecedência inválida: a máxima precisa ser maior ou igual à mínima (até 365 dias)');
+  const limiteMes = inteiro(dados.limiteMes);
+  if (limiteMes !== null && !(limiteMes >= 1)) return erroArea(estado, 'Limite por mês inválido: deixe vazio para sem limite');
+  const capacidade = inteiro(dados.capacidade);
+  if (capacidade !== null && !(capacidade >= 1)) return erroArea(estado, 'Capacidade inválida: deixe vazio se não houver');
+  const id = existente ? existente.id : idDaArea(estado.areas, nome);
+  const vinculadas = (dados.vinculadas || []).filter((v) => v !== id && estado.areas.some((a) => a.id === v));
+  // Ao trocar de "por período" para "por hora" (ou o contrário), o horário antigo sai do cadastro.
+  const anterior = Object.fromEntries(Object.entries(existente || { ativa: true }).filter(([k]) => !['periodos', 'horaInicio', 'horaFim'].includes(k)));
+  const area = {
+    ...anterior, id, nome, tipo: dados.tipo,
+    ...(dados.tipo === 'periodo' ? { periodos } : { horaInicio, horaFim }),
+    taxa, aprovacao: dados.aprovacao === 'manual' ? 'manual' : 'automatica', antecedenciaMin, antecedenciaMax, limiteMes, capacidade,
+    itens: String(dados.itens || '').trim(), regulamento: String(dados.regulamento || '').trim(), vinculadas,
+  };
+  // Áreas que dividem o espaço bloqueiam uma à outra: o vínculo vale nos dois sentidos.
+  const areas = [...estado.areas.filter((a) => a.id !== id), area].map((a) => {
+    if (a.id === id) return a;
+    const outras = (a.vinculadas || []).filter((v) => v !== id);
+    return { ...a, vinculadas: vinculadas.includes(a.id) ? [...outras, id] : outras };
+  });
+  const ordem = existente ? estado.areas.map((a) => a.id) : [...estado.areas.map((a) => a.id), id];
+  return { estado: { ...estado, areas: ordem.map((x) => areas.find((a) => a.id === x)) }, id };
+}
+
+// Desativar tira a área das novas reservas; as reservas já feitas continuam valendo.
+function alternarArea(estado, id, perfil) {
+  if (perfil !== 'sindico') return erroArea(estado, SO_SINDICO_AREA);
+  const area = estado.areas.find((a) => a.id === id);
+  if (!area) return erroArea(estado, 'Área não encontrada');
+  const ativa = area.ativa === false;
+  return { estado: { ...estado, areas: estado.areas.map((a) => (a.id === id ? { ...a, ativa } : a)) }, ativa };
 }
 
 // ---- src/moradores/acoes.js ----
@@ -4430,7 +4515,7 @@ const PORTEIROS = [
 ];
 const EMPRESAS = { 'Vigilância Prisma': { contato: 'Central Prisma', telefone: '(11) 4433-9000' } };
 const COLABORADORES_DEMO = [...PORTEIROS, { id: 'antonio', nome: 'Seu Antônio', cargo: 'zelador', vinculo: 'clt', empresa: null, telefone: '(11) 91180-9717', postos: [] }];
-const NOMES_VINCULO = { clt: 'CLT (fixo do condomínio)', terceirizado: 'Terceirizado' };
+const NOMES_VINCULO = { clt: 'CLT (fixo)', terceirizado: 'Terceirizado' };
 const CARGOS = { porteiro: 'Porteiro', folguista: 'Porteiro folguista', zelador: 'Zelador', limpeza: 'Auxiliar de limpeza', manutencao: 'Manutenção', jardineiro: 'Jardineiro', administrativo: 'Administrativo', outro: 'Outro' };
 const CARGOS_PORTARIA = ['porteiro', 'folguista'];
 const MODELOS = { '12x36': { nome: '12x36', horas: 12, ciclo: 2 }, '6x1': { nome: '6x1 (8 h)', horas: 8, ciclo: 7 }, noturno: { nome: 'Noturno 12x36', horas: 12, ciclo: 2 } };
@@ -5810,7 +5895,7 @@ function contextoMorador(estado, eu, agora) {
   for (const e of respondidas) linhas.push(`Enquete aberta já votada pela unidade: ${e.id} "${e.pergunta}" (pode trocar o voto até o encerramento).`);
   for (const e of encerradas) linhas.push(`Enquete encerrada: ${e.id} "${e.pergunta}": ${textoResultado(estado, e)}.`);
   for (const p of infracoesDaUnidade(estado, eu)) linhas.push(`Processo ${p.id} contra a unidade: ${NOMES_TIPO_INFRACAO[p.tipo]}${p.valor ? ` de ${fmtReais(p.valor)}` : ''}, ${p.artigo}, fato: "${p.fato}", situação: ${situacaoInfracao(p, hoje)}, prazo de defesa até ${fmtDataCurta(p.prazoAte)}${p.defesa ? ', defesa já enviada' : ''}.`);
-  linhas.push(`Áreas reserváveis: ${estado.areas.map((a) => a.nome).join(', ')}.`);
+  linhas.push(`Áreas reserváveis: ${areasAtivas(estado).map((a) => a.nome).join(', ')}.`);
   linhas.push('Esta pessoa NÃO pode ver: quem reservou outras datas, dívidas de outras unidades, autor de ocorrência anônima, votos de outras unidades, pedidos e conversas de outros moradores.');
   return linhas.join('\n');
 }
@@ -6435,6 +6520,34 @@ const CASOS_ACOES = [
       const trocou = reagir(util.estado, 'c1', '302', 'duvida');
       const c = acharPorId(trocou.estado.comunicados, 'c1');
       igual([c.reacoes.util.includes('302'), c.reacoes.duvida.includes('302')], [false, true]);
+    },
+  },
+  {
+    nome: 'áreas comuns: síndico cadastra, edita, vincula e desativa',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      const base = { nome: 'Espaço gourmet', tipo: 'periodo', periodos: ['tarde', 'noite'], taxa: '80', aprovacao: 'manual', antecedenciaMin: '2', antecedenciaMax: '30', limiteMes: '', capacidade: '20', itens: 'Fogão e forno', regulamento: 'Até as 22h.', vinculadas: ['salao'] };
+      igual([
+        salvarArea(e, base, 'morador').erro,
+        salvarArea(e, { ...base, nome: ' ' }, 'sindico').erro,
+        salvarArea(e, { ...base, nome: 'salão de festas' }, 'sindico').erro,
+        salvarArea(e, { ...base, periodos: [] }, 'sindico').erro,
+        salvarArea(e, { ...base, tipo: 'hora', horaInicio: '22', horaFim: '8' }, 'sindico').erro,
+        salvarArea(e, { ...base, antecedenciaMin: '10', antecedenciaMax: '5' }, 'sindico').erro,
+        salvarArea(e, { ...base, taxa: '-1' }, 'sindico').erro,
+        salvarArea(e, { ...base, limiteMes: '0' }, 'sindico').erro,
+      ], ['Somente o síndico pode fazer isso', 'Informe o nome da área', 'Já existe uma área com esse nome', 'Marque ao menos um período', 'Horário de funcionamento inválido: a abertura vem antes do fechamento (0 a 24 h)', 'Antecedência inválida: a máxima precisa ser maior ou igual à mínima (até 365 dias)', 'Taxa inválida: use reais inteiros, 0 para sem taxa', 'Limite por mês inválido: deixe vazio para sem limite']);
+      const r = salvarArea(e, base, 'sindico');
+      const nova = areaPorId(r.estado, r.id);
+      igual([r.id, nova.periodos.map((p) => p.id), nova.taxa, nova.limiteMes, nova.capacidade, nova.ativa, areaPorId(r.estado, 'salao').vinculadas], ['espaco-gourmet', ['tarde', 'noite'], 80, null, 20, true, ['churrasqueira', 'espaco-gourmet']]);
+      // Reserva do salão bloqueia o espaço gourmet no mesmo horário, porque dividem o espaço.
+      const pedido = { areaId: 'espaco-gourmet', unidade: '302', data: '2026-10-11', inicio: 18, fim: 23, convidados: [], aceiteTermo: true };
+      igual([podeReservar(r.estado, pedido, AGORA_TESTE).motivo, podeReservar(r.estado, { ...pedido, data: '2026-10-12' }, AGORA_TESTE).ok], ['Horário já reservado', true]);
+      const porHora = salvarArea(r.estado, { ...base, id: r.id, tipo: 'hora', horaInicio: '9', horaFim: '21', vinculadas: [] }, 'sindico').estado;
+      const editada = areaPorId(porHora, r.id);
+      igual([editada.tipo, editada.horaInicio, editada.horaFim, 'periodos' in editada, areaPorId(porHora, 'salao').vinculadas, porHora.areas.length], ['hora', 9, 21, false, ['churrasqueira'], e.areas.length + 1]);
+      const fora = alternarArea(porHora, r.id, 'sindico');
+      igual([fora.ativa, areasAtivas(fora.estado).some((a) => a.id === r.id), podeReservar(fora.estado, { ...pedido, inicio: 10, fim: 11 }, AGORA_TESTE).motivo, alternarArea(fora.estado, r.id, 'sindico').ativa], [false, false, 'Área desativada pelo síndico', true]);
     },
   },
 ];
@@ -9058,15 +9171,18 @@ function PRegistrar({ estado, executar }) {
   const [lida, setLida] = useState(null);
   const [erro, setErro] = useState(null);
   const [registrada, setRegistrada] = useState(null);
-  const numero = unidade.trim();
+  const numero = unidade.trim().toUpperCase();
   const moradores = moradoresDaUnidade(estado, numero);
 
+  // Leitura simulada: usa um morador real do condomínio (na demonstração, a Ana do 302).
   function lerEtiqueta() {
-    setUnidade('302');
+    const p = estado.pessoas.find((x) => x.unidade === '302') || estado.pessoas[0];
+    const alvo = p ? p.unidade : estado.condominio.unidades[0];
+    setUnidade(alvo);
     setTransportadora('Mercado Livre');
     setFoto(true);
     setErro(null);
-    setLida('Etiqueta lida: ANA SOUZA · APTO 302 · MERCADO LIVRE');
+    setLida(`Etiqueta lida: ${p ? p.nome.toUpperCase() : 'MORADOR'} · APTO ${alvo} · MERCADO LIVRE`);
   }
 
   function registrar() {
@@ -9087,7 +9203,7 @@ function PRegistrar({ estado, executar }) {
     <div class="p-coluna">
       <button type="button" class="btn grande destaque" onClick=${lerEtiqueta}><${Icone} nome="leitor" tamanho=${26} />Ler etiqueta</button>
       ${lida && html`<p class="dica-ocr">${lida}</p>`}
-      <${Campo} rotulo="Unidade"><input id="portaria-unidade" class="entrada-grande" inputmode="numeric" maxlength="3" value=${unidade} onInput=${(ev) => setUnidade(ev.target.value)} placeholder="Ex.: 302" /><//>
+      <${Campo} rotulo="Unidade"><input id="portaria-unidade" class="entrada-grande" autocapitalize="characters" maxlength="8" value=${unidade} onInput=${(ev) => setUnidade(ev.target.value)} placeholder="Ex.: 302" /><//>
       ${numero.length === 3 && html`<p class="dica-unidade">${moradores.length ? moradores.map((m) => m.nome).join(', ') : 'Unidade sem morador cadastrado'}</p>`}
       <p class="rotulo">Transportadora</p>
       <div class="opcoes-grandes" role="group" aria-label="Transportadora">
@@ -9116,7 +9232,7 @@ function PEntregar({ estado, executar, agora }) {
   const [entregue, setEntregue] = useState(null);
   const [lido, setLido] = useState(null);
   const comQr = configuracoes(estado).encomendaComQr;
-  const termo = busca.trim();
+  const termo = busca.trim().toUpperCase();
   const lista = estado.encomendas
     .filter((e) => e.status === 'aguardando' && (!termo || e.unidade.includes(termo) || e.codigo === termo))
     .sort((a, b) => a.chegadaEm.localeCompare(b.chegadaEm));
@@ -12232,7 +12348,8 @@ function MReservas({ estado, executar, agora, eu }) {
       <h1 class="m-titulo">Reservas</h1>
       <${Sucesso} texto=${mensagem} />
       <h2>Escolha a área</h2>
-      ${estado.areas.map((a) => html`<button type="button" key=${a.id} class="cartao link" onClick=${() => { setAreaId(a.id); setMensagem(null); }}>
+      ${areasAtivas(estado).length === 0 && html`<${Vazio} texto="O condomínio ainda não tem áreas para reservar." />`}
+      ${areasAtivas(estado).map((a) => html`<button type="button" key=${a.id} class="cartao link" onClick=${() => { setAreaId(a.id); setMensagem(null); }}>
         <strong>${a.nome}</strong>
         <span>${a.tipo === 'periodo' ? 'Por período' : 'Por hora'} · ${a.taxa ? fmtMoeda(a.taxa) : 'Sem taxa'}</span>
         <small class="sub">${a.aprovacao === 'manual' ? 'Precisa de aprovação do síndico' : 'Confirmação na hora'}</small>
@@ -12654,7 +12771,9 @@ function SInicio({ estado, agora, executar }) {
 
 function SReservas({ estado, executar, agora }) {
   const hoje = isoDia(agora);
-  const [areaId, setAreaId] = useState('salao');
+  const [escolhida, setAreaId] = useState(null);
+  // A área escolhida, ou a primeira cadastrada: a lista muda quando o síndico cadastra áreas.
+  const areaId = escolhida && areaPorId(estado, escolhida) ? escolhida : (estado.areas[0] || { id: null }).id;
   const [anoMes, setAnoMes] = useState(hoje.slice(0, 7));
   const [dia, setDia] = useState(hoje);
   const [recusando, setRecusando] = useState(null);
@@ -12699,7 +12818,7 @@ function SReservas({ estado, executar, agora }) {
               </div>`}
         </li>`)}</ul>`
       : html`<${Vazio} texto="Nenhuma reserva aguardando aprovação." />`}
-    <h2>Agenda</h2>
+    ${areaId && html`<h2>Agenda</h2>
     <div class="chips" role="group" aria-label="Área">
       ${estado.areas.map((a) => html`<button type="button" key=${a.id} class="chip" aria-pressed=${a.id === areaId} onClick=${() => setAreaId(a.id)}>${a.nome}</button>`)}
     </div>
@@ -12712,19 +12831,8 @@ function SReservas({ estado, executar, agora }) {
           ? html`<ul class="lista-cartoes">${doDia.map((r) => html`<li key=${r.id} class="cartao"><div class="linha-entre"><span>${fmtHora(r.inicio)}–${fmtHora(r.fim)} · apto ${r.unidade}</span><${EtqReserva} status=${r.status} /></div></li>`)}</ul>`
           : !bloqueios.length && html`<${Vazio} texto="Nenhuma reserva neste dia." />`}
       </div>
-    </div>
-    <h2>Regras das áreas</h2>
-    <div class="tabela-rolagem"><table class="tabela">
-      <thead><tr><th>Área</th><th>Tipo</th><th>Taxa</th><th>Aprovação</th><th>Antecedência</th><th>Limite</th></tr></thead>
-      <tbody>${estado.areas.map((a) => html`<tr key=${a.id}>
-        <td>${a.nome}</td>
-        <td>${a.tipo === 'periodo' ? 'Período' : 'Por hora'}</td>
-        <td>${a.taxa ? fmtMoeda(a.taxa) : '—'}</td>
-        <td>${a.aprovacao === 'manual' ? 'Manual' : 'Automática'}</td>
-        <td>${a.antecedenciaMin} a ${a.antecedenciaMax} dias</td>
-        <td>${a.limiteMes ? `${a.limiteMes} por mês` : 'Sem limite'}</td>
-      </tr>`)}</tbody>
-    </table></div>
+    </div>`}
+    <${AreasComuns} estado=${estado} executar=${executar} />
   </section>`;
 }
 
@@ -14036,20 +14144,30 @@ function MDados({ estado, eu, executar }) {
   </section>`;
 }
 
+const OUTRA_PESSOA = 'outra';
+
 function FormResponsavel({ estado, unidade, executar, aoFechar }) {
   const atual = estado.financeiro.unidades[unidade].responsavel || {};
-  const [form, setForm] = useState({ nome: atual.nome || '', cpf: atual.cpf ? fmtCpf(atual.cpf) : '', relacao: atual.relacao || 'titular' });
+  const daUnidade = estado.pessoas.filter((p) => p.unidade === unidade);
+  // O responsável sai da lista de quem mora na unidade; "outra pessoa" cobre quem não usa o app, como o proprietário que não mora lá.
+  const atualNaLista = daUnidade.find((p) => mesmoNome(p.nome, atual.nome));
+  const [escolha, setEscolha] = useState(atualNaLista ? atualNaLista.id : atual.nome ? OUTRA_PESSOA : (daUnidade[0] || { id: OUTRA_PESSOA }).id);
+  const [form, setForm] = useState({ nome: atualNaLista ? '' : atual.nome || '', cpf: atual.cpf ? fmtCpf(atual.cpf) : '', relacao: atual.relacao || 'titular' });
   const [erro, setErro] = useState(null);
   const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.value });
   function salvar() {
-    const r = executar((e) => definirResponsavel(e, unidade, form, 'sindico'));
+    const pessoa = daUnidade.find((p) => p.id === escolha);
+    const r = executar((e) => definirResponsavel(e, unidade, { ...form, nome: pessoa ? pessoa.nome : form.nome }, 'sindico'));
     if (r.erro) setErro(r.erro);
     else aoFechar();
   }
-  const nomes = estado.pessoas.filter((p) => p.unidade === unidade).map((p) => p.nome);
   return html`<div class="cartao pilha formulario">
     <div class="edicao-anuncio">
-      <${Campo} rotulo="Nome do responsável"><input id=${`resp-nome-${unidade}`} list=${`resp-nomes-${unidade}`} value=${form.nome} onInput=${campo('nome')} /><datalist id=${`resp-nomes-${unidade}`}>${nomes.map((n) => html`<option key=${n} value=${n} />`)}</datalist><//>
+      <${Campo} rotulo="Responsável"><select id=${`resp-pessoa-${unidade}`} value=${escolha} onChange=${(ev) => setEscolha(ev.target.value)}>
+        ${daUnidade.map((p) => html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}
+        <option value=${OUTRA_PESSOA}>Outra pessoa (não usa o app)</option>
+      </select><//>
+      ${escolha === OUTRA_PESSOA && html`<${Campo} rotulo="Nome do responsável"><input id=${`resp-nome-${unidade}`} value=${form.nome} onInput=${campo('nome')} /><//>`}
       <${Campo} rotulo="CPF"><input id=${`resp-cpf-${unidade}`} inputmode="numeric" value=${form.cpf} onInput=${campo('cpf')} placeholder="000.000.000-00" /><//>
       <${Campo} rotulo="Relação"><select id=${`resp-relacao-${unidade}`} value=${form.relacao} onChange=${campo('relacao')}>${Object.entries(NOMES_RELACAO).map(([k, n]) => html`<option key=${k} value=${k}>${n}</option>`)}</select><//>
     </div>
@@ -14196,7 +14314,7 @@ function SConfiguracoes({ estado, executar }) {
 // ---- src/ui/colaboradores.js ----
 
 // Equipe do condomínio: CLT e terceirizados, com cargo, contato e, para os porteiros, a escala fixa.
-function formDe(estado, p) {
+function formDoColaborador(estado, p) {
   const a = p ? escalaDoColaborador(estado, p.id) : null;
   return {
     id: p ? p.id : null, nome: p ? p.nome : '', cargo: p ? p.cargo : 'porteiro', vinculo: p ? p.vinculo : 'clt', empresa: (p && p.empresa) || '',
@@ -14207,7 +14325,7 @@ function formDe(estado, p) {
 }
 
 function FormColaborador({ estado, inicial, executar, aoFechar }) {
-  const [form, setForm] = useState(() => formDe(estado, inicial));
+  const [form, setForm] = useState(() => formDoColaborador(estado, inicial));
   const [erro, setErro] = useState(null);
   const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value });
   const alternarPosto = (id) => setForm({ ...form, postos: form.postos.includes(id) ? form.postos.filter((x) => x !== id) : [...form.postos, id] });
@@ -14291,12 +14409,106 @@ function SColaboradores({ estado, executar }) {
   </section>`;
 }
 
+// ---- src/ui/areas.js ----
+
+// Áreas comuns do condomínio: o síndico cadastra, ajusta as regras de reserva e desativa quando preciso.
+function formDaArea(area) {
+  return {
+    id: area ? area.id : null, nome: area ? area.nome : '', tipo: area ? area.tipo : 'periodo',
+    periodos: area && area.periodos ? area.periodos.map((p) => p.id) : ['tarde', 'noite'],
+    horaInicio: area && area.horaInicio !== undefined ? String(area.horaInicio) : '8', horaFim: area && area.horaFim !== undefined ? String(area.horaFim) : '22',
+    taxa: area ? String(area.taxa || 0) : '0', aprovacao: area ? area.aprovacao : 'automatica',
+    antecedenciaMin: area ? String(area.antecedenciaMin) : '1', antecedenciaMax: area ? String(area.antecedenciaMax) : '60',
+    limiteMes: area && area.limiteMes ? String(area.limiteMes) : '', capacidade: area && area.capacidade ? String(area.capacidade) : '',
+    itens: (area && area.itens) || '', regulamento: (area && area.regulamento) || '', vinculadas: (area && area.vinculadas) || [],
+  };
+}
+
+function FormArea({ estado, area, executar, aoFechar }) {
+  const [form, setForm] = useState(() => formDaArea(area));
+  const [erro, setErro] = useState(null);
+  const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.value });
+  const alternar = (chave, id) => setForm({ ...form, [chave]: form[chave].includes(id) ? form[chave].filter((x) => x !== id) : [...form[chave], id] });
+  const outras = estado.areas.filter((a) => !area || a.id !== area.id);
+  function salvar() {
+    const r = executar((e) => salvarArea(e, form, 'sindico'));
+    if (r.erro) setErro(r.erro);
+    else aoFechar(`${form.nome.trim()} ${area ? 'atualizada' : 'cadastrada'}.`);
+  }
+  return html`<div class="cartao pilha formulario" id="form-area">
+    <h3>${area ? `Editar ${area.nome}` : 'Nova área comum'}</h3>
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Nome"><input id="area-nome" value=${form.nome} onInput=${campo('nome')} placeholder="Ex.: Espaço gourmet" /><//>
+      <${Campo} rotulo="Como reserva"><select id="area-tipo" value=${form.tipo} onChange=${campo('tipo')}><option value="periodo">Por período</option><option value="hora">Por hora</option></select><//>
+      <${Campo} rotulo="Taxa (R$)" dica="0 para sem taxa"><input id="area-taxa" type="number" min="0" value=${form.taxa} onInput=${campo('taxa')} /><//>
+      <${Campo} rotulo="Aprovação"><select id="area-aprovacao" value=${form.aprovacao} onChange=${campo('aprovacao')}><option value="automatica">Automática</option><option value="manual">Pelo síndico</option></select><//>
+    </div>
+    ${form.tipo === 'periodo'
+      ? html`<fieldset class="pilha"><legend>Períodos que podem ser reservados</legend>
+          ${PERIODOS_PADRAO.map((p) => html`<label key=${p.id} class="check"><input id=${`area-periodo-${p.id}`} type="checkbox" checked=${form.periodos.includes(p.id)} onChange=${() => alternar('periodos', p.id)} /><span>${p.nome} (${p.inicio}h–${p.fim}h)</span></label>`)}
+        </fieldset>`
+      : html`<div class="edicao-anuncio">
+          <${Campo} rotulo="Abre às (h)"><input id="area-abre" type="number" min="0" max="23" value=${form.horaInicio} onInput=${campo('horaInicio')} /><//>
+          <${Campo} rotulo="Fecha às (h)"><input id="area-fecha" type="number" min="1" max="24" value=${form.horaFim} onInput=${campo('horaFim')} /><//>
+        </div>`}
+    <div class="edicao-anuncio">
+      <${Campo} rotulo="Antecedência mínima" dica="Dias; 0 permite reservar no dia"><input id="area-antecedencia-min" type="number" min="0" value=${form.antecedenciaMin} onInput=${campo('antecedenciaMin')} /><//>
+      <${Campo} rotulo="Antecedência máxima" dica="Dias"><input id="area-antecedencia-max" type="number" min="0" max="365" value=${form.antecedenciaMax} onInput=${campo('antecedenciaMax')} /><//>
+      <${Campo} rotulo="Limite por unidade no mês" dica="Vazio: sem limite"><input id="area-limite" type="number" min="1" value=${form.limiteMes} onInput=${campo('limiteMes')} /><//>
+      <${Campo} rotulo="Capacidade (pessoas)" dica="Opcional"><input id="area-capacidade" type="number" min="1" value=${form.capacidade} onInput=${campo('capacidade')} /><//>
+    </div>
+    <${Campo} rotulo="O que a área oferece"><input id="area-itens" value=${form.itens} onInput=${campo('itens')} placeholder="Ex.: Mesas, cadeiras e geladeira" /><//>
+    <${Campo} rotulo="Regulamento"><textarea id="area-regulamento" rows="3" value=${form.regulamento} onInput=${campo('regulamento')} placeholder="Ex.: Som até as 22h. Limpeza por conta do morador."></textarea><//>
+    ${outras.length > 0 && html`<fieldset class="pilha"><legend>Divide o espaço com</legend>
+      <small class="sub">Reservar uma bloqueia a outra no mesmo horário.</small>
+      ${outras.map((a) => html`<label key=${a.id} class="check"><input id=${`area-vinculo-${a.id}`} type="checkbox" checked=${form.vinculadas.includes(a.id)} onChange=${() => alternar('vinculadas', a.id)} /><span>${a.nome}</span></label>`)}
+    </fieldset>`}
+    <div class="acoes">
+      <button type="button" class="btn secundario" onClick=${() => aoFechar(null)}>Cancelar</button>
+      <button type="button" class="btn primario" data-acao="salvar-area" onClick=${salvar}>${area ? 'Salvar alterações' : 'Cadastrar área'}</button>
+    </div>
+    <${Erro} texto=${erro} />
+  </div>`;
+}
+
+function AreasComuns({ estado, executar }) {
+  const [editando, setEditando] = useState(null);
+  const [mensagem, setMensagem] = useState(null);
+  function fechar(texto) {
+    setEditando(null);
+    if (texto) setMensagem(texto);
+  }
+  function alternar(a) {
+    const r = executar((e) => alternarArea(e, a.id, 'sindico'));
+    setMensagem(r.erro || (r.ativa ? `${a.nome} volta a aceitar reservas.` : `${a.nome} desativada: não aceita novas reservas. As já feitas continuam valendo.`));
+  }
+  const nomeDe = (id) => (estado.areas.find((a) => a.id === id) || { nome: id }).nome;
+  return html`<div class="pilha">
+    <div class="linha-entre"><h2>Áreas comuns</h2>${editando === null && html`<button type="button" class="btn secundario" data-acao="nova-area" onClick=${() => { setEditando('nova'); setMensagem(null); }}>Nova área</button>`}</div>
+    ${editando === 'nova' && html`<${FormArea} estado=${estado} area=${null} executar=${executar} aoFechar=${fechar} />`}
+    <${Sucesso} texto=${mensagem} />
+    ${estado.areas.length === 0 && html`<${Vazio} texto="Nenhuma área comum cadastrada. Cadastre salão, churrasqueira, quadra e o que mais o condomínio tiver." />`}
+    ${estado.areas.map((a) => (editando === a.id
+      ? html`<${FormArea} key=${a.id} estado=${estado} area=${a} executar=${executar} aoFechar=${fechar} />`
+      : html`<div key=${a.id} class="cartao pilha" data-area=${a.id}>
+          <div class="linha-entre"><strong>${a.nome}</strong>${a.ativa === false ? html`<${Etiqueta}>Desativada<//>` : html`<${Etiqueta} tipo=${a.aprovacao === 'manual' ? 'alerta' : 'ok'}>${a.aprovacao === 'manual' ? 'Aprovação do síndico' : 'Aprovação automática'}<//>`}</div>
+          <span class="sub">${a.tipo === 'periodo' ? `Por período: ${a.periodos.map((p) => p.nome.toLowerCase()).join(', ')}` : `Por hora: ${a.horaInicio}h–${a.horaFim}h`} · ${a.taxa ? fmtMoeda(a.taxa) : 'sem taxa'}</span>
+          <span class="sub">Reserva de ${a.antecedenciaMin} a ${a.antecedenciaMax} dias antes · ${a.limiteMes ? `até ${a.limiteMes} por mês` : 'sem limite por mês'}${a.capacidade ? ` · ${a.capacidade} pessoas` : ''}</span>
+          ${(a.vinculadas || []).length > 0 && html`<span class="sub">Divide o espaço com ${a.vinculadas.map(nomeDe).join(', ')}</span>`}
+          <div class="acoes">
+            <button type="button" class="btn-link" data-editar-area=${a.id} onClick=${() => { setEditando(a.id); setMensagem(null); }}>Editar</button>
+            <button type="button" class="btn-link" onClick=${() => alternar(a)}>${a.ativa === false ? 'Reativar' : 'Desativar'}</button>
+          </div>
+        </div>`))}
+  </div>`;
+}
+
 // ---- src/ui/app.js ----
 
 const TELAS_PERFIL = { sindico: TelaSindico, morador: TelaMorador, portaria: TelaPortaria, zelador: TelaZelador, conselho: TelaConselho };
 const ultimaRota = {};
 // A montagem troca pelo dia e hora em que a página foi gerada.
-const VERSAO_PAGINA = "30/10 19:25";
+const VERSAO_PAGINA = "30/10 19:36";
 
 function estadoDeHoje() {
   const salvo = carregarEstado();

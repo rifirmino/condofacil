@@ -1,8 +1,9 @@
 import { dadosIniciais, SINDICO } from '../dados.js';
-import { podeReservar } from '../regras.js';
+import { podeReservar, areaPorId } from '../regras.js';
 import { solicitarReserva, aprovarReserva, recusarReserva, cancelarReserva, registrarEncomenda, entregarEncomenda, lembrarEncomenda, publicarComunicado, marcarLido, reagir, abrirOcorrencia, avancarOcorrencia, comentarOcorrencia, arquivarOcorrencia, avaliarOcorrencia, euTambem } from '../acoes.js';
 import { igual, AGORA_TESTE } from './afirmar.js';
 import { configuracoes, salvarConfiguracoes } from '../configuracoes.js';
+import { salvarArea, alternarArea, areasAtivas } from '../areas/acoes.js';
 
 const PEDIDO_SALAO = { areaId: 'salao', unidade: '302', data: '2026-10-15', inicio: 13, fim: 18, convidados: [], aceiteTermo: true };
 
@@ -191,6 +192,34 @@ export const CASOS_ACOES = [
       const trocou = reagir(util.estado, 'c1', '302', 'duvida');
       const c = acharPorId(trocou.estado.comunicados, 'c1');
       igual([c.reacoes.util.includes('302'), c.reacoes.duvida.includes('302')], [false, true]);
+    },
+  },
+  {
+    nome: 'áreas comuns: síndico cadastra, edita, vincula e desativa',
+    rodar() {
+      const e = dadosIniciais(AGORA_TESTE);
+      const base = { nome: 'Espaço gourmet', tipo: 'periodo', periodos: ['tarde', 'noite'], taxa: '80', aprovacao: 'manual', antecedenciaMin: '2', antecedenciaMax: '30', limiteMes: '', capacidade: '20', itens: 'Fogão e forno', regulamento: 'Até as 22h.', vinculadas: ['salao'] };
+      igual([
+        salvarArea(e, base, 'morador').erro,
+        salvarArea(e, { ...base, nome: ' ' }, 'sindico').erro,
+        salvarArea(e, { ...base, nome: 'salão de festas' }, 'sindico').erro,
+        salvarArea(e, { ...base, periodos: [] }, 'sindico').erro,
+        salvarArea(e, { ...base, tipo: 'hora', horaInicio: '22', horaFim: '8' }, 'sindico').erro,
+        salvarArea(e, { ...base, antecedenciaMin: '10', antecedenciaMax: '5' }, 'sindico').erro,
+        salvarArea(e, { ...base, taxa: '-1' }, 'sindico').erro,
+        salvarArea(e, { ...base, limiteMes: '0' }, 'sindico').erro,
+      ], ['Somente o síndico pode fazer isso', 'Informe o nome da área', 'Já existe uma área com esse nome', 'Marque ao menos um período', 'Horário de funcionamento inválido: a abertura vem antes do fechamento (0 a 24 h)', 'Antecedência inválida: a máxima precisa ser maior ou igual à mínima (até 365 dias)', 'Taxa inválida: use reais inteiros, 0 para sem taxa', 'Limite por mês inválido: deixe vazio para sem limite']);
+      const r = salvarArea(e, base, 'sindico');
+      const nova = areaPorId(r.estado, r.id);
+      igual([r.id, nova.periodos.map((p) => p.id), nova.taxa, nova.limiteMes, nova.capacidade, nova.ativa, areaPorId(r.estado, 'salao').vinculadas], ['espaco-gourmet', ['tarde', 'noite'], 80, null, 20, true, ['churrasqueira', 'espaco-gourmet']]);
+      // Reserva do salão bloqueia o espaço gourmet no mesmo horário, porque dividem o espaço.
+      const pedido = { areaId: 'espaco-gourmet', unidade: '302', data: '2026-10-11', inicio: 18, fim: 23, convidados: [], aceiteTermo: true };
+      igual([podeReservar(r.estado, pedido, AGORA_TESTE).motivo, podeReservar(r.estado, { ...pedido, data: '2026-10-12' }, AGORA_TESTE).ok], ['Horário já reservado', true]);
+      const porHora = salvarArea(r.estado, { ...base, id: r.id, tipo: 'hora', horaInicio: '9', horaFim: '21', vinculadas: [] }, 'sindico').estado;
+      const editada = areaPorId(porHora, r.id);
+      igual([editada.tipo, editada.horaInicio, editada.horaFim, 'periodos' in editada, areaPorId(porHora, 'salao').vinculadas, porHora.areas.length], ['hora', 9, 21, false, ['churrasqueira'], e.areas.length + 1]);
+      const fora = alternarArea(porHora, r.id, 'sindico');
+      igual([fora.ativa, areasAtivas(fora.estado).some((a) => a.id === r.id), podeReservar(fora.estado, { ...pedido, inicio: 10, fim: 11 }, AGORA_TESTE).motivo, alternarArea(fora.estado, r.id, 'sindico').ativa], [false, false, 'Área desativada pelo síndico', true]);
     },
   },
 ];

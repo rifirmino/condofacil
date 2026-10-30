@@ -1,5 +1,5 @@
 import { html, useState } from '../vendor.js';
-import { atualizarMeusDados, salvarResidentes, residentesDaUnidade, definirResponsavel, removerPessoa, ehSindico } from '../moradores/acoes.js';
+import { atualizarMeusDados, salvarResidentes, residentesDaUnidade, definirResponsavel, removerPessoa, ehSindico, mesmoNome } from '../moradores/acoes.js';
 import { fmtCpf } from '../implantacao/regras.js';
 import { NOMES_RELACAO } from '../cobranca/dados.js';
 import { pessoaDaUnidade } from '../vendas/regras.js';
@@ -82,20 +82,30 @@ export function MDados({ estado, eu, executar }) {
   </section>`;
 }
 
+const OUTRA_PESSOA = 'outra';
+
 function FormResponsavel({ estado, unidade, executar, aoFechar }) {
   const atual = estado.financeiro.unidades[unidade].responsavel || {};
-  const [form, setForm] = useState({ nome: atual.nome || '', cpf: atual.cpf ? fmtCpf(atual.cpf) : '', relacao: atual.relacao || 'titular' });
+  const daUnidade = estado.pessoas.filter((p) => p.unidade === unidade);
+  // O responsável sai da lista de quem mora na unidade; "outra pessoa" cobre quem não usa o app, como o proprietário que não mora lá.
+  const atualNaLista = daUnidade.find((p) => mesmoNome(p.nome, atual.nome));
+  const [escolha, setEscolha] = useState(atualNaLista ? atualNaLista.id : atual.nome ? OUTRA_PESSOA : (daUnidade[0] || { id: OUTRA_PESSOA }).id);
+  const [form, setForm] = useState({ nome: atualNaLista ? '' : atual.nome || '', cpf: atual.cpf ? fmtCpf(atual.cpf) : '', relacao: atual.relacao || 'titular' });
   const [erro, setErro] = useState(null);
   const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.value });
   function salvar() {
-    const r = executar((e) => definirResponsavel(e, unidade, form, 'sindico'));
+    const pessoa = daUnidade.find((p) => p.id === escolha);
+    const r = executar((e) => definirResponsavel(e, unidade, { ...form, nome: pessoa ? pessoa.nome : form.nome }, 'sindico'));
     if (r.erro) setErro(r.erro);
     else aoFechar();
   }
-  const nomes = estado.pessoas.filter((p) => p.unidade === unidade).map((p) => p.nome);
   return html`<div class="cartao pilha formulario">
     <div class="edicao-anuncio">
-      <${Campo} rotulo="Nome do responsável"><input id=${`resp-nome-${unidade}`} list=${`resp-nomes-${unidade}`} value=${form.nome} onInput=${campo('nome')} /><datalist id=${`resp-nomes-${unidade}`}>${nomes.map((n) => html`<option key=${n} value=${n} />`)}</datalist><//>
+      <${Campo} rotulo="Responsável"><select id=${`resp-pessoa-${unidade}`} value=${escolha} onChange=${(ev) => setEscolha(ev.target.value)}>
+        ${daUnidade.map((p) => html`<option key=${p.id} value=${p.id}>${p.nome}</option>`)}
+        <option value=${OUTRA_PESSOA}>Outra pessoa (não usa o app)</option>
+      </select><//>
+      ${escolha === OUTRA_PESSOA && html`<${Campo} rotulo="Nome do responsável"><input id=${`resp-nome-${unidade}`} value=${form.nome} onInput=${campo('nome')} /><//>`}
       <${Campo} rotulo="CPF"><input id=${`resp-cpf-${unidade}`} inputmode="numeric" value=${form.cpf} onInput=${campo('cpf')} placeholder="000.000.000-00" /><//>
       <${Campo} rotulo="Relação"><select id=${`resp-relacao-${unidade}`} value=${form.relacao} onChange=${campo('relacao')}>${Object.entries(NOMES_RELACAO).map(([k, n]) => html`<option key=${k} value=${k}>${n}</option>`)}</select><//>
     </div>

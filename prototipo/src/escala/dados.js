@@ -12,7 +12,7 @@ export const PORTEIROS = [
 ];
 export const EMPRESAS = { 'Vigilância Prisma': { contato: 'Central Prisma', telefone: '(11) 4433-9000' } };
 export const COLABORADORES_DEMO = [...PORTEIROS, { id: 'antonio', nome: 'Seu Antônio', cargo: 'zelador', vinculo: 'clt', empresa: null, telefone: '(11) 91180-9717', postos: [] }];
-export const NOMES_VINCULO = { clt: 'CLT (fixo do condomínio)', terceirizado: 'Terceirizado' };
+export const NOMES_VINCULO = { clt: 'CLT (fixo)', terceirizado: 'Terceirizado' };
 export const CARGOS = { porteiro: 'Porteiro', folguista: 'Porteiro folguista', zelador: 'Zelador', limpeza: 'Auxiliar de limpeza', manutencao: 'Manutenção', jardineiro: 'Jardineiro', administrativo: 'Administrativo', outro: 'Outro' };
 export const CARGOS_PORTARIA = ['porteiro', 'folguista'];
 export const MODELOS = { '12x36': { nome: '12x36', horas: 12, ciclo: 2 }, '6x1': { nome: '6x1 (8 h)', horas: 8, ciclo: 7 }, noturno: { nome: 'Noturno 12x36', horas: 12, ciclo: 2 } };

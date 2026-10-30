@@ -35,6 +35,7 @@ export function conflito(estado, areaId, data, inicio, fim) {
 export function podeReservar(estado, pedido, agora) {
   const area = areaPorId(estado, pedido.areaId);
   if (!area) return falhaRegra('Área inexistente');
+  if (area.ativa === false) return falhaRegra('Área desativada pelo síndico');
   const dias = diferencaDias(pedido.data, isoDia(agora));
   if (dias < 0 || momento(pedido.data, pedido.inicio) <= agora) return falhaRegra('Esse horário já passou');
   if (dias < area.antecedenciaMin) return falhaRegra(`Reserve com pelo menos ${plural(area.antecedenciaMin, 'dia', 'dias')} de antecedência`);

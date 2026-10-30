@@ -6,7 +6,7 @@ import { fmtCpf } from '../implantacao/regras.js';
 import { Campo, Erro, Sucesso, Vazio, Etiqueta } from './comum.js';
 
 // Equipe do condomínio: CLT e terceirizados, com cargo, contato e, para os porteiros, a escala fixa.
-function formDe(estado, p) {
+function formDoColaborador(estado, p) {
   const a = p ? escalaDoColaborador(estado, p.id) : null;
   return {
     id: p ? p.id : null, nome: p ? p.nome : '', cargo: p ? p.cargo : 'porteiro', vinculo: p ? p.vinculo : 'clt', empresa: (p && p.empresa) || '',
@@ -17,7 +17,7 @@ function formDe(estado, p) {
 }
 
 function FormColaborador({ estado, inicial, executar, aoFechar }) {
-  const [form, setForm] = useState(() => formDe(estado, inicial));
+  const [form, setForm] = useState(() => formDoColaborador(estado, inicial));
   const [erro, setErro] = useState(null);
   const campo = (chave) => (ev) => setForm({ ...form, [chave]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value });
   const alternarPosto = (id) => setForm({ ...form, postos: form.postos.includes(id) ? form.postos.filter((x) => x !== id) : [...form.postos, id] });

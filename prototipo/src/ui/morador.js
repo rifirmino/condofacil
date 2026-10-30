@@ -18,6 +18,7 @@ import { solicitarReserva, cancelarReserva, marcarLido, reagir, abrirOcorrencia,
 import { isoDia, nomeMes, somarMes, diferencaDias, fmtDia, fmtHora, fmtDataHora, fmtDataCurta, haQuanto } from '../datas.js';
 import { MDados } from './moradores.js';
 import { configuracoes } from '../configuracoes.js';
+import { areasAtivas } from '../areas/acoes.js';
 import { ir, fmtMoeda, Etiqueta, EtqReserva, EtqOcorrencia, Erro, Sucesso, Vazio, FotoFalsa, Calendario, QrFalso, LinhaTempo, Estrelas, PrevDoc, Campo, Icone, QuadroIcone } from './comum.js';
 
 const ABAS_MORADOR = [['inicio', 'Início', 'casa'], ['financeiro', 'Financeiro', 'cifrao'], ['reservas', 'Reservas', 'calendario'], ['ocorrencias', 'Ocorrências', 'prancheta'], ['vendas', 'Vendas', 'loja'], ['mais', 'Mais', 'menu']];
@@ -162,7 +163,8 @@ function MReservas({ estado, executar, agora, eu }) {
       <h1 class="m-titulo">Reservas</h1>
       <${Sucesso} texto=${mensagem} />
       <h2>Escolha a área</h2>
-      ${estado.areas.map((a) => html`<button type="button" key=${a.id} class="cartao link" onClick=${() => { setAreaId(a.id); setMensagem(null); }}>
+      ${areasAtivas(estado).length === 0 && html`<${Vazio} texto="O condomínio ainda não tem áreas para reservar." />`}
+      ${areasAtivas(estado).map((a) => html`<button type="button" key=${a.id} class="cartao link" onClick=${() => { setAreaId(a.id); setMensagem(null); }}>
         <strong>${a.nome}</strong>
         <span>${a.tipo === 'periodo' ? 'Por período' : 'Por hora'} · ${a.taxa ? fmtMoeda(a.taxa) : 'Sem taxa'}</span>
         <small class="sub">${a.aprovacao === 'manual' ? 'Precisa de aprovação do síndico' : 'Confirmação na hora'}</small>

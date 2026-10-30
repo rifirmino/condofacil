@@ -35,15 +35,18 @@ function PRegistrar({ estado, executar }) {
   const [lida, setLida] = useState(null);
   const [erro, setErro] = useState(null);
   const [registrada, setRegistrada] = useState(null);
-  const numero = unidade.trim();
+  const numero = unidade.trim().toUpperCase();
   const moradores = moradoresDaUnidade(estado, numero);
 
+  // Leitura simulada: usa um morador real do condomínio (na demonstração, a Ana do 302).
   function lerEtiqueta() {
-    setUnidade('302');
+    const p = estado.pessoas.find((x) => x.unidade === '302') || estado.pessoas[0];
+    const alvo = p ? p.unidade : estado.condominio.unidades[0];
+    setUnidade(alvo);
     setTransportadora('Mercado Livre');
     setFoto(true);
     setErro(null);
-    setLida('Etiqueta lida: ANA SOUZA · APTO 302 · MERCADO LIVRE');
+    setLida(`Etiqueta lida: ${p ? p.nome.toUpperCase() : 'MORADOR'} · APTO ${alvo} · MERCADO LIVRE`);
   }
 
   function registrar() {
@@ -64,7 +67,7 @@ function PRegistrar({ estado, executar }) {
     <div class="p-coluna">
       <button type="button" class="btn grande destaque" onClick=${lerEtiqueta}><${Icone} nome="leitor" tamanho=${26} />Ler etiqueta</button>
       ${lida && html`<p class="dica-ocr">${lida}</p>`}
-      <${Campo} rotulo="Unidade"><input id="portaria-unidade" class="entrada-grande" inputmode="numeric" maxlength="3" value=${unidade} onInput=${(ev) => setUnidade(ev.target.value)} placeholder="Ex.: 302" /><//>
+      <${Campo} rotulo="Unidade"><input id="portaria-unidade" class="entrada-grande" autocapitalize="characters" maxlength="8" value=${unidade} onInput=${(ev) => setUnidade(ev.target.value)} placeholder="Ex.: 302" /><//>
       ${numero.length === 3 && html`<p class="dica-unidade">${moradores.length ? moradores.map((m) => m.nome).join(', ') : 'Unidade sem morador cadastrado'}</p>`}
       <p class="rotulo">Transportadora</p>
       <div class="opcoes-grandes" role="group" aria-label="Transportadora">
@@ -93,7 +96,7 @@ function PEntregar({ estado, executar, agora }) {
   const [entregue, setEntregue] = useState(null);
   const [lido, setLido] = useState(null);
   const comQr = configuracoes(estado).encomendaComQr;
-  const termo = busca.trim();
+  const termo = busca.trim().toUpperCase();
   const lista = estado.encomendas
     .filter((e) => e.status === 'aguardando' && (!termo || e.unidade.includes(termo) || e.codigo === termo))
     .sort((a, b) => a.chegadaEm.localeCompare(b.chegadaEm));

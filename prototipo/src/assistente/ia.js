@@ -13,6 +13,7 @@ import { ZELADOR } from '../manutencao/dados.js';
 import { CONSELHEIRO } from '../financeiro/dados.js';
 import { pessoaDaUnidade } from '../vendas/regras.js';
 import { mesmoNome } from '../moradores/acoes.js';
+import { areasAtivas } from '../areas/acoes.js';
 import { isoDia, fmtDataCurta, fmtHora, nomeMes } from '../datas.js';
 import { MANUAL_ABEL } from './manual.js';
 
@@ -47,7 +48,7 @@ function contextoMorador(estado, eu, agora) {
   for (const e of respondidas) linhas.push(`Enquete aberta já votada pela unidade: ${e.id} "${e.pergunta}" (pode trocar o voto até o encerramento).`);
   for (const e of encerradas) linhas.push(`Enquete encerrada: ${e.id} "${e.pergunta}": ${textoResultado(estado, e)}.`);
   for (const p of infracoesDaUnidade(estado, eu)) linhas.push(`Processo ${p.id} contra a unidade: ${NOMES_TIPO_INFRACAO[p.tipo]}${p.valor ? ` de ${fmtReais(p.valor)}` : ''}, ${p.artigo}, fato: "${p.fato}", situação: ${situacaoInfracao(p, hoje)}, prazo de defesa até ${fmtDataCurta(p.prazoAte)}${p.defesa ? ', defesa já enviada' : ''}.`);
-  linhas.push(`Áreas reserváveis: ${estado.areas.map((a) => a.nome).join(', ')}.`);
+  linhas.push(`Áreas reserváveis: ${areasAtivas(estado).map((a) => a.nome).join(', ')}.`);
   linhas.push('Esta pessoa NÃO pode ver: quem reservou outras datas, dívidas de outras unidades, autor de ocorrência anônima, votos de outras unidades, pedidos e conversas de outros moradores.');
   return linhas.join('\n');
 }
