@@ -1,4 +1,4 @@
-import { cpfValido, fmtCpf, enderecoDoViaCep, gerarUnidades, sugestaoPrimeiroAndar, andarDoNumero, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, validarCondominio, mensagemWhatsAppConvite } from '../implantacao/regras.js';
+import { cpfValido, fmtCpf, enderecoDoViaCep, gerarUnidades, sugestaoPrimeiroAndar, lerCsvUnidades, lerCsvMoradores, fracoesDasUnidades, identificadorCondominio, linkConvite, validarCondominio, mensagemWhatsAppConvite } from '../implantacao/regras.js';
 import { condominioNovo } from '../implantacao/novo.js';
 import { indicadoresSindico, alertasDocumentos, destinatarios, comunicadosDaUnidade, horariosDaArea } from '../regras.js';
 import { indicadoresFinanceiros, devedores, previaCompetencia, proximaCompetencia, serieReceitasDespesas, tituloSerie, pendentesDaRegua } from '../cobranca/regras.js';
@@ -56,7 +56,7 @@ export const CASOS_IMPLANTACAO = [
       igual(gerarUnidades({ andares: 8, porAndar: 4 }).unidades.map((u) => u.id).slice(0, 5), ['101', '102', '103', '104', '201']);
       igual([gerarUnidades({ andares: 0, porAndar: 2 }).erro, gerarUnidades({ andares: 3, porAndar: 21 }).erro, gerarUnidades({ blocos: ['A', 'a'], andares: 2, porAndar: 2 }).erro, gerarUnidades({ blocos: Array.from({ length: 30 }, (_, i) => `B${i}`), andares: 40, porAndar: 1 }).erro], ['Informe de 1 a 40 andares', 'Informe de 1 a 20 apartamentos por andar', 'Blocos repetidos', 'No máximo 1000 unidades']);
       const csv = lerCsvUnidades('unidade,bloco,tipo\n101,,\n1201,,cobertura');
-      igual(csv.unidades.map((u) => [u.id, u.andar, u.tipo]), [['101', 1, 'A'], ['1201', 12, 'cobertura']]);
+      igual(csv.unidades.map((u) => [u.id, u.andar, u.tipo]), [['101', null, 'A'], ['1201', null, 'cobertura']]);
       igual(lerCsvUnidades('101\n101').erro, 'Linha 2: unidade 101 repetida');
     },
   },
@@ -77,8 +77,15 @@ export const CASOS_IMPLANTACAO = [
       igual([sugestaoPrimeiroAndar(4, 10), sugestaoPrimeiroAndar(2, 100)], [[11, 12, 13, 14], [101, 102]]);
       const planilha = ['unidade;bloco;tipo', ...['A', 'B'].flatMap((b) => [11, 12, 13, 14, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44].map((n) => `${n};${b};PADRAO`))].join('\n');
       const csv = lerCsvUnidades(planilha);
-      igual([csv.erro, csv.unidades.length, csv.unidades[16].id, csv.unidades.find((u) => u.id === '24A').andar], [undefined, 32, '11B', 2]);
-      igual([andarDoNumero('11A'), andarDoNumero('1204'), andarDoNumero('7'), lerCsvUnidades('11A;A\n11;A').erro, lerCsvUnidades('T1;;;0\nG2;;padrão;5').unidades.map((u) => u.andar)], [1, 12, 1, 'Linha 2: unidade 11A repetida', [1, 5]]);
+      igual([csv.erro, csv.unidades.length, csv.unidades[16].id, csv.unidades.find((u) => u.id === '24A').andar], [undefined, 32, '11B', null]);
+      igual([lerCsvUnidades('11;A\n11;A').erro, lerCsvUnidades('11;A\n11;B\n11A;C').erro, lerCsvUnidades('T1;;;0\nG2;;padrão;5').unidades.map((u) => u.andar)], ['Linha 2: unidade 11 do bloco A repetida', 'Linha 3: unidade 11A repetida', [null, 5]]);
+    },
+  },
+  {
+    nome: 'implantação: planilha usa a unidade como está, sem as regras do gerador',
+    rodar() {
+      const csv = lerCsvUnidades('unidade;bloco;tipo\n1101;1;padrão\n1102;1;padrão\n1184;1;padrão\n1001;1;padrão');
+      igual(csv.unidades.map((u) => [u.id, u.bloco, u.andar]), [['1101', '1', null], ['1102', '1', null], ['1184', '1', null], ['1001', '1', null]]);
     },
   },
   {

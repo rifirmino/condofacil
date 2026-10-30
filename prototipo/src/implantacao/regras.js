@@ -102,14 +102,6 @@ export function gerarUnidades({ blocos = [], andares, porAndar, primeiroAndar, s
   return { unidades };
 }
 
-// Andar pelo número: 2 dígitos → a dezena (21 → 2º); 3 ou mais → tudo menos os 2 últimos (1204 → 12º).
-export function andarDoNumero(id) {
-  const d = (String(id).match(/\d+/) || [''])[0];
-  if (d.length >= 3) return Number(d.slice(0, -2)) || 1;
-  if (d.length === 2) return Number(d[0]) || 1;
-  return 1;
-}
-
 function dividirLinha(linha, sep) {
   const campos = [];
   let atual = '';
@@ -135,17 +127,23 @@ export function lerCsvUnidades(texto) {
   if (!linhas.length) return { erro: 'Cole a planilha de unidades' };
   const sep = separadorDe(texto);
   const corpo = /unidade/i.test(linhas[0]) ? linhas.slice(1) : linhas;
-  const unidades = [];
+  const lidas = [];
   for (const [n, linha] of corpo.entries()) {
     const [id, bloco, tipo, andarInformado] = dividirLinha(linha, sep);
     const numero = String(id || '').toUpperCase().replace(/\s+/g, '');
     const b = String(bloco || '').toUpperCase().replace(/\s+/g, '');
     if (!numero) return { erro: `Linha ${n + 1}: informe a unidade` };
-    // Com bloco, a unidade é número + bloco (11A, 11B): o mesmo número em blocos diferentes não se repete.
-    const limpo = b && !numero.endsWith(b) ? `${numero}${b}` : numero;
-    if (unidades.some((u) => u.id === limpo)) return { erro: `Linha ${n + 1}: unidade ${limpo} repetida` };
-    const andar = Number(andarInformado) > 0 ? Number(andarInformado) : andarDoNumero(numero);
-    unidades.push({ id: limpo, bloco: b || null, andar, tipo: /cobertura/i.test(tipo || '') ? 'cobertura' : 'A' });
+    if (lidas.some((l) => l.numero === numero && l.bloco === b)) return { erro: `Linha ${n + 1}: unidade ${numero}${b ? ` do bloco ${b}` : ''} repetida` };
+    // A planilha manda: nada de regra do gerador. O andar só existe se vier na coluna.
+    lidas.push({ numero, bloco: b, andar: Number(andarInformado) > 0 ? Number(andarInformado) : null, tipo: /cobertura/i.test(tipo || '') ? 'cobertura' : 'A' });
+  }
+  // O bloco só entra no nome quando o mesmo número aparece em mais de um bloco (11A, 11B).
+  const emVariosBlocos = (numero) => lidas.filter((l) => l.numero === numero).length > 1;
+  const unidades = [];
+  for (const [n, l] of lidas.entries()) {
+    const id = l.bloco && emVariosBlocos(l.numero) ? `${l.numero}${l.bloco}` : l.numero;
+    if (unidades.some((u) => u.id === id)) return { erro: `Linha ${n + 1}: unidade ${id} repetida` };
+    unidades.push({ id, bloco: l.bloco || null, andar: l.andar, tipo: l.tipo });
   }
   if (unidades.length > LIMITE_UNIDADES) return { erro: `No máximo ${LIMITE_UNIDADES} unidades` };
   return { unidades };

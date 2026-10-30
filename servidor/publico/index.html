@@ -1944,14 +1944,6 @@ function gerarUnidades({ blocos = [], andares, porAndar, primeiroAndar, somar = 
   return { unidades };
 }
 
-// Andar pelo número: 2 dígitos → a dezena (21 → 2º); 3 ou mais → tudo menos os 2 últimos (1204 → 12º).
-function andarDoNumero(id) {
-  const d = (String(id).match(/\d+/) || [''])[0];
-  if (d.length >= 3) return Number(d.slice(0, -2)) || 1;
-  if (d.length === 2) return Number(d[0]) || 1;
-  return 1;
-}
-
 function dividirLinha(linha, sep) {
   const campos = [];
   let atual = '';
@@ -1977,17 +1969,23 @@ function lerCsvUnidades(texto) {
   if (!linhas.length) return { erro: 'Cole a planilha de unidades' };
   const sep = separadorDe(texto);
   const corpo = /unidade/i.test(linhas[0]) ? linhas.slice(1) : linhas;
-  const unidades = [];
+  const lidas = [];
   for (const [n, linha] of corpo.entries()) {
     const [id, bloco, tipo, andarInformado] = dividirLinha(linha, sep);
     const numero = String(id || '').toUpperCase().replace(/\s+/g, '');
     const b = String(bloco || '').toUpperCase().replace(/\s+/g, '');
     if (!numero) return { erro: `Linha ${n + 1}: informe a unidade` };
-    // Com bloco, a unidade é número + bloco (11A, 11B): o mesmo número em blocos diferentes não se repete.
-    const limpo = b && !numero.endsWith(b) ? `${numero}${b}` : numero;
-    if (unidades.some((u) => u.id === limpo)) return { erro: `Linha ${n + 1}: unidade ${limpo} repetida` };
-    const andar = Number(andarInformado) > 0 ? Number(andarInformado) : andarDoNumero(numero);
-    unidades.push({ id: limpo, bloco: b || null, andar, tipo: /cobertura/i.test(tipo || '') ? 'cobertura' : 'A' });
+    if (lidas.some((l) => l.numero === numero && l.bloco === b)) return { erro: `Linha ${n + 1}: unidade ${numero}${b ? ` do bloco ${b}` : ''} repetida` };
+    // A planilha manda: nada de regra do gerador. O andar só existe se vier na coluna.
+    lidas.push({ numero, bloco: b, andar: Number(andarInformado) > 0 ? Number(andarInformado) : null, tipo: /cobertura/i.test(tipo || '') ? 'cobertura' : 'A' });
+  }
+  // O bloco só entra no nome quando o mesmo número aparece em mais de um bloco (11A, 11B).
+  const emVariosBlocos = (numero) => lidas.filter((l) => l.numero === numero).length > 1;
+  const unidades = [];
+  for (const [n, l] of lidas.entries()) {
+    const id = l.bloco && emVariosBlocos(l.numero) ? `${l.numero}${l.bloco}` : l.numero;
+    if (unidades.some((u) => u.id === id)) return { erro: `Linha ${n + 1}: unidade ${id} repetida` };
+    unidades.push({ id, bloco: l.bloco || null, andar: l.andar, tipo: l.tipo });
   }
   if (unidades.length > LIMITE_UNIDADES) return { erro: `No máximo ${LIMITE_UNIDADES} unidades` };
   return { unidades };
@@ -7996,7 +7994,7 @@ const CASOS_IMPLANTACAO = [
       igual(gerarUnidades({ andares: 8, porAndar: 4 }).unidades.map((u) => u.id).slice(0, 5), ['101', '102', '103', '104', '201']);
       igual([gerarUnidades({ andares: 0, porAndar: 2 }).erro, gerarUnidades({ andares: 3, porAndar: 21 }).erro, gerarUnidades({ blocos: ['A', 'a'], andares: 2, porAndar: 2 }).erro, gerarUnidades({ blocos: Array.from({ length: 30 }, (_, i) => `B${i}`), andares: 40, porAndar: 1 }).erro], ['Informe de 1 a 40 andares', 'Informe de 1 a 20 apartamentos por andar', 'Blocos repetidos', 'No máximo 1000 unidades']);
       const csv = lerCsvUnidades('unidade,bloco,tipo\n101,,\n1201,,cobertura');
-      igual(csv.unidades.map((u) => [u.id, u.andar, u.tipo]), [['101', 1, 'A'], ['1201', 12, 'cobertura']]);
+      igual(csv.unidades.map((u) => [u.id, u.andar, u.tipo]), [['101', null, 'A'], ['1201', null, 'cobertura']]);
       igual(lerCsvUnidades('101\n101').erro, 'Linha 2: unidade 101 repetida');
     },
   },
@@ -8017,8 +8015,15 @@ const CASOS_IMPLANTACAO = [
       igual([sugestaoPrimeiroAndar(4, 10), sugestaoPrimeiroAndar(2, 100)], [[11, 12, 13, 14], [101, 102]]);
       const planilha = ['unidade;bloco;tipo', ...['A', 'B'].flatMap((b) => [11, 12, 13, 14, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44].map((n) => `${n};${b};PADRAO`))].join('\n');
       const csv = lerCsvUnidades(planilha);
-      igual([csv.erro, csv.unidades.length, csv.unidades[16].id, csv.unidades.find((u) => u.id === '24A').andar], [undefined, 32, '11B', 2]);
-      igual([andarDoNumero('11A'), andarDoNumero('1204'), andarDoNumero('7'), lerCsvUnidades('11A;A\n11;A').erro, lerCsvUnidades('T1;;;0\nG2;;padrão;5').unidades.map((u) => u.andar)], [1, 12, 1, 'Linha 2: unidade 11A repetida', [1, 5]]);
+      igual([csv.erro, csv.unidades.length, csv.unidades[16].id, csv.unidades.find((u) => u.id === '24A').andar], [undefined, 32, '11B', null]);
+      igual([lerCsvUnidades('11;A\n11;A').erro, lerCsvUnidades('11;A\n11;B\n11A;C').erro, lerCsvUnidades('T1;;;0\nG2;;padrão;5').unidades.map((u) => u.andar)], ['Linha 2: unidade 11 do bloco A repetida', 'Linha 3: unidade 11A repetida', [null, 5]]);
+    },
+  },
+  {
+    nome: 'implantação: planilha usa a unidade como está, sem as regras do gerador',
+    rodar() {
+      const csv = lerCsvUnidades('unidade;bloco;tipo\n1101;1;padrão\n1102;1;padrão\n1184;1;padrão\n1001;1;padrão');
+      igual(csv.unidades.map((u) => [u.id, u.bloco, u.andar]), [['1101', '1', null], ['1102', '1', null], ['1184', '1', null], ['1001', '1', null]]);
     },
   },
   {
@@ -13458,11 +13463,11 @@ function GradeUnidades({ unidades }) {
   const blocos = [...new Set(unidades.map((u) => u.bloco || ''))];
   return html`<div class="grade-unidades">${blocos.map((b) => {
     const doBloco = unidades.filter((u) => (u.bloco || '') === b);
-    const andares = [...new Set(doBloco.map((u) => u.andar))].sort((x, y) => y - x);
+    const andares = [...new Set(doBloco.map((u) => u.andar ?? null))].sort((x, y) => (y ?? -1) - (x ?? -1));
     return html`<div key=${b} class="pilha">
       ${b && html`<strong>Bloco ${b}</strong>`}
-      ${andares.slice(0, 40).map((a) => html`<div key=${a} class="linha-andar"><span class="sub">${a}º andar</span>
-        <span class="lista-unidades">${doBloco.filter((u) => u.andar === a).map((u) => html`<span key=${u.id} class=${`etq-turno ${u.tipo === 'cobertura' ? 't-tarde' : 't-folga'}`}>${u.id}</span>`)}</span></div>`)}
+      ${andares.slice(0, 40).map((a) => html`<div key=${a ?? 'sem'} class="linha-andar"><span class="sub">${a === null ? (andares.length > 1 ? 'Sem andar' : '') : `${a}º andar`}</span>
+        <span class="lista-unidades">${doBloco.filter((u) => (u.andar ?? null) === a).map((u) => html`<span key=${u.id} class=${`etq-turno ${u.tipo === 'cobertura' ? 't-tarde' : 't-folga'}`}>${u.id}</span>`)}</span></div>`)}
     </div>`;
   })}</div>`;
 }
@@ -13501,7 +13506,7 @@ function PassoUnidades({ r, mudar }) {
           <small class="sub">Os demais andares somam ${g.somar || '?'} a cada andar. O bloco vai depois do número: ${g.primeiro[0] || '11'}A, ${g.primeiro[0] || '11'}B.</small>
         </fieldset>
         <label class="check"><input id="impl-cobertura" type="checkbox" checked=${g.coberturaUltimo} onChange=${campo('coberturaUltimo')} /><span>O último andar é de coberturas</span></label>`
-      : html`<${Campo} rotulo="Planilha de unidades" dica="Colunas: unidade;bloco;tipo (padrão ou cobertura);andar (opcional). Com bloco, a unidade vira 11A, 11B"><textarea id="impl-csv-unidades" rows="6" value=${g.csv} onInput=${campo('csv')} placeholder="unidade;bloco;tipo\n11;A;padrão\n11;B;padrão"></textarea><//>`}
+      : html`<${Campo} rotulo="Planilha de unidades" dica="Colunas: unidade;bloco;tipo (padrão ou cobertura);andar (opcional). A unidade fica exatamente como na planilha; só ganha a letra do bloco (11A, 11B) se o mesmo número se repetir em blocos diferentes"><textarea id="impl-csv-unidades" rows="6" value=${g.csv} onInput=${campo('csv')} placeholder="unidade;bloco;tipo\n11;A;padrão\n11;B;padrão"></textarea><//>`}
     <button type="button" class="btn secundario" data-acao="gerar-unidades" onClick=${gerar}>${g.modo === 'gerador' ? 'Gerar unidades' : 'Ler planilha'}</button>
     <${Erro} texto=${erro} />
     ${r.unidades.length > 0 && html`<div class="cartao pilha">

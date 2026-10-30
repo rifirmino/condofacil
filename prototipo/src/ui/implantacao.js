@@ -151,11 +151,11 @@ function GradeUnidades({ unidades }) {
   const blocos = [...new Set(unidades.map((u) => u.bloco || ''))];
   return html`<div class="grade-unidades">${blocos.map((b) => {
     const doBloco = unidades.filter((u) => (u.bloco || '') === b);
-    const andares = [...new Set(doBloco.map((u) => u.andar))].sort((x, y) => y - x);
+    const andares = [...new Set(doBloco.map((u) => u.andar ?? null))].sort((x, y) => (y ?? -1) - (x ?? -1));
     return html`<div key=${b} class="pilha">
       ${b && html`<strong>Bloco ${b}</strong>`}
-      ${andares.slice(0, 40).map((a) => html`<div key=${a} class="linha-andar"><span class="sub">${a}º andar</span>
-        <span class="lista-unidades">${doBloco.filter((u) => u.andar === a).map((u) => html`<span key=${u.id} class=${`etq-turno ${u.tipo === 'cobertura' ? 't-tarde' : 't-folga'}`}>${u.id}</span>`)}</span></div>`)}
+      ${andares.slice(0, 40).map((a) => html`<div key=${a ?? 'sem'} class="linha-andar"><span class="sub">${a === null ? (andares.length > 1 ? 'Sem andar' : '') : `${a}º andar`}</span>
+        <span class="lista-unidades">${doBloco.filter((u) => (u.andar ?? null) === a).map((u) => html`<span key=${u.id} class=${`etq-turno ${u.tipo === 'cobertura' ? 't-tarde' : 't-folga'}`}>${u.id}</span>`)}</span></div>`)}
     </div>`;
   })}</div>`;
 }
@@ -194,7 +194,7 @@ function PassoUnidades({ r, mudar }) {
           <small class="sub">Os demais andares somam ${g.somar || '?'} a cada andar. O bloco vai depois do número: ${g.primeiro[0] || '11'}A, ${g.primeiro[0] || '11'}B.</small>
         </fieldset>
         <label class="check"><input id="impl-cobertura" type="checkbox" checked=${g.coberturaUltimo} onChange=${campo('coberturaUltimo')} /><span>O último andar é de coberturas</span></label>`
-      : html`<${Campo} rotulo="Planilha de unidades" dica="Colunas: unidade;bloco;tipo (padrão ou cobertura);andar (opcional). Com bloco, a unidade vira 11A, 11B"><textarea id="impl-csv-unidades" rows="6" value=${g.csv} onInput=${campo('csv')} placeholder="unidade;bloco;tipo\n11;A;padrão\n11;B;padrão"></textarea><//>`}
+      : html`<${Campo} rotulo="Planilha de unidades" dica="Colunas: unidade;bloco;tipo (padrão ou cobertura);andar (opcional). A unidade fica exatamente como na planilha; só ganha a letra do bloco (11A, 11B) se o mesmo número se repetir em blocos diferentes"><textarea id="impl-csv-unidades" rows="6" value=${g.csv} onInput=${campo('csv')} placeholder="unidade;bloco;tipo\n11;A;padrão\n11;B;padrão"></textarea><//>`}
     <button type="button" class="btn secundario" data-acao="gerar-unidades" onClick=${gerar}>${g.modo === 'gerador' ? 'Gerar unidades' : 'Ler planilha'}</button>
     <${Erro} texto=${erro} />
     ${r.unidades.length > 0 && html`<div class="cartao pilha">
